@@ -2,12 +2,15 @@
 #include "MessageView.h"
 
 #include <Bitmap.h>
+#include <Clipboard.h>
+#include <Cursor.h>
 #include <DataIO.h>
 #include <ScrollBar.h>
 #include <TranslationUtils.h>
 #include <Window.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -39,6 +42,24 @@ static const size_t kMaxBitmaps = 150;
 void
 MessageView::MessageReceived(BMessage* message)
 {
+	if (message->what == B_COPY) {
+		BString text = SelectedText();
+		if (!text.IsEmpty() && be_clipboard->Lock()) {
+			be_clipboard->Clear();
+			be_clipboard->Data()->AddData("text/plain", B_MIME_TYPE, text.String(),
+				text.Length());
+			be_clipboard->Commit();
+			be_clipboard->Unlock();
+		}
+		return;
+	}
+	if (message->what == B_SELECT_ALL) {
+		// The whole message the selection is in.
+		int32 i = _IndexOf(fSelId);
+		if (i >= 0)
+			_SetSelection(fSelId, 0, (int32)_MeasureRow(fRows[i]).widths.size());
+		return;
+	}
 	if (message->what == B_SIMPLE_DATA && message->HasRef("refs")) {
 		// Files dropped from Tracker: the window sends them to the chat.
 		fDropTarget = false;
@@ -54,6 +75,31 @@ void
 MessageView::MouseMoved(BPoint where, uint32 transit, const BMessage* drag)
 {
 	// Drop feedback: an outline round the chat while files hover over it.
+	if (fSelecting) {
+		int32 i = _IndexOf(fSelId);
+		if (i >= 0)
+			_SetSelection(fSelId, fSelAnchor, _CharAt(i, where));
+		return;
+	}
+	// An I-beam over text, a hand over links.
+	int cursor = 0;
+	if (drag == nullptr && transit != B_EXITED_VIEW && transit != B_OUTSIDE_VIEW) {
+		for (size_t i = 0; i < fLayout.size() && cursor == 0; i++) {
+			if (!fLayout[i].bubble.Contains(where))
+				continue;
+			for (const Layout::Link& link : fLayout[i].links)
+				if (link.frame.Contains(where))
+					cursor = 2;
+			if (cursor == 0 && _TextFrame(i).Contains(where))
+				cursor = 1;
+		}
+	}
+	if (cursor != fCursor) {
+		fCursor = cursor;
+		BCursor shape(cursor == 1 ? B_CURSOR_ID_I_BEAM
+			: cursor == 2 ? B_CURSOR_ID_FOLLOW_LINK : B_CURSOR_ID_SYSTEM_DEFAULT);
+		SetViewCursor(&shape);
+	}
 	bool target = drag != nullptr && drag->HasRef("refs")
 		&& transit != B_EXITED_VIEW && transit != B_OUTSIDE_VIEW && !fRows.empty();
 	if (target != fDropTarget) {
@@ -499,6 +545,18 @@ MessageView::SetMessages(const std::vector<MessageRow>& rows, bool scrollToEnd,
 	fRows = rows;
 	_Relayout();
 	_RestoreAnchor(anchor);
+	// The selection stays with its message while that's there (an edit
+	// may have shortened it).
+	if (fSelId != 0) {
+		int32 i = _IndexOf(fSelId);
+		if (i < 0)
+			fSelId = 0;
+		else {
+			int32 chars = (int32)_MeasureRow(fRows[i]).widths.size();
+			fSelAnchor = std::min(fSelAnchor, chars);
+			fSelEnd = std::min(fSelEnd, chars);
+		}
+	}
 	if (scrollTo != 0) {
 		// The first unread message near the top, its "Unread messages"
 		// separator above it.
@@ -833,9 +891,9 @@ MessageView::_Relayout()
 			}
 		}
 
-		// Where the links are, for clicks.
+		// Where the links and spoilers are, for clicks.
 		for (const pp::Span& span : row.spans) {
-			if ((span.style & pp::kLink) == 0)
+			if ((span.style & (pp::kLink | pp::kSpoiler)) == 0)
 				continue;
 			for (size_t li = 0; li < l.lineChars.size(); li++) {
 				int32 c0 = l.lineChars[li];
@@ -853,7 +911,11 @@ MessageView::_Relayout()
 				}
 				if (x0 >= 0) {
 					float top = l.textTop + line * li;
-					l.links.push_back({BRect(x0, top, x1, top + line - 1), span.url});
+					BRect frame(x0, top, x1, top + line - 1);
+					if (span.style & pp::kLink)
+						l.links.push_back({frame, span.url});
+					if (span.style & pp::kSpoiler)
+						l.spoilers.push_back(frame);
 				}
 			}
 		}
@@ -1013,25 +1075,63 @@ MessageView::MouseDown(BPoint where)
 					return;
 				}
 			}
-			for (const Layout::Link& link : fLayout[i].links) {
-				if (link.frame.Contains(where)) {
-					BMessage open(kMsgOpenUrl);
-					open.AddString("url", link.url.c_str());
-					Window()->PostMessage(&open);
-					return;
-				}
-			}
-			// A spoiler in the text: the first click shows it.
+			// A link opens when the button comes up, unless the press
+			// became a selection.
+			fPendingLink.clear();
+			for (const Layout::Link& link : fLayout[i].links)
+				if (link.frame.Contains(where))
+					fPendingLink = link.url;
+			// A spoiler in the text: clicking it shows it.
 			bool spoiler = false;
-			for (const pp::Span& span : fRows[i].spans)
-				spoiler |= (span.style & pp::kSpoiler) != 0;
-			if (spoiler && !fRevealed.count(fRows[i].id)
-				&& fRows[i].mediaKind == 0) {
+			for (const BRect& frame : fLayout[i].spoilers)
+				spoiler |= frame.Contains(where);
+			if (spoiler && !fRevealed.count(fRows[i].id)) {
 				fRevealed.insert(fRows[i].id);
 				Invalidate(fLayout[i].bubble);
+				fPendingLink.clear();
+				return;
+			}
+			// Selecting text: drag for a stretch, double-click for a word,
+			// triple-click for the whole message.
+			if (_TextFrame(i).Contains(where)) {
+				int32 clicks = 1;
+				Window()->CurrentMessage()->FindInt32("clicks", &clicks);
+				const Measured& m = _MeasureRow(fRows[i]);
+				int32 chars = (int32)m.widths.size();
+				int32 at = _CharAt(i, where);
+				fPressPoint = where;
+				if (clicks >= 3 && fPendingLink.empty())
+					_SetSelection(fRows[i].id, 0, chars);
+				else if (clicks == 2 && fPendingLink.empty()) {
+					const char* bytes = fRows[i].text.String();
+					auto word = [&](int32 c) {
+						unsigned char b = bytes[m.offsets[c]];
+						return b >= 0x80 || isalnum(b) || b == '_' || b == '\'';
+					};
+					int32 from = std::min(at, chars - 1), to = from;
+					if (from >= 0 && word(from)) {
+						while (from > 0 && word(from - 1))
+							from--;
+						while (to < chars && word(to))
+							to++;
+					} else
+						to = from + 1;
+					_SetSelection(fRows[i].id, std::max(0, from), std::min(chars, to));
+				} else {
+					_SetSelection(fRows[i].id, at, at);
+					fSelecting = true;
+					if (fCursor != 1) {
+						fCursor = 1;  // selecting, even from a link
+						BCursor beam(B_CURSOR_ID_I_BEAM);
+						SetViewCursor(&beam);
+					}
+					SetMouseEventMask(B_POINTER_EVENTS, B_NO_POINTER_HISTORY);
+				}
+				MakeFocus(true);  // for Cmd+C
 				return;
 			}
 		}
+		_SetSelection(0, 0, 0);
 		for (size_t i = 0; i < fRows.size(); i++) {
 			const MessageRow& row = fRows[i];
 			if (row.mediaKind == 0 || row.mediaKind == 2
@@ -1076,8 +1176,17 @@ MessageView::_DrawText(const MessageRow& row, const Layout& l, float x, float li
 		for (int32 c = 0; c < chars; c++)
 			if (m.offsets[c] >= span.start && m.offsets[c] < span.start + span.length)
 				styles[c] |= span.style;
+	// The selection splits runs too, so it gets its own background.
+	const uint32 kSelected = 0x40000000;
+	if (row.id == fSelId && fSelAnchor != fSelEnd) {
+		int32 from = std::max(0, std::min(fSelAnchor, fSelEnd));
+		int32 to = std::min(chars, std::max(fSelAnchor, fSelEnd));
+		for (int32 c = from; c < to; c++)
+			styles[c] |= kSelected;
+	}
 	bool revealed = fRevealed.count(row.id) > 0;
 	rgb_color accent = ui_color(B_CONTROL_HIGHLIGHT_COLOR);
+	rgb_color selection = mix_color(fill, accent, 96);
 	font_height fh;
 	GetFontHeight(&fh);
 	const char* bytes = row.text.String();
@@ -1103,7 +1212,13 @@ MessageView::_DrawText(const MessageRow& row, const Layout& l, float x, float li
 			_FontFor(st, &font);
 			SetFont(&font);
 			BRect box(cx, baseline - fh.ascent, cx + w - 1, baseline + fh.descent);
-			if (st & pp::kCode) {
+			rgb_color background = fill;
+			if (st & kSelected) {
+				background = selection;
+				SetHighColor(selection);
+				FillRect(BRect(box.left, l.textTop + line * li, box.right,
+					l.textTop + line * (li + 1) - 1));
+			} else if (st & pp::kCode) {
 				SetHighColor(mix_color(fill, fg, 25));
 				FillRect(box);
 			}
@@ -1114,7 +1229,7 @@ MessageView::_DrawText(const MessageRow& row, const Layout& l, float x, float li
 				rgb_color color = (st & pp::kLink) ? accent
 					: (st & pp::kQuote) ? mix_color(fg, fill, 60) : fg;
 				SetHighColor(color);
-				SetLowColor(fill);
+				SetLowColor(background);
 				if (drawEnd > c)
 					DrawString(bytes + m.offsets[c], m.offsets[drawEnd] - m.offsets[c],
 						BPoint(cx, baseline));
@@ -1130,6 +1245,139 @@ MessageView::_DrawText(const MessageRow& row, const Layout& l, float x, float li
 		}
 	}
 	SetFont((&fPlain));
+}
+
+
+void
+MessageView::MouseUp(BPoint where)
+{
+	bool dragged = fSelecting && fSelAnchor != fSelEnd
+		&& (std::fabs(where.x - fPressPoint.x) > 3 || std::fabs(where.y - fPressPoint.y) > 3);
+	if (fSelecting && !dragged)
+		_SetSelection(0, 0, 0);  // a plain click
+	fSelecting = false;
+	if (!fPendingLink.empty() && !dragged) {
+		BMessage open(kMsgOpenUrl);
+		open.AddString("url", fPendingLink.c_str());
+		Window()->PostMessage(&open);
+	}
+	fPendingLink.clear();
+	BView::MouseUp(where);
+}
+
+
+void
+MessageView::KeyDown(const char* bytes, int32 count)
+{
+	// The view only has the focus to copy a selection: typing goes back
+	// to the entry (the window's filter takes Escape).
+	if ((unsigned char)bytes[0] >= ' ' && bytes[0] != B_DELETE) {
+		if (BView* entry = Window()->FindView("entry")) {
+			entry->MakeFocus(true);
+			Window()->PostMessage(Window()->CurrentMessage(), entry);
+			return;
+		}
+	}
+	BView::KeyDown(bytes, count);
+}
+
+
+BString
+MessageView::SelectedText(int64 id)
+{
+	int32 i = _IndexOf(fSelId);
+	if (i < 0 || fSelAnchor == fSelEnd || (id != 0 && id != fSelId))
+		return BString();
+	const Measured& m = _MeasureRow(fRows[i]);
+	int32 chars = (int32)m.widths.size();
+	int32 from = std::max(0, std::min(fSelAnchor, fSelEnd));
+	int32 to = std::min(chars, std::max(fSelAnchor, fSelEnd));
+	BString text;
+	text.SetTo(fRows[i].text.String() + m.offsets[from], m.offsets[to] - m.offsets[from]);
+	return text;
+}
+
+
+int32
+MessageView::_IndexOf(int64 id) const
+{
+	if (id == 0)
+		return -1;
+	for (size_t i = 0; i < fRows.size() && i < fLayout.size(); i++)
+		if (fRows[i].id == id)
+			return (int32)i;
+	return -1;
+}
+
+
+float
+MessageView::_LineHeight() const
+{
+	font_height fh;
+	fPlain.GetHeight(&fh);
+	return ceilf(fh.ascent + fh.descent + fh.leading);
+}
+
+
+// Where a message's text is (not service lines, not hidden spoilers).
+BRect
+MessageView::_TextFrame(size_t index) const
+{
+	const MessageRow& row = fRows[index];
+	const Layout& l = fLayout[index];
+	if (row.service || row.id == 0 || l.lines.empty())
+		return BRect();
+	float line = _LineHeight();
+	float pad = roundf(line * 0.5f);
+	return BRect(l.bubble.left + pad, l.textTop, l.bubble.right - pad,
+		l.textTop + line * l.lines.size() - 1);
+}
+
+
+// The character boundary nearest `where` in message `index`'s text:
+// above the text is its start, below it its end.
+int32
+MessageView::_CharAt(size_t index, BPoint where)
+{
+	const Layout& l = fLayout[index];
+	const Measured& m = _MeasureRow(fRows[index]);
+	int32 chars = (int32)m.widths.size();
+	if (l.lineChars.empty())
+		return 0;
+	float line = _LineHeight();
+	float pad = roundf(line * 0.5f);
+	if (where.y < l.textTop)
+		return 0;
+	size_t li = (size_t)((where.y - l.textTop) / line);
+	if (li >= l.lineChars.size())
+		return chars;
+	int32 c0 = l.lineChars[li];
+	int32 c1 = li + 1 < l.lineChars.size() ? l.lineChars[li + 1] : chars;
+	const char* bytes = fRows[index].text.String();
+	float x = l.bubble.left + pad;
+	for (int32 c = c0; c < c1; c++) {
+		if (bytes[m.offsets[c]] == '\n' || where.x < x + m.widths[c] / 2)
+			return c;
+		x += m.widths[c];
+	}
+	return c1;
+}
+
+
+void
+MessageView::_SetSelection(int64 id, int32 anchor, int32 end)
+{
+	if (id == fSelId && anchor == fSelAnchor && end == fSelEnd)
+		return;
+	int32 old = _IndexOf(fSelId);
+	fSelId = id;
+	fSelAnchor = anchor;
+	fSelEnd = end;
+	if (old >= 0)
+		Invalidate(fLayout[old].bubble);
+	int32 now = _IndexOf(id);
+	if (now >= 0 && now != old)
+		Invalidate(fLayout[now].bubble);
 }
 
 
@@ -1243,7 +1491,7 @@ MessageView::Draw(BRect updateRect)
 			DrawString(what.String(), BPoint(rx, l.replyTop + line + fh.ascent));
 		}
 
-		if (row.service || row.spans.empty()) {
+		if (row.service || (row.spans.empty() && row.id != fSelId)) {
 			SetHighColor(row.service ? dim : fg);
 			float y = l.textTop + fh.ascent;
 			for (const BString& s : l.lines) {

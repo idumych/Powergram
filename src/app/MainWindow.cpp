@@ -682,7 +682,8 @@ MainWindow::_ShowMessageMenu(const BMessage* properties)
 		return message;
 	};
 	item("Reply", kMsgReply, properties->GetBool("can_reply", false));
-	item("Copy", kMsgCopy, properties->GetBool("can_copy", true) && !row->text.IsEmpty());
+	item(fMessages->SelectedText(row->id).IsEmpty() ? "Copy" : "Copy selection", kMsgCopy,
+		properties->GetBool("can_copy", true) && !row->text.IsEmpty());
 	item("Forward" B_UTF8_ELLIPSIS, kMsgForward, properties->GetBool("can_forward", false));
 	// A few common reactions; the full set needs custom emoji Haiku can't draw.
 	BMenu* react = new BMenu("React");
@@ -1122,12 +1123,17 @@ MainWindow::MessageReceived(BMessage* message)
 			break;
 		case kMsgCopy:
 		{
-			const MessageRow* row = fMessages->Row(message->GetInt64("message_id", 0));
+			int64 id = message->GetInt64("message_id", 0);
+			const MessageRow* row = fMessages->Row(id);
 			if (row == nullptr || !be_clipboard->Lock())
 				break;
+			// The selected part of the message, else all of it.
+			BString text = fMessages->SelectedText(id);
+			if (text.IsEmpty())
+				text = row->text;
 			be_clipboard->Clear();
 			be_clipboard->Data()->AddData("text/plain", B_MIME_TYPE,
-				row->text.String(), row->text.Length());
+				text.String(), text.Length());
 			be_clipboard->Commit();
 			be_clipboard->Unlock();
 			break;
@@ -1159,7 +1165,11 @@ MainWindow::MessageReceived(BMessage* message)
 			break;
 		}
 		case kMsgCancelCompose:
-			_CancelCompose();
+			// Escape: a selection goes first, then a reply or edit.
+			if (!fMessages->SelectedText().IsEmpty())
+				fMessages->ClearSelection();
+			else
+				_CancelCompose();
 			break;
 		case kMsgForward:
 		{

@@ -89,11 +89,16 @@ public:
 	void AttachedToWindow() override;
 	void ScrollTo(BPoint where) override;
 	void MouseDown(BPoint where) override;
+	void MouseUp(BPoint where) override;
+	void KeyDown(const char* bytes, int32 count) override;
 	void DetachedFromWindow() override;
 	void MessageReceived(BMessage* message) override;
 	void MouseMoved(BPoint where, uint32 transit, const BMessage* drag) override;
 
 	const MessageRow* Row(int64 id) const;
+	// The selected text, if there's any (in message `id`, if not 0).
+	BString SelectedText(int64 id = 0);
+	void ClearSelection() { _SetSelection(0, 0, 0); }
 	// Scrolls so that message `id` is at the top (tests, jump to message).
 	void ScrollToMessage(int64 id);
 	// The last message visible at the bottom and its distance from the
@@ -114,6 +119,7 @@ private:
 			std::string url;
 		};
 		std::vector<Link> links;       // clickable, in view coordinates
+		std::vector<BRect> spoilers;   // hidden text, shown when clicked
 		std::vector<BRect> reactions;  // a pill per reaction, view coordinates
 	};
 
@@ -168,6 +174,20 @@ private:
 	std::map<std::string, BBitmap*> fBitmaps;
 	std::list<std::string> fBitmapOrder;
 	std::set<int64> fRevealed;  // spoilers clicked open
+
+	// Text selection, within one message, in characters of its Measured.
+	int32 _IndexOf(int64 id) const;
+	int32 _CharAt(size_t index, BPoint where);
+	BRect _TextFrame(size_t index) const;
+	float _LineHeight() const;
+	void _SetSelection(int64 id, int32 anchor, int32 end);
+	int64 fSelId = 0;
+	int32 fSelAnchor = 0;
+	int32 fSelEnd = 0;
+	bool fSelecting = false;
+	std::string fPendingLink;   // pressed; opened on release unless dragged
+	BPoint fPressPoint;
+	int fCursor = 0;            // 0 default, 1 text, 2 link
 	bool fDropTarget;           // files are being dragged over us
 	bool fMoreBelow = false;
 	int64 fHighlight = 0;
