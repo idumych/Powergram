@@ -7,27 +7,41 @@ It talks to Telegram through [TDLib](https://github.com/tdlib/td), Telegram's
 own client library, and keeps Paper Plane's layout: the chat list on the left,
 the open chat on the right.
 
-**Preview.** Version 0.1.0, a first preview for Haiku and Renku OS (x86_64),
-came out under the app's earlier name, Paper Plane for Haiku: download the
-`.hpkg` from [Releases](https://github.com/idumych/paper-plane-haiku/releases)
-and install it with `pkgman install ./paperplane-0.1.0-1-x86_64.hpkg`. The
-next release is named Powergram and replaces it, keeping your login and
-settings.
+**Preview.** Version 0.2.0 is a preview for Haiku and Renku OS (x86_64):
+download the `.hpkg` from
+[Releases](https://github.com/idumych/paper-plane-haiku/releases) and install it
+with `pkgman install ./powergram-0.2.0-1-x86_64.hpkg`. The app was called
+Paper Plane for Haiku up to 0.1.0; Powergram replaces that package and keeps
+your login and settings.
 
 ![Powergram with a group chat open](docs/screenshots/haiku-group.png)
 
 ## What works
 
-Built and run on Renku OS x86_64. Used with a real account: logging in, the
-chat list, reading chats, photos in chats, sending and editing messages,
-emoji, stickers and notifications. Videos, GIFs, round video messages,
-sending photos and files, spoilers and self-destructing photos have only been
-checked with made-up data so far.
+Built and run on Renku OS and Haiku R1/beta6, x86_64. Used with a real
+account (0.1.0): logging in, the chat list, reading chats, photos in chats,
+sending and editing messages, emoji, stickers and notifications. Everything
+added in 0.2.0, and videos, GIFs, round video messages, sending photos and
+files, spoilers and self-destructing photos, has only been checked with
+made-up data so far.
 
 - Logging in: phone number, code, cloud password, new accounts
-- Chat list with profile pictures, unread and mention badges, pinned chats
+- Your own API key, entered in the login window: it opens my.telegram.org/apps
+  in your browser, and pasting the api_id and api_hash lines fills both fields
+- Chat list with profile pictures, unread and mention badges, pinned chats,
+  drafts, archived chats and chat folders; right-click to mark read or
+  unread, mute, pin, archive or delete
+- Search: filter the chat list by name, find messages in a chat (Cmd+F, Cmd+G)
 - Reading chats: replies, forwards, edits, read ticks, date separators,
-  sender pictures in groups, older messages loading as you scroll up
+  sender pictures in groups, older messages loading as you scroll up; bold,
+  italic, code, spoilers and clickable links; opening at the first unread
+  message, with a jump-to-latest button
+- Typing, online and "last seen" status and group sizes in the chat header
+- Reactions (shown and added), forwarding, polls, locations, places and contacts
+- Voice messages, played in the app with a waveform
+- A chat info window: picture, bio or description, members, shared photos
+- Settings: notifications, message text in notifications, a sound (chosen in
+  the Sounds preferences), text size
 - Photos, videos, GIFs, round video messages and stickers (WebP; animated
   stickers show their emoji); spoilers and self-destructing photos
 - Sending text, photos, files (file panel or drag and drop from Tracker) and
@@ -38,8 +52,8 @@ checked with made-up data so far.
   apps send them, and every request throttled (a few at a time, and a full
   stop when Telegram asks to wait)
 
-Not yet: voice messages, calls, secret chats, search, QR-code login, media
-playback inside the app, a Linux (Cosmoe) build, an app icon.
+Not yet: recording voice messages, calls, secret chats, QR-code login, video
+playback inside the app (videos open in MediaPlayer), a Linux (Cosmoe) build.
 
 ## Screenshots
 
@@ -60,6 +74,15 @@ The sticker picker: your sets on the left, their stickers on the right.
 
 ![Replying to a message](docs/screenshots/haiku-reply.png)
 Replying: the message being answered is shown over the entry.
+
+![Voice messages](docs/screenshots/haiku-voice.png)
+Voice messages play in the app; the waveform fills as they play.
+
+![The chat info window](docs/screenshots/haiku-info.png)
+Chat info: the description, members and shared photos.
+
+![The Settings window](docs/screenshots/haiku-settings.png)
+Settings apply at once; here the text size is Large.
 
 ## Platforms
 
@@ -85,7 +108,8 @@ HaikuPorts' TDLib is static only, so it's linked into the app; the result
 needs only OpenSSL and zlib at run time. Install `noto_emoji` for emoji.
 
 `make test` runs the core tests (login flow, chat list, history, throttling,
-files, stickers) on any system with a C++17 compiler.
+files, stickers, formatting, presence, voice, chat info) on any system with a
+C++17 compiler.
 
 ## Your API key
 

@@ -265,7 +265,7 @@ public:
 			case kMsgStickerSetsWanted:
 			{
 				BMessage sets(kMsgStickerSets);
-				const char* titles[] = {"Paper Plane", "Smiles", "Haiku friends"};
+				const char* titles[] = {"Planes", "Smiles", "Haiku friends"};
 				for (int i = 0; i < 3; i++) {
 					sets.AddInt64("id", i + 1);
 					sets.AddString("title", titles[i]);

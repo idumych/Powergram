@@ -1704,8 +1704,8 @@ void
 App::AboutRequested()
 {
 	BAboutWindow* about = new BAboutWindow(APP_NAME, APP_SIGNATURE);
-	about->AddDescription("A Telegram client, after Paper Plane by the Paper "
-		"Plane developers. Proof of concept.");
+	about->AddDescription("A Telegram client for Haiku, after Paper Plane by "
+		"the Paper Plane developers. Preview.");
 	about->AddCopyright(2026, "the Powergram contributors");
 	about->AddText("Licence: GNU GPL 3.0 or later. Uses TDLib.");
 	about->Show();
