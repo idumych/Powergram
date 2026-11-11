@@ -16,9 +16,11 @@ with `pkgman install ./paperplane-0.1.0-1-x86_64.hpkg`.
 
 ## What works
 
-Built and run on Renku OS x86_64. Logging in, the chat list, and reading,
-sending and editing messages have been used with a real account; the rest
-has been checked with made-up data and still needs real-world use.
+Built and run on Renku OS x86_64. Used with a real account: logging in, the
+chat list, reading chats, photos in chats, sending and editing messages,
+emoji, stickers and notifications. Videos, GIFs, round video messages,
+sending photos and files, spoilers and self-destructing photos have only been
+checked with made-up data so far.
 
 - Logging in: phone number, code, cloud password, new accounts
 - Chat list with profile pictures, unread and mention badges, pinned chats
