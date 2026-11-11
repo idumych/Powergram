@@ -113,6 +113,12 @@ enum {
 	// message view → main window: a link was clicked, "url"
 	kMsgOpenUrl = 'ourl',
 
+	// app → main window: "chat_id" (int64), "status" (header subtitle),
+	// "active" (bool: typing and the like, drawn in the accent colour)
+	kMsgChatStatus = 'csts',
+	// app → itself: refresh statuses (typing expires, "last seen")
+	kMsgPresenceTick = 'ptck',
+
 	kMsgLogOut = 'lout',
 	kMsgLogOutConfirmed = 'loco',
 	kMsgForceQuit = 'fqut'

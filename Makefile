@@ -8,7 +8,7 @@ override CXXFLAGS += -std=c++17 -Wall -Wextra -O2
 
 CORE_SRCS := src/core/AuthFlow.cpp src/core/ChatList.cpp src/core/ChatHistory.cpp \
 	src/core/SendQueue.cpp src/core/Files.cpp src/core/Stickers.cpp \
-	src/core/Format.cpp
+	src/core/Format.cpp src/core/Presence.cpp
 APP_SRCS := src/app/App.cpp src/app/TdClient.cpp src/app/Settings.cpp \
 	src/app/LoginWindow.cpp src/app/MainWindow.cpp src/app/MessageView.cpp \
 	src/app/BitmapUtils.cpp src/app/Icons.cpp src/app/Pickers.cpp

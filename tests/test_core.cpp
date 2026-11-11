@@ -8,6 +8,7 @@
 #include "../src/core/ChatList.h"
 #include "../src/core/Files.h"
 #include "../src/core/Format.h"
+#include "../src/core/Presence.h"
 #include "../src/core/SendQueue.h"
 #include "../src/core/Stickers.h"
 
@@ -684,6 +685,51 @@ TestFormatting()
 }
 
 
+static void
+TestPresence()
+{
+	Presence p;
+	p.Apply({{"@type", "updateNewChat"}, {"chat", {{"id", 7},
+		{"type", {{"@type", "chatTypePrivate"}, {"user_id", 70}}}}}}, 0);
+	p.Apply({{"@type", "updateNewChat"}, {"chat", {{"id", -5},
+		{"type", {{"@type", "chatTypeSupergroup"}, {"supergroup_id", 50}, {"is_channel", false}}}}}}, 0);
+	p.Apply({{"@type", "updateNewChat"}, {"chat", {{"id", -6},
+		{"type", {{"@type", "chatTypeBasicGroup"}, {"basic_group_id", 60}}}}}}, 0);
+	CHECK(p.PrivateUser(7) == 70 && p.PrivateUser(-5) == 0);
+	CHECK(p.MemberCount(-5) == 0);
+	CHECK(p.Apply({{"@type", "updateSupergroup"}, {"supergroup", {{"id", 50}, {"member_count", 128}}}}, 0));
+	p.Apply({{"@type", "updateBasicGroup"}, {"basic_group", {{"id", 60}, {"member_count", 3}}}}, 0);
+	CHECK(p.MemberCount(-5) == 128 && p.MemberCount(-6) == 3 && !p.IsChannel(-5));
+
+	p.Apply({{"@type", "updateUser"}, {"user", {{"id", 70},
+		{"status", {{"@type", "userStatusOffline"}, {"was_online", 1000}}}}}}, 0);
+	CHECK(p.Status(70).kind == UserStatus::kOffline && p.Status(70).time == 1000);
+	p.Apply({{"@type", "updateUserStatus"}, {"user_id", 70},
+		{"status", {{"@type", "userStatusOnline"}, {"expires", 2000}}}}, 0);
+	CHECK(p.Status(70).kind == UserStatus::kOnline);
+	CHECK(p.Status(99).kind == UserStatus::kUnknown);
+
+	auto action = [](int64_t chat, int64_t user, const char* type) {
+		return json{{"@type", "updateChatAction"}, {"chat_id", chat},
+			{"sender_id", {{"@type", "messageSenderUser"}, {"user_id", user}}},
+			{"action", {{"@type", type}}}};
+	};
+	p.Apply(action(7, 70, "chatActionTyping"), 100);
+	std::map<int64_t, std::string> names = {{70, "Ann Example"}, {71, "Bo Sample"}, {72, "Cy"}};
+	CHECK(ActionText(p.Actions(7, 103), names, true) == "typing…");
+	CHECK(p.Actions(7, 107).empty());  // stale after 6 s
+	p.Apply(action(-5, 70, "chatActionRecordingVoiceNote"), 200);
+	CHECK(ActionText(p.Actions(-5, 201), names, false) == "Ann is recording a voice message…");
+	p.Apply(action(-5, 71, "chatActionTyping"), 200);
+	CHECK(ActionText(p.Actions(-5, 201), names, false).find(" and ") != std::string::npos);
+	p.Apply(action(-5, 72, "chatActionTyping"), 200);
+	CHECK(ActionText(p.Actions(-5, 201), names, false) == "3 people are typing…");
+	p.Apply(action(-5, 72, "chatActionCancel"), 201);
+	CHECK(p.Actions(-5, 201).size() == 2);
+	CHECK(ActionText({}, names, false).empty());
+}
+
+
 int
 main()
 {
@@ -698,6 +744,7 @@ main()
 	TestVideosAvatarsSending();
 	TestPhotosAndStickers();
 	TestFormatting();
+	TestPresence();
 	if (sFailures) {
 		std::fprintf(stderr, "%d check(s) failed\n", sFailures);
 		return EXIT_FAILURE;

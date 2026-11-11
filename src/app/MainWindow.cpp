@@ -104,6 +104,7 @@ public:
 		fUnread = list->GetInt32("unread", index, 0);
 		fMentions = list->GetInt32("mentions", index, 0);
 		fPinned = list->GetBool("pinned", index, false);
+		fTyping = list->GetString("typing", index, "");
 		fInitials = pp::Initials(fTitle.String()).c_str();
 	}
 
@@ -209,12 +210,16 @@ public:
 		}
 
 		BString text;
-		if (!fSender.IsEmpty())
-			text << fSender << ": ";
-		text << fText;
+		if (!fTyping.IsEmpty())
+			text = fTyping;
+		else {
+			if (!fSender.IsEmpty())
+				text << fSender << ": ";
+			text << fText;
+		}
 		plain.TruncateString(&text, B_TRUNCATE_END, textRight - left);
 		owner->SetFont(&plain);
-		owner->SetHighColor(dim);
+		owner->SetHighColor(fTyping.IsEmpty() ? dim : ui_color(B_CONTROL_HIGHLIGHT_COLOR));
 		owner->DrawString(text, BPoint(left, mid + 3 + fh.ascent));
 	}
 
@@ -223,6 +228,7 @@ private:
 	BString fTitle, fText, fSender, fDate, fInitials;
 	int32 fUnread, fMentions;
 	bool fPinned;
+	BString fTyping;    // "typing…" instead of the last message
 	BBitmap* fAvatar;   // round chat photo (owned by the window), or null
 };
 
@@ -278,6 +284,11 @@ MainWindow::MainWindow(BRect frame, bool testDc,
 	fTitle = new BStringView("title", "");
 	fTitle->SetFont(be_bold_font);
 	fTitle->SetTruncation(B_TRUNCATE_END);
+	fSubtitle = new BStringView("subtitle", "");
+	fSubtitle->SetTruncation(B_TRUNCATE_END);
+	fSubtitle->SetExplicitMinSize(BSize(be_plain_font->StringWidth("m") * 6, B_SIZE_UNSET));
+	fSubtitle->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
+	fSubtitle->SetHighUIColor(B_PANEL_TEXT_COLOR, B_DARKEN_2_TINT);
 	fTitle->SetExplicitMinSize(BSize(be_plain_font->StringWidth("m") * 6, B_SIZE_UNSET));
 	fTitle->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
 
@@ -324,9 +335,11 @@ MainWindow::MainWindow(BRect frame, bool testDc,
 		.AddSplit(B_HORIZONTAL, 0, 1.0f)
 			.Add(listScroll, 0.4f)
 			.AddGroup(B_VERTICAL, 0, 0.6f)
-				.AddGroup(B_HORIZONTAL)
-					.SetInsets(B_USE_SMALL_SPACING)
+				.AddGroup(B_VERTICAL, 0)
+					.SetInsets(B_USE_SMALL_SPACING, B_USE_SMALL_SPACING,
+						B_USE_SMALL_SPACING, B_USE_SMALL_SPACING)
 					.Add(fTitle)
+					.Add(fSubtitle)
 				.End()
 				.Add(messageScroll, 1.0f)
 				.Add(fComposeBar)
@@ -379,6 +392,7 @@ MainWindow::_SelectionChanged()
 	fOpenChat = id;
 	fTitle->SetText(id != 0 ? static_cast<ChatItem*>(
 		fList->ItemAt(fList->CurrentSelection()))->Title() : "");
+	fSubtitle->SetText("");
 	fMessages->SetMessages({}, true);
 	fMessages->SetEmptyText(id != 0 ? "Loading messages…"
 		: "Select a chat to start messaging");
@@ -704,6 +718,15 @@ MainWindow::MessageReceived(BMessage* message)
 			break;
 		case kMsgHistory:
 			_UpdateHistory(message);
+			break;
+		case kMsgChatStatus:
+			if (message->GetInt64("chat_id", 0) == fOpenChat) {
+				fSubtitle->SetText(message->GetString("status", ""));
+				if (message->GetBool("active", false))
+					fSubtitle->SetHighUIColor(B_CONTROL_HIGHLIGHT_COLOR);
+				else
+					fSubtitle->SetHighUIColor(B_PANEL_TEXT_COLOR, B_DARKEN_2_TINT);
+			}
 			break;
 		case kMsgSelectionChanged:
 			_SelectionChanged();

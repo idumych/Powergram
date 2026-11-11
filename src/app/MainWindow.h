@@ -45,6 +45,7 @@ private:
 
 	BListView* fList;
 	BStringView* fTitle;
+	BStringView* fSubtitle;     // "online", "Ann is typing…", "128 members"
 	MessageView* fMessages;
 	BTextControl* fEntry;
 	BButton* fSendButton;

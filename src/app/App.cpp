@@ -32,6 +32,7 @@
 #include "../core/ChatHistory.h"
 #include "../core/ChatList.h"
 #include "../core/Files.h"
+#include "../core/Presence.h"
 #include "../core/Stickers.h"
 #include "LoginWindow.h"
 #include "MainWindow.h"
@@ -73,6 +74,8 @@ private:
 	void _Launch(const std::string& path);
 	void _SendFiles(const BMessage* message);
 	void _SendStickerSets();
+	void _SendChatStatus();
+	std::string _TypingText(int64 chatId);
 	void _SendStickers(bool update);
 	void _ViewVisible();
 	void _SetOnline(bool online);
@@ -86,6 +89,8 @@ private:
 	pp::ChatList fChats;
 	pp::Names fNames;
 	pp::FileStore fFiles;
+	pp::Presence fPresence;
+	BMessageRunner* fPresenceRunner = nullptr;
 	std::set<int32_t> fOpenWhenDownloaded;  // clicked photos on their way
 
 	// The sticker picker: installed sets, stickers by set (0: recently
@@ -140,6 +145,7 @@ App::~App()
 	delete fFlushRunner;
 	delete fOnlineRunner;
 	delete fHistoryRunner;
+	delete fPresenceRunner;
 }
 
 
@@ -242,6 +248,18 @@ App::_HandleObject(const json& object)
 	}
 
 	fNames.Apply(object);
+	if (fPresence.Apply(object, time(nullptr))) {
+		int64 open = fHistory != nullptr ? fHistory->ChatId() : 0;
+		bool relevant = open != 0 && (pp::Int(object, "chat_id") == open
+			|| pp::Int(object, "user_id") == fPresence.PrivateUser(open)
+			|| type == "updateBasicGroup" || type == "updateSupergroup"
+			|| (type == "updateUser"
+				&& pp::Int(pp::Field(object, "user"), "id") == fPresence.PrivateUser(open)));
+		if (relevant)
+			_SendChatStatus();
+		if (type == "updateChatAction")
+			_ScheduleChatFlush();
+	}
 
 	std::string extra = pp::Str(object, "@extra");
 	if (extra == "sticker_sets") {
@@ -363,6 +381,7 @@ App::_OpenChat(int64 id)
 	if (const pp::Chat* chat = fChats.Find(id))
 		fHistory->SetLastReadOutbox(chat->lastReadOutbox);
 	_Send(pp::request::OpenChat(id));
+	_SendChatStatus();
 	// One page; TDLib may answer with fewer at first (see _HandleHistoryReply).
 	fHistoryPages = 0;
 	fLoadingHistory = true;
@@ -644,6 +663,75 @@ App::_SendFiles(const BMessage* message)
 }
 
 
+std::string
+App::_TypingText(int64 chatId)
+{
+	std::vector<pp::Presence::Action> actions = fPresence.Actions(chatId, time(nullptr));
+	if (actions.empty())
+		return std::string();
+	std::map<int64_t, std::string> names;
+	for (const auto& a : actions)
+		names[a.senderId] = a.senderId < 0 ? fNames.Chat(-a.senderId) : fNames.User(a.senderId);
+	return pp::ActionText(actions, names, fPresence.PrivateUser(chatId) != 0);
+}
+
+
+void
+App::_SendChatStatus()
+{
+	if (fHistory == nullptr)
+		return;
+	int64 chatId = fHistory->ChatId();
+	BString status;
+	std::string typing = _TypingText(chatId);
+	bool active = !typing.empty();
+	if (active)
+		status = typing.c_str();
+	else if (int64 user = fPresence.PrivateUser(chatId)) {
+		pp::UserStatus s = fPresence.Status(user);
+		switch (s.kind) {
+			case pp::UserStatus::kOnline:
+				status = "online";
+				active = true;
+				break;
+			case pp::UserStatus::kOffline:
+			{
+				// "last seen today at 22:41", "… yesterday at …", or a date.
+				time_t when = (time_t)s.time, now = time(nullptr);
+				struct tm w, n;
+				localtime_r(&when, &w);
+				localtime_r(&now, &n);
+				BString clock, date;
+				BTimeFormat().Format(clock, when, B_SHORT_TIME_FORMAT);
+				if (w.tm_year == n.tm_year && w.tm_yday == n.tm_yday)
+					status << "last seen today at " << clock;
+				else if (now - when < 2 * 86400 && (n.tm_yday - w.tm_yday == 1
+						|| (n.tm_yday == 0 && w.tm_mon == 11 && w.tm_mday == 31)))
+					status << "last seen yesterday at " << clock;
+				else {
+					BDateFormat().Format(date, when, B_MEDIUM_DATE_FORMAT);
+					status << "last seen " << date;
+				}
+				break;
+			}
+			case pp::UserStatus::kRecently: status = "last seen recently"; break;
+			case pp::UserStatus::kLastWeek: status = "last seen within a week"; break;
+			case pp::UserStatus::kLastMonth: status = "last seen within a month"; break;
+			default: break;
+		}
+	} else if (int32 count = fPresence.MemberCount(chatId)) {
+		const char* what = fPresence.IsChannel(chatId)
+			? (count == 1 ? "subscriber" : "subscribers") : (count == 1 ? "member" : "members");
+		status << count << " " << what;
+	}
+	BMessage message(kMsgChatStatus);
+	message.AddInt64("chat_id", chatId);
+	message.AddString("status", status);
+	message.AddBool("active", active);
+	fMain->PostMessage(&message);
+}
+
+
 void
 App::_SendStickerSets()
 {
@@ -780,6 +868,10 @@ App::_HandleAuth()
 				fMain->Unlock();
 			}
 			_Send(pp::ChatList::LoadRequest(100));
+			if (fPresenceRunner == nullptr) {
+				BMessage tick(kMsgPresenceTick);
+				fPresenceRunner = new BMessageRunner(BMessenger(this), &tick, 3000000);
+			}
 			fOnline = -1;
 			_SetOnline(fActive);
 			return;
@@ -868,6 +960,7 @@ App::_FlushChats()
 		list.AddInt32("mentions", c.unreadMentions);
 		list.AddBool("pinned", c.pinned);
 		list.AddBool("read", c.outgoingRead);
+		list.AddString("typing", _TypingText(c.id).c_str());
 		BString photo = fFiles.Path(c.photoFileId).c_str();
 		list.AddString("photo", photo);
 		AddBytes(list, "photo_mini", c.photoPreview);
@@ -894,6 +987,12 @@ App::MessageReceived(BMessage* message)
 
 		case kMsgFlushChats:
 			_FlushChats();
+			break;
+
+		case kMsgPresenceTick:
+			// Typing expires and "last seen" ages without an update.
+			_SendChatStatus();
+			_ScheduleChatFlush();
 			break;
 
 		case kMsgFlushHistory:

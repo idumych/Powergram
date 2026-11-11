@@ -151,8 +151,16 @@ public:
 	{
 		switch (message->what) {
 			case kMsgOpenChat:
-				_SendHistory(message->GetInt64("id", 0));
+			{
+				int64 id = message->GetInt64("id", 0);
+				_SendHistory(id);
+				BMessage status(kMsgChatStatus);
+				status.AddInt64("chat_id", id);
+				status.AddString("status", id == kGroup ? "Jonas is typing…" : "last seen today at 22:41");
+				status.AddBool("active", id == kGroup);
+				fMain->PostMessage(&status);
 				break;
+			}
 			case kMsgNextStep:
 				if (sScene == "emoji")
 					fMain->PostMessage(kMsgShowEmoji);
@@ -240,6 +248,7 @@ private:
 			list.AddInt32("mentions", c.mentions);
 			list.AddBool("pinned", c.pinned);
 			list.AddBool("read", c.read);
+			list.AddString("typing", c.id == 2004 ? "typing…" : "");
 			list.AddString("photo", c.photo != nullptr ? Media(c.photo).c_str() : "");
 			AddBytes(list, "photo_mini", "");
 		}
