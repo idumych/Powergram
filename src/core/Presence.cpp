@@ -117,6 +117,22 @@ Presence::PrivateUser(int64_t chatId) const
 }
 
 
+int64_t
+Presence::BasicGroup(int64_t chatId) const
+{
+	auto it = fBasicGroup.find(chatId);
+	return it != fBasicGroup.end() ? it->second : 0;
+}
+
+
+int64_t
+Presence::Supergroup(int64_t chatId) const
+{
+	auto it = fSupergroup.find(chatId);
+	return it != fSupergroup.end() ? it->second : 0;
+}
+
+
 int32_t
 Presence::MemberCount(int64_t chatId) const
 {

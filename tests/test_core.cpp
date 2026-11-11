@@ -5,6 +5,7 @@
 
 #include "../src/core/AuthFlow.h"
 #include "../src/core/ChatHistory.h"
+#include "../src/core/ChatInfo.h"
 #include "../src/core/ChatList.h"
 #include "../src/core/Files.h"
 #include "../src/core/Format.h"
@@ -908,6 +909,42 @@ TestVoice()
 }
 
 
+static void
+TestChatInfo()
+{
+	// A supergroup asks for its info, members and photos; a channel
+	// doesn't ask for members.
+	std::vector<json> group = request::ChatInfo(-100, 0, 0, 55, false);
+	CHECK(group.size() == 3 && group[0]["@type"] == "getSupergroupFullInfo"
+		&& group[1]["@type"] == "getSupergroupMembers" && group[2]["@type"] == "searchChatMessages");
+	CHECK(group[2]["filter"]["@type"] == "searchMessagesFilterPhoto");
+	CHECK(group[1]["@extra"] == "info:-100");
+	CHECK(request::ChatInfo(-100, 0, 0, 55, true).size() == 2);
+	CHECK(request::ChatInfo(7, 7, 0, 0, false)[0]["@type"] == "getUserFullInfo");
+
+	ChatInfo info;
+	CHECK(info.Apply({{"@type", "userFullInfo"}, {"bio", {{"text", "Haiku fan"}}}}));
+	CHECK(info.about == "Haiku fan");
+	info.Apply({{"@type", "supergroupFullInfo"}, {"description", "Testers"}, {"member_count", 120}});
+	CHECK(info.about == "Testers" && info.memberCount == 120);
+	info.Apply({{"@type", "chatMembers"}, {"total_count", 118}, {"members", json::array({
+		{{"member_id", {{"@type", "messageSenderUser"}, {"user_id", 5}}}},
+		{{"member_id", {{"@type", "messageSenderChat"}, {"chat_id", -9}}}},
+		{{"member_id", {{"@type", "messageSenderUser"}, {"user_id", 6}}}}})}});
+	CHECK(info.members == std::vector<int64_t>({5, 6}) && info.memberCount == 120);
+	info.Apply({{"@type", "basicGroupFullInfo"}, {"description", ""}, {"members", json::array({
+		{{"member_id", {{"@type", "messageSenderUser"}, {"user_id", 8}}}}})}});
+	CHECK(info.memberCount == 1 && info.members.size() == 1);
+
+	json photo = {{"sizes", json::array({{{"type", "m"}, {"width", 320}, {"height", 240},
+		{"photo", File(3)}}})}};
+	json found = {{"@type", "foundChatMessages"}, {"messages", json::array({Msg(1, 1, "hi"), Msg(1, 2, "")})}};
+	found["messages"][1]["content"] = {{"@type", "messagePhoto"}, {"photo", photo}};
+	CHECK(info.Apply(found) && info.photos.size() == 1 && info.photos[0].id == 2);
+	CHECK(!info.Apply({{"@type", "ok"}}));
+}
+
+
 int
 main()
 {
@@ -928,6 +965,7 @@ main()
 	TestLists();
 	TestPollsPlaces();
 	TestVoice();
+	TestChatInfo();
 	if (sFailures) {
 		std::fprintf(stderr, "%d check(s) failed\n", sFailures);
 		return EXIT_FAILURE;

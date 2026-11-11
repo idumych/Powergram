@@ -29,6 +29,9 @@ public:
 	// Members of a group or channel, 0 if not known.
 	int32_t MemberCount(int64_t chatId) const;
 	bool IsChannel(int64_t chatId) const;
+	// The basic group or supergroup behind a chat, 0 if it isn't one.
+	int64_t BasicGroup(int64_t chatId) const;
+	int64_t Supergroup(int64_t chatId) const;
 
 	struct Action {
 		int64_t senderId;

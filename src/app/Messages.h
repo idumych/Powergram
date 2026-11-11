@@ -96,6 +96,15 @@ enum {
 	// app → itself, while a voice message plays
 	kMsgVoiceTick = 'vtik',
 
+	// main window → app: "chat_id" (int64) whose info to show
+	kMsgShowChatInfo = 'shci',
+	// app → info window: "chat_id", "title", "status", "about", "private",
+	// "avatar", "avatar_mini", "initials", "member_count", "member" (names),
+	// "photo_id"/"photo_path"/"photo_mini" (parallel arrays)
+	kMsgChatInfo = 'chif',
+	// info window → app: "chat_id", it closed
+	kMsgChatInfoClosed = 'chic',
+
 	// main window → app: "chat_id" (int64), "refs", "caption", "reply_to"
 	kMsgSendFiles = 'sfil',
 

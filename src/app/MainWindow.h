@@ -16,6 +16,7 @@ class EmojiWindow;
 class StickerWindow;
 class BListView;
 class BMenuField;
+class BMenuItem;
 class BPopUpMenu;
 class BStringView;
 class BTextControl;
@@ -73,6 +74,7 @@ private:
 	BView* fComposeBar;         // "Reply to …" / "Edit message", over the entry
 	BStringView* fComposeLabel;
 	int64 fOpenChat;
+	BMenuItem* fInfoItem;
 	BString fShownList = "main";   // "main", "archive", "folder:<id>"
 	int64 fReplyTo;
 	int64 fEditing;

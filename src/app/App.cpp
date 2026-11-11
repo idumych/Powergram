@@ -31,10 +31,12 @@
 
 #include "../core/AuthFlow.h"
 #include "../core/ChatHistory.h"
+#include "../core/ChatInfo.h"
 #include "../core/ChatList.h"
 #include "../core/Files.h"
 #include "../core/Presence.h"
 #include "../core/Stickers.h"
+#include "ChatInfoWindow.h"
 #include "LoginWindow.h"
 #include "MainWindow.h"
 #include "Messages.h"
@@ -109,6 +111,14 @@ private:
 	int64 fVoiceMessage = 0;   // playing, or 0
 	BMessageRunner* fVoiceRunner = nullptr;
 	std::map<int32_t, int64> fPlayWhenDownloaded;  // file → message
+
+	// The info window, for one chat at a time.
+	void _ShowChatInfo(int64 chatId);
+	void _SendChatInfo();
+	BString _StatusText(int64 chatId, bool withTyping, bool* active = nullptr);
+	ChatInfoWindow* fInfoWindow = nullptr;   // only touched through fInfoMessenger
+	BMessenger fInfoMessenger;
+	pp::ChatInfo fInfo;
 
 	// The sticker picker: installed sets, stickers by set (0: recently
 	// used), and the set it shows.
@@ -270,6 +280,8 @@ App::_HandleObject(const json& object)
 			_ScheduleChatFlush();
 		if (shown && fPickerSet >= 0)
 			_SendStickers(true);
+		if (shown && fInfoWindow != nullptr)
+			_SendChatInfo();
 		_StartDownloads();
 		if (type == "updateFile")
 			return;
@@ -327,6 +339,12 @@ App::_HandleObject(const json& object)
 	}
 	if (extra.rfind("history:", 0) == 0) {
 		_HandleHistoryReply(object);
+		return;
+	}
+	if (extra.rfind("info:", 0) == 0) {
+		if (fInfoWindow != nullptr && atoll(extra.c_str() + 5) == fInfo.chatId
+			&& fInfo.Apply(object))
+			_SendChatInfo();
 		return;
 	}
 	if (extra.rfind("search:", 0) == 0) {
@@ -720,9 +738,16 @@ App::_StartDownloads()
 void
 App::_OpenMedia(int64 chatId, int64 messageId)
 {
-	if (fHistory == nullptr || fHistory->ChatId() != chatId)
-		return;
-	const pp::Message* m = fHistory->Find(messageId);
+	const pp::Message* m = nullptr;
+	if (fHistory != nullptr && fHistory->ChatId() == chatId)
+		m = fHistory->Find(messageId);
+	// The info window's shared photos.
+	if (m == nullptr && fInfo.chatId == chatId) {
+		for (const pp::Message& photo : fInfo.photos) {
+			if (photo.id == messageId)
+				m = &photo;
+		}
+	}
 	if (m == nullptr || m->media.kind == pp::Media::kNone
 		|| m->media.kind == pp::Media::kSticker)
 		return;
@@ -811,8 +836,25 @@ App::_SendChatStatus()
 	if (fHistory == nullptr)
 		return;
 	int64 chatId = fHistory->ChatId();
+	bool active;
+	BString status = _StatusText(chatId, true, &active);
+	BMessage message(kMsgChatStatus);
+	message.AddInt64("chat_id", chatId);
+	message.AddString("status", status);
+	message.AddBool("active", active);
+	fMain->PostMessage(&message);
+	if (fInfoWindow != nullptr && fInfo.chatId == chatId)
+		_SendChatInfo();
+}
+
+
+// The header's second line: who's typing, else "online", "last seen …"
+// or the number of members.
+BString
+App::_StatusText(int64 chatId, bool withTyping, bool* activeOut)
+{
 	BString status;
-	std::string typing = _TypingText(chatId);
+	std::string typing = withTyping ? _TypingText(chatId) : std::string();
 	bool active = !typing.empty();
 	if (active)
 		status = typing.c_str();
@@ -853,11 +895,82 @@ App::_SendChatStatus()
 			? (count == 1 ? "subscriber" : "subscribers") : (count == 1 ? "member" : "members");
 		status << count << " " << what;
 	}
-	BMessage message(kMsgChatStatus);
-	message.AddInt64("chat_id", chatId);
-	message.AddString("status", status);
-	message.AddBool("active", active);
-	fMain->PostMessage(&message);
+	if (activeOut != nullptr)
+		*activeOut = active;
+	return status;
+}
+
+
+void
+App::_ShowChatInfo(int64 chatId)
+{
+	if (chatId == 0)
+		return;
+	if (fInfoWindow != nullptr && fInfo.chatId == chatId) {
+		if (fInfoMessenger.LockTarget()) {
+			fInfoWindow->Activate();
+			fInfoWindow->Unlock();
+		}
+		return;
+	}
+	// One info window: another chat's replaces it.
+	if (fInfoWindow != nullptr && fInfoMessenger.LockTarget())
+		fInfoWindow->Quit();
+	fInfo = pp::ChatInfo();
+	fInfo.chatId = chatId;
+	fInfoWindow = new ChatInfoWindow(chatId);
+	fInfoMessenger = BMessenger(fInfoWindow);
+	if (fMain->Lock()) {
+		BRect frame = fMain->Frame();
+		fMain->Unlock();
+		fInfoWindow->MoveTo(frame.right - fInfoWindow->Frame().Width() - 40, frame.top + 40);
+	}
+	_SendChatInfo();
+	fInfoWindow->Show();
+	for (const json& r : pp::request::ChatInfo(chatId, fPresence.PrivateUser(chatId),
+			fPresence.BasicGroup(chatId), fPresence.Supergroup(chatId),
+			fPresence.IsChannel(chatId)))
+		_Send(r);
+}
+
+
+void
+App::_SendChatInfo()
+{
+	if (fInfoWindow == nullptr)
+		return;
+	int64 chatId = fInfo.chatId;
+	BMessage info(kMsgChatInfo);
+	info.AddInt64("chat_id", chatId);
+	const pp::Chat* chat = fChats.Find(chatId);
+	std::string title = chat != nullptr ? chat->title : fNames.Chat(chatId);
+	info.AddString("title", title.c_str());
+	info.AddString("initials", pp::Initials(title).c_str());
+	info.AddString("status", _StatusText(chatId, false));
+	info.AddString("about", fInfo.about.c_str());
+	info.AddBool("private", fPresence.PrivateUser(chatId) != 0);
+	pp::Photo photo = fNames.ChatPhoto(chatId);
+	info.AddString("avatar", fFiles.Path(photo.fileId).c_str());
+	AddBytes(info, "avatar_mini", photo.preview);
+	if (photo.fileId != 0 && fFiles.Path(photo.fileId).empty())
+		fFiles.Want(photo.fileId, 20);
+	int32 count = fInfo.memberCount != 0 ? fInfo.memberCount : fPresence.MemberCount(chatId);
+	info.AddInt32("member_count", count);
+	for (int64_t user : fInfo.members) {
+		std::string name = fNames.User(user);
+		info.AddString("member", name.empty() ? "Deleted account" : name.c_str());
+	}
+	int priority = 19;
+	for (const pp::Message& m : fInfo.photos) {
+		info.AddInt64("photo_id", m.id);
+		std::string path = fFiles.Path(m.media.fileId);
+		info.AddString("photo_path", path.c_str());
+		AddBytes(info, "photo_mini", m.media.minithumbnail);
+		if (path.empty() && m.media.fileId != 0)
+			fFiles.Want(m.media.fileId, std::max(2, priority--));
+	}
+	fInfoMessenger.SendMessage(&info);
+	_StartDownloads();
 }
 
 
@@ -1223,6 +1336,17 @@ App::MessageReceived(BMessage* message)
 				message->GetInt64("from_chat_id", 0), {message->GetInt64("message_id", 0)}));
 			break;
 
+		case kMsgShowChatInfo:
+			_ShowChatInfo(message->GetInt64("chat_id", 0));
+			break;
+
+		case kMsgChatInfoClosed:
+			if (message->GetInt64("chat_id", 0) == fInfo.chatId) {
+				fInfoWindow = nullptr;
+				fInfo = pp::ChatInfo();
+			}
+			break;
+
 		case kMsgShowSettings:
 			if (fSettingsWindow == nullptr) {
 				fSettingsWindow = new SettingsWindow(BMessenger(this), fPrefs);
@@ -1547,6 +1671,12 @@ App::_CloseWindows()
 		fLogin->Quit();
 		fLogin = nullptr;
 	}
+	if (fInfoWindow != nullptr && fInfoMessenger.LockTarget())
+		fInfoWindow->Quit();
+	fInfoWindow = nullptr;
+	if (fSettingsWindow != nullptr && BMessenger(fSettingsWindow).LockTarget())
+		fSettingsWindow->Quit();
+	fSettingsWindow = nullptr;
 	fSettings.Save();
 }
 

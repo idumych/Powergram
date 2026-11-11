@@ -354,6 +354,11 @@ MainWindow::MainWindow(BRect frame, bool testDc,
 	search->AddItem(new BMenuItem("Find previous", new BMessage(kMsgFindPrevious), 'G',
 		B_SHIFT_KEY));
 	bar->AddItem(search);
+	BMenu* chat = new BMenu("Chat");
+	fInfoItem = new BMenuItem("Info" B_UTF8_ELLIPSIS, new BMessage(kMsgShowChatInfo), 'I');
+	fInfoItem->SetEnabled(false);
+	chat->AddItem(fInfoItem);
+	bar->AddItem(chat);
 
 	fList = new ChatListView();
 	fList->SetSelectionMessage(new BMessage(kMsgSelectionChanged));
@@ -535,6 +540,7 @@ MainWindow::_SelectionChanged()
 		return;
 	_SaveDraft();
 	fOpenChat = id;
+	fInfoItem->SetEnabled(id != 0);
 	fTitle->SetText(id != 0 ? static_cast<ChatItem*>(
 		fList->ItemAt(fList->CurrentSelection()))->Title() : "");
 	fSubtitle->SetText("");
@@ -924,6 +930,8 @@ MainWindow::_ShowChatMenu(int32 index, BPoint where)
 		message->AddInt32("kind", item->Kind());
 		menu->AddItem(new BMenuItem(label, message));
 	};
+	add("Info" B_UTF8_ELLIPSIS, "info");
+	menu->AddSeparatorItem();
 	if (item->HasUnread())
 		add("Mark as read", "read");
 	else
@@ -1201,12 +1209,25 @@ MainWindow::MessageReceived(BMessage* message)
 			be_app->PostMessage(&show);
 			break;
 		}
+		case kMsgShowChatInfo:
+			if (fOpenChat != 0) {
+				BMessage show(kMsgShowChatInfo);
+				show.AddInt64("chat_id", fOpenChat);
+				be_app->PostMessage(&show);
+			}
+			break;
 		case kMsgChatMenu:
 			_ShowChatMenu(message->GetInt32("index", -1), message->GetPoint("where", BPoint()));
 			break;
 		case kMsgChatMenuItem:
 		{
 			BString action = message->GetString("action", "");
+			if (action == "info") {
+				BMessage show(kMsgShowChatInfo);
+				show.AddInt64("chat_id", message->GetInt64("chat_id", 0));
+				be_app->PostMessage(&show);
+				break;
+			}
 			if (action == "delete") {
 				_AskDeleteChat(message->GetInt64("chat_id", 0), message->GetString("title", ""),
 					message->GetInt32("kind", 0));

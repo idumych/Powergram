@@ -18,6 +18,7 @@
 
 #include "../src/app/MainWindow.h"
 #include "../src/app/SettingsWindow.h"
+#include "../src/app/ChatInfoWindow.h"
 #include "../src/app/Messages.h"
 #include "../src/core/ChatHistory.h"
 #include "../src/core/Format.h"
@@ -191,6 +192,30 @@ public:
 					SettingsWindow* settings = new SettingsWindow(BMessenger(this), large);
 					settings->MoveTo(560, 120);
 					settings->Show();
+				} else if (sScene == "info") {
+					ChatInfoWindow* info = new ChatInfoWindow(kGroup);
+					BMessage data(kMsgChatInfo);
+					data.AddInt64("chat_id", kGroup);
+					data.AddString("title", "Renku testers");
+					data.AddString("initials", "RT");
+					data.AddString("status", "6 members");
+					data.AddString("about", "Testing Paper Plane on real hardware. Nightly "
+						"builds, logs and screenshots welcome; see the pinned guide.");
+					data.AddInt32("member_count", 6);
+					for (const char* name : {"Mira Okafor", "Jonas Lindqvist", "Priya Raman",
+							"Teo Marchetti", "Lena Hoffmann", "You"})
+						data.AddString("member", name);
+					const char* photos[] = {"renku.jpg", "avatar1.jpg", "avatar2.jpg",
+						"avatar3.jpg", "avatar4.jpg", "avatar5.jpg", "renku.jpg"};
+					for (int i = 0; i < 7; i++) {
+						data.AddInt64("photo_id", 300 + i);
+						data.AddString("photo_path", Media(photos[i]).c_str());
+						AddBytes(data, "photo_mini", "");
+					}
+					AddBytes(data, "avatar_mini", "");
+					info->PostMessage(&data);
+					info->MoveTo(600, 60);
+					info->Show();
 				} else if (sScene == "voice") {
 					BMessage progress(kMsgVoiceProgress);
 					progress.AddInt64("message_id", 111);
