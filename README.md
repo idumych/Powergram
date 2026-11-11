@@ -9,7 +9,7 @@ the open chat on the right.
 
 **Preview.** Version 0.2.0 is a preview for Haiku and Renku OS (x86_64):
 download the `.hpkg` from
-[Releases](https://github.com/idumych/paper-plane-haiku/releases) and install it
+[Releases](https://github.com/idumych/Powergram/releases) and install it
 with `pkgman install ./powergram-0.2.0-1-x86_64.hpkg`. The app was called
 Paper Plane for Haiku up to 0.1.0; Powergram replaces that package and keeps
 your login and settings.
