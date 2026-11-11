@@ -25,6 +25,7 @@ struct Media {
 	bool spoiler = false;      // hidden until clicked
 	bool secret = false;       // self-destructing: hidden until opened
 	std::string emoji;         // stickers: shown when there's no image
+	bool bigEmoji = false;     // a message of one emoji, drawn large
 	int32_t duration = 0;      // videos and voice messages, seconds
 	std::string waveform;      // voice messages: one 0..31 level per byte
 };

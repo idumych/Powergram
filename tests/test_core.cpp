@@ -945,6 +945,35 @@ TestChatInfo()
 }
 
 
+static void
+TestEmojiMessages()
+{
+	// One emoji on its own: a big emoji, no text; the chat list shows it.
+	json content = {{"@type", "messageAnimatedEmoji"}, {"emoji", "\xF0\x9F\xA7\x90"},
+		{"animated_emoji", {{"sticker", {{"emoji", "\xF0\x9F\xA7\x90"}}}}}};
+	json message = Msg(42, 1, "");
+	message["content"] = content;
+	Message parsed = ParseMessage(message);
+	CHECK(parsed.media.kind == Media::kSticker && parsed.media.bigEmoji);
+	CHECK(parsed.media.emoji == "\xF0\x9F\xA7\x90" && parsed.text.empty());
+	CHECK(parsed.media.fileId == 0);
+	CHECK(MessagePreview(content) == "\xF0\x9F\xA7\x90");
+	// With a still image Haiku can show, that instead (the emoji stays for
+	// summaries).
+	content["animated_emoji"]["sticker"] = {{"emoji", "\xF0\x9F\xA7\x90"}, {"width", 512},
+		{"height", 512}, {"format", {{"@type", "stickerFormatWebp"}}}, {"sticker", File(31)}};
+	message["content"] = content;
+	parsed = ParseMessage(message);
+	CHECK(parsed.media.fileId == 31 && parsed.media.bigEmoji && parsed.media.emoji == "\xF0\x9F\xA7\x90");
+
+	CHECK(MessagePreview({{"@type", "messageDice"}, {"emoji", "\xF0\x9F\x8E\xAF"}, {"value", 6}})
+		== "\xF0\x9F\x8E\xAF 6");
+	CHECK(MessagePreview({{"@type", "messageChatChangeTitle"}, {"title", "Testers"}})
+		== "changed the group name to \"Testers\"");
+	CHECK(MessagePreview({{"@type", "messageChatDeleteMember"}}) == "left the group");
+}
+
+
 int
 main()
 {
@@ -966,6 +995,7 @@ main()
 	TestPollsPlaces();
 	TestVoice();
 	TestChatInfo();
+	TestEmojiMessages();
 	if (sFailures) {
 		std::fprintf(stderr, "%d check(s) failed\n", sFailures);
 		return EXIT_FAILURE;

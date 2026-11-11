@@ -601,7 +601,7 @@ App::_SendHistory()
 		if (m.media.kind == pp::Media::kPhoto)
 			return BString("Photo");
 		if (m.media.kind == pp::Media::kSticker)
-			return BString((m.media.emoji + " Sticker").c_str());
+			return BString((m.media.bigEmoji ? m.media.emoji : m.media.emoji + " Sticker").c_str());
 		if (m.media.kind == pp::Media::kVideo)
 			return BString("Video");
 		if (m.media.kind == pp::Media::kAnimation)

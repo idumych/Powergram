@@ -201,7 +201,20 @@ ParseMedia(const json& content, Message& m)
 		m.media = VideoMedia(Field(content, "video_note"), Media::kVideoNote, "video");
 	else if (type == "messageVoiceNote")
 		m.media = VoiceMedia(Field(content, "voice_note"));
-	else
+	else if (type == "messageAnimatedEmoji") {
+		// Telegram animates it with a sticker: its still image when Haiku
+		// can decode one (in colour, which emoji fonts aren't on Haiku),
+		// else the emoji itself, large and without a bubble.
+		m.media = StickerMedia(Field(Field(content, "animated_emoji"), "sticker"));
+		m.media.kind = Media::kSticker;
+		if (m.media.fileId == 0) {
+			m.media.width = m.media.height = 0;
+			m.media.minithumbnail.clear();
+		}
+		m.media.emoji = Str(content, "emoji");
+		m.media.bigEmoji = true;
+		return;
+	} else
 		return;
 	m.media.spoiler = Bool(content, "has_spoiler");
 	m.media.secret = Bool(content, "is_secret");
@@ -272,7 +285,7 @@ MessageText(const json& content)
 		std::string caption = Str(Field(content, "caption"), "text");
 		return caption.empty() ? text : text + "\n" + caption;
 	}
-	if (type == "messageSticker")
+	if (type == "messageSticker" || type == "messageAnimatedEmoji")
 		return std::string();
 	std::string label = MessagePreview(content);
 	// Captions are shown whole too.

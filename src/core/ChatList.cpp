@@ -30,6 +30,15 @@ MessagePreview(const json& content)
 
 	if (type == "messageText")
 		return FirstLine(Str(Field(content, "text"), "text"));
+	// A message of a single emoji comes as its own type.
+	if (type == "messageAnimatedEmoji")
+		return Str(content, "emoji");
+	if (type == "messageDice") {
+		std::string emoji = Str(content, "emoji");
+		int64_t value = Int(content, "value");
+		std::string text = emoji.empty() ? "\xF0\x9F\x8E\xB2" : emoji;
+		return value > 0 ? text + " " + std::to_string(value) : text;
+	}
 	if (type == "messagePhoto")
 		return caption("Photo");
 	if (type == "messageVideo")
@@ -56,6 +65,26 @@ MessagePreview(const json& content)
 		return "Poll: " + Str(Field(Field(content, "poll"), "question"), "text");
 	if (type == "messageCall")
 		return "Call";
+	if (type == "messageGame")
+		return "Game: " + Str(Field(content, "game"), "title");
+	if (type == "messageStory")
+		return "Story";
+	if (type == "messageInvoice")
+		return "Invoice";
+	if (type == "messageChatChangeTitle")
+		return "changed the group name to \"" + Str(content, "title") + "\"";
+	if (type == "messageChatChangePhoto")
+		return "changed the group photo";
+	if (type == "messageChatDeletePhoto")
+		return "removed the group photo";
+	if (type == "messageChatDeleteMember")
+		return "left the group";
+	if (type == "messageChatJoinByLink" || type == "messageChatJoinByRequest")
+		return "joined the group";
+	if (type == "messageScreenshotTaken")
+		return "took a screenshot";
+	if (type == "messageUnsupported")
+		return "This message isn't supported yet";
 	if (type == "messageChatAddMembers")
 		return "joined the group";
 	if (type == "messageContactRegistered")

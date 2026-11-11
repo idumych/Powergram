@@ -448,6 +448,15 @@ private:
 			Add(list, r);
 			r = _Mine(110, "Sending the logs in a minute", now - 120, false);
 			Add(list, r);
+			if (sScene == "bigemoji") {
+				// A message of one emoji, as App passes it on: a sticker with
+				// no image, only its emoji.
+				r = _Mine(113, "", now - 60);
+				r.mediaKind = 2;
+				r.emoji = "\xF0\x9F\xA7\x90";
+				Add(list, r);
+				Add(list, _From(kJonas, 114, "Now it shows up \xF0\x9F\x8E\x89", now - 20));
+			}
 			if (sScene == "voice") {
 				// Made-up waveforms: a few words' worth of rises and falls.
 				auto wave = [](int n, int seed) {
