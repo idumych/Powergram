@@ -432,6 +432,7 @@ App::_SendHistory()
 		int64 senderKey = 0;
 		BString avatar, initials;
 		std::string avatarMini;
+		std::vector<pp::Span> spans;
 	};
 	auto add = [&](const Row& r) {
 		list.AddInt64("id", r.id);
@@ -461,6 +462,7 @@ App::_SendHistory()
 		list.AddString("avatar", r.avatar);
 		AddBytes(list, "avatar_mini", r.avatarMini);
 		list.AddString("initials", r.initials);
+		list.AddString("spans", pp::EncodeSpans(r.spans).c_str());
 	};
 	auto summary = [](const pp::Message& m) {
 		if (!m.text.empty())
@@ -519,6 +521,7 @@ App::_SendHistory()
 			r.sender = "";
 		lastSender = r.showAvatar ? r.senderKey : 0;
 		r.text = m.text.c_str();
+		r.spans = m.spans;
 		timeFormat.Format(r.time, (time_t)m.date, B_SHORT_TIME_FORMAT);
 		r.outgoing = m.outgoing;
 		r.read = m.outgoing && m.id <= fHistory->LastReadOutbox();

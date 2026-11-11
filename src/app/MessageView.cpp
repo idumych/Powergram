@@ -361,11 +361,7 @@ MessageView::SetMessages(const std::vector<MessageRow>& rows, bool scrollToEnd)
 const MessageView::Measured&
 MessageView::_Measure(const BString& text, bool bold)
 {
-	BFont font;
-	if (bold)
-		font = *be_bold_font;
-	else
-		GetFont(&font);
+	BFont font(bold ? be_bold_font : be_plain_font);
 	if (fMeasured.size() > 20000)
 		fMeasured.clear();
 	// Plain and bold can differ in size: both are part of the key.
@@ -400,12 +396,90 @@ MessageView::_Measure(const BString& text, bool bold)
 }
 
 
+void
+MessageView::_FontFor(uint32 style, BFont* font) const
+{
+	// Always from be_plain_font: the view's current font is whatever the
+	// last run drew with (a bold base made links bold and too wide).
+	BFont plain(be_plain_font);
+	if (style & pp::kCode) {
+		*font = *be_fixed_font;
+		font->SetSize(plain.Size());
+		return;
+	}
+	*font = (style & pp::kBold) ? *be_bold_font : plain;
+	font->SetSize(plain.Size());
+	if (style & pp::kItalic) {
+		// B_REGULAR_FACE can't be combined with italic: build the face.
+		uint16 face = B_ITALIC_FACE;
+		if (style & pp::kBold)
+			face |= B_BOLD_FACE;
+		font->SetFace(face);
+	}
+}
+
+
+// Only these styles change a character's width.
+static uint32
+FontStyle(uint32 style)
+{
+	return style & (pp::kBold | pp::kItalic | pp::kCode);
+}
+
+
+const MessageView::Measured&
+MessageView::_MeasureRow(const MessageRow& row)
+{
+	if (row.spans.empty())
+		return _Measure(row.text, false);
+	BFont plain(be_plain_font);
+	char prefix[32];
+	snprintf(prefix, sizeof(prefix), "s%.2f|", plain.Size());
+	std::string key = prefix + pp::EncodeSpans(row.spans) + "|";
+	key.append(row.text.String(), row.text.Length());
+	auto it = fMeasured.find(key);
+	if (it != fMeasured.end())
+		return it->second;
+
+	Measured m;
+	const char* bytes = row.text.String();
+	for (int32 i = 0; i < row.text.Length();) {
+		m.offsets.push_back(i);
+		unsigned char c = bytes[i];
+		i += c < 0x80 ? 1 : (c >> 5) == 6 ? 2 : (c >> 4) == 14 ? 3 : 4;
+	}
+	m.offsets.push_back(row.text.Length());
+	int32 chars = (int32)m.offsets.size() - 1;
+	m.widths.resize(chars);
+	std::vector<uint32> styles(chars, 0);
+	for (const pp::Span& span : row.spans)
+		for (int32 c = 0; c < chars; c++)
+			if (m.offsets[c] >= span.start && m.offsets[c] < span.start + span.length)
+				styles[c] |= span.style;
+	// One GetEscapements call per run of characters in the same font.
+	for (int32 c = 0; c < chars;) {
+		int32 end = c + 1;
+		while (end < chars && FontStyle(styles[end]) == FontStyle(styles[c]))
+			end++;
+		BFont font;
+		_FontFor(styles[c], &font);
+		font.GetEscapements(bytes + m.offsets[c], end - c, m.widths.data() + c);
+		for (int32 k = c; k < end; k++) {
+			m.widths[k] *= font.Size();
+			m.total += m.widths[k];
+		}
+		c = end;
+	}
+	return fMeasured.emplace(key, std::move(m)).first->second;
+}
+
+
 std::vector<BString>
-MessageView::_Wrap(const BString& text, float width, float* widest)
+MessageView::_Wrap(const BString& text, const Measured& m, float width, float* widest,
+	std::vector<int32>* lineChars)
 {
 	// Greedy wrap at spaces over the measured widths; a word longer than a
 	// line is cut between characters. No app_server calls.
-	const Measured& m = _Measure(text, false);
 	const char* bytes = text.String();
 	std::vector<BString> lines;
 	*widest = 0;
@@ -421,6 +495,8 @@ MessageView::_Wrap(const BString& text, float width, float* widest)
 		BString line;
 		line.SetTo(bytes + a, b - a);
 		lines.push_back(line);
+		if (lineChars != nullptr)
+			lineChars->push_back(from);
 		*widest = std::max(*widest, w);
 	};
 
@@ -483,7 +559,8 @@ MessageView::_Relayout()
 		Layout l;
 		float textWidth = maxBubble - 2 * pad;
 		float widest = 0;
-		l.lines = _Wrap(row.text, textWidth, &widest);
+		const Measured& measured = _MeasureRow(row);
+		l.lines = _Wrap(row.text, measured, textWidth, &widest, &l.lineChars);
 		float meta = _Width(row.time) + (row.edited ? _Width("edited ") : 0) + line * 2;
 		float nameWidth = row.sender.IsEmpty() ? 0 : _Width(row.sender, true);
 		float bubbleWidth = std::min(maxBubble,
@@ -534,8 +611,10 @@ MessageView::_Relayout()
 			y0 += mediaH + pad * 0.5f;
 		}
 		l.textTop = y0;
-		if (l.lines.size() == 1 && l.lines[0].IsEmpty())
+		if (l.lines.size() == 1 && l.lines[0].IsEmpty()) {
 			l.lines.clear();  // no caption
+			l.lineChars.clear();
+		}
 		float height = (y0 - y) + line * l.lines.size() + line + pad * 0.5f;
 		if (row.service) {
 			bubbleWidth = std::min(width - 2 * pad, widest + 2 * pad);
@@ -549,6 +628,31 @@ MessageView::_Relayout()
 			l.textTop = y + pad * 0.5f;
 		if (row.mediaKind != 0)
 			l.media.OffsetBy(sticker ? left : left + (bubbleWidth - mediaW) / 2, 0);
+
+		// Where the links are, for clicks.
+		for (const pp::Span& span : row.spans) {
+			if ((span.style & pp::kLink) == 0)
+				continue;
+			for (size_t li = 0; li < l.lineChars.size(); li++) {
+				int32 c0 = l.lineChars[li];
+				int32 c1 = li + 1 < l.lineChars.size() ? l.lineChars[li + 1]
+					: (int32)measured.widths.size();
+				float x = left + pad, x0 = -1, x1 = -1;
+				for (int32 c = c0; c < c1; c++) {
+					int32 b = measured.offsets[c];
+					if (b >= span.start && b < span.start + span.length) {
+						if (x0 < 0)
+							x0 = x;
+						x1 = x + measured.widths[c];
+					}
+					x += measured.widths[c];
+				}
+				if (x0 >= 0) {
+					float top = l.textTop + line * li;
+					l.links.push_back({BRect(x0, top, x1, top + line - 1), span.url});
+				}
+			}
+		}
 		fLayout.push_back(l);
 		y += height + pad;
 	}
@@ -679,6 +783,28 @@ MessageView::MouseDown(BPoint where)
 	if (BMessage* current = Window()->CurrentMessage())
 		current->FindInt32("buttons", (int32*)&buttons);
 	if ((buttons & B_PRIMARY_MOUSE_BUTTON) != 0) {
+		for (size_t i = 0; i < fLayout.size(); i++) {
+			if (!fLayout[i].bubble.Contains(where))
+				continue;
+			for (const Layout::Link& link : fLayout[i].links) {
+				if (link.frame.Contains(where)) {
+					BMessage open(kMsgOpenUrl);
+					open.AddString("url", link.url.c_str());
+					Window()->PostMessage(&open);
+					return;
+				}
+			}
+			// A spoiler in the text: the first click shows it.
+			bool spoiler = false;
+			for (const pp::Span& span : fRows[i].spans)
+				spoiler |= (span.style & pp::kSpoiler) != 0;
+			if (spoiler && !fRevealed.count(fRows[i].id)
+				&& fRows[i].mediaKind == 0) {
+				fRevealed.insert(fRows[i].id);
+				Invalidate(fLayout[i].bubble);
+				return;
+			}
+		}
 		for (size_t i = 0; i < fRows.size(); i++) {
 			const MessageRow& row = fRows[i];
 			if (row.mediaKind == 0 || row.mediaKind == 2
@@ -707,6 +833,76 @@ MessageView::MouseDown(BPoint where)
 		Window()->PostMessage(&menu);
 		return;
 	}
+}
+
+
+void
+MessageView::_DrawText(const MessageRow& row, const Layout& l, float x, float line,
+	rgb_color fg, rgb_color fill)
+{
+	// Each line drawn in runs of the same style: fonts, link colour,
+	// underline and strike-through, code on a tint, spoilers as a bar.
+	const Measured& m = _MeasureRow(row);
+	int32 chars = (int32)m.widths.size();
+	std::vector<uint32> styles(chars, 0);
+	for (const pp::Span& span : row.spans)
+		for (int32 c = 0; c < chars; c++)
+			if (m.offsets[c] >= span.start && m.offsets[c] < span.start + span.length)
+				styles[c] |= span.style;
+	bool revealed = fRevealed.count(row.id) > 0;
+	rgb_color accent = ui_color(B_CONTROL_HIGHLIGHT_COLOR);
+	font_height fh;
+	GetFontHeight(&fh);
+	const char* bytes = row.text.String();
+
+	for (size_t li = 0; li < l.lineChars.size(); li++) {
+		int32 c0 = l.lineChars[li];
+		int32 c1 = li + 1 < l.lineChars.size() ? l.lineChars[li + 1] : chars;
+		float baseline = l.textTop + line * li + fh.ascent;
+		float cx = x;
+		for (int32 c = c0; c < c1;) {
+			int32 end = c + 1;
+			while (end < c1 && styles[end] == styles[c])
+				end++;
+			// A line's own newline isn't drawn.
+			int32 drawEnd = end;
+			while (drawEnd > c && bytes[m.offsets[drawEnd - 1]] == '\n')
+				drawEnd--;
+			float w = 0;
+			for (int32 k = c; k < end; k++)
+				w += m.widths[k];
+			uint32 st = styles[c];
+			BFont font;
+			_FontFor(st, &font);
+			SetFont(&font);
+			BRect box(cx, baseline - fh.ascent, cx + w - 1, baseline + fh.descent);
+			if (st & pp::kCode) {
+				SetHighColor(mix_color(fill, fg, 25));
+				FillRect(box);
+			}
+			if ((st & pp::kSpoiler) && !revealed) {
+				SetHighColor(mix_color(fill, fg, 140));
+				FillRoundRect(box, 3, 3);
+			} else {
+				rgb_color color = (st & pp::kLink) ? accent
+					: (st & pp::kQuote) ? mix_color(fg, fill, 60) : fg;
+				SetHighColor(color);
+				SetLowColor(fill);
+				if (drawEnd > c)
+					DrawString(bytes + m.offsets[c], m.offsets[drawEnd] - m.offsets[c],
+						BPoint(cx, baseline));
+				if (st & (pp::kUnderline | pp::kLink))
+					StrokeLine(BPoint(cx, baseline + 1), BPoint(cx + w - 1, baseline + 1));
+				if (st & pp::kStrike) {
+					float mid = baseline - fh.ascent * 0.32f;
+					StrokeLine(BPoint(cx, mid), BPoint(cx + w - 1, mid));
+				}
+			}
+			cx += w;
+			c = end;
+		}
+	}
+	SetFont(be_plain_font);
 }
 
 
@@ -814,14 +1010,17 @@ MessageView::Draw(BRect updateRect)
 			DrawString(what.String(), BPoint(rx, l.replyTop + line + fh.ascent));
 		}
 
-		SetHighColor(row.service ? dim : fg);
-		float y = l.textTop + fh.ascent;
-		for (const BString& s : l.lines) {
-			float lx = row.service
-				? l.bubble.left + (l.bubble.Width() - StringWidth(s.String())) / 2 : x;
-			DrawString(s.String(), BPoint(lx, y));
-			y += line;
-		}
+		if (row.service || row.spans.empty()) {
+			SetHighColor(row.service ? dim : fg);
+			float y = l.textTop + fh.ascent;
+			for (const BString& s : l.lines) {
+				float lx = row.service
+					? l.bubble.left + (l.bubble.Width() - StringWidth(s.String())) / 2 : x;
+				DrawString(s.String(), BPoint(lx, y));
+				y += line;
+			}
+		} else
+			_DrawText(row, l, x, line, fg, fill);
 		if (row.service)
 			continue;
 

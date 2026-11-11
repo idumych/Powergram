@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "Format.h"
 #include "Json.h"
 
 namespace pp {
@@ -63,6 +64,7 @@ struct Message {
 	std::string forwardName;
 
 	Media media;
+	std::vector<Span> spans;   // formatting and links in `text`
 };
 
 // A profile picture: the small (160 px) file and its tiny inline JPEG.

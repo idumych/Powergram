@@ -128,6 +128,31 @@ VideoMedia(const json& video, Media::Kind kind, const char* fileField)
 }
 
 
+// Formatting of the text MessageText returns for `content`.
+static std::vector<Span>
+ContentSpans(const json& content, const std::string& text)
+{
+	std::string type = Type(content);
+	const json* formatted = nullptr;
+	if (type == "messageText")
+		formatted = &Field(content, "text");
+	else if (type == "messagePhoto" || type == "messageVideo" || type == "messageAnimation")
+		formatted = &Field(content, "caption");
+	std::vector<Span> spans;
+	if (formatted != nullptr && Str(*formatted, "text") == text)
+		spans = ParseEntities(*formatted);
+	// Without link entities, links typed in plain text still get found.
+	bool hasLink = false;
+	for (const Span& s : spans)
+		hasLink |= (s.style & kLink) != 0;
+	if (!hasLink) {
+		std::vector<Span> links = FindLinks(text);
+		spans.insert(spans.end(), links.begin(), links.end());
+	}
+	return spans;
+}
+
+
 void
 ParseMedia(const json& content, Message& m)
 {
@@ -190,6 +215,7 @@ ParseMessage(const json& message)
 		m.senderId = Int(sender, "user_id");
 	const json& content = Field(message, "content");
 	m.text = MessageText(content);
+	m.spans = ContentSpans(content, m.text);
 	m.date = Int(message, "date");
 	m.outgoing = Bool(message, "is_outgoing");
 	m.edited = Int(message, "edit_date") != 0;
@@ -396,6 +422,7 @@ ChatHistory::Apply(const json& object)
 			return false;
 		const json& content = Field(object, "new_content");
 		it->second.text = MessageText(content);
+		it->second.spans = ContentSpans(content, it->second.text);
 		ParseMedia(content, it->second);
 		return true;
 	}

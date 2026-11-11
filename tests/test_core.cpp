@@ -7,6 +7,7 @@
 #include "../src/core/ChatHistory.h"
 #include "../src/core/ChatList.h"
 #include "../src/core/Files.h"
+#include "../src/core/Format.h"
 #include "../src/core/SendQueue.h"
 #include "../src/core/Stickers.h"
 
@@ -642,6 +643,47 @@ TestPhotosAndStickers()
 }
 
 
+static void
+TestFormatting()
+{
+	// "Hi 😀 bold link": the emoji is two UTF-16 units and four UTF-8 bytes.
+	std::string text = "Hi \xF0\x9F\x98\x80 bold link";
+	CHECK(Utf16ToUtf8(text, 3) == 3);
+	CHECK(Utf16ToUtf8(text, 5) == 7);   // after the emoji
+	CHECK(Utf16ToUtf8(text, 100) == (int32_t)text.size());
+	json formatted = {{"text", text}, {"entities", json::array({
+		{{"offset", 6}, {"length", 4}, {"type", {{"@type", "textEntityTypeBold"}}}},
+		{{"offset", 11}, {"length", 4}, {"type", {{"@type", "textEntityTypeTextUrl"},
+			{"url", "https://haiku-os.org"}}}},
+		{{"offset", 0}, {"length", 2}, {"type", {{"@type", "textEntityTypeMentionName"}}}}})}};
+	auto spans = ParseEntities(formatted);
+	CHECK(spans.size() == 2);
+	CHECK(spans[0].style == kBold && text.substr(spans[0].start, spans[0].length) == "bold");
+	CHECK(spans[1].style == kLink && spans[1].url == "https://haiku-os.org");
+	CHECK(text.substr(spans[1].start, spans[1].length) == "link");
+
+	auto back = DecodeSpans(EncodeSpans(spans));
+	CHECK(back.size() == 2 && back[1].url == "https://haiku-os.org" && back[0].length == 4);
+	CHECK(DecodeSpans("").empty() && DecodeSpans("garbage\n").empty());
+
+	auto links = FindLinks("see https://example.org/a. and www.haiku-os.org, (http://x.y)");
+	CHECK(links.size() == 3);
+	CHECK(links[0].url == "https://example.org/a");
+	CHECK(links[1].url == "https://www.haiku-os.org");
+	CHECK(links[2].url == "http://x.y");
+	CHECK(FindLinks("nohttp here and shttp://x").empty());
+
+	// Messages carry spans: entities, or links found in plain text.
+	json message = Msg(42, 1, "");
+	message["content"] = {{"@type", "messageText"}, {"text", formatted}};
+	Message m = ParseMessage(message);
+	CHECK(m.spans.size() == 2);
+	message["content"] = {{"@type", "messageText"}, {"text", {{"text", "go to www.a.org now"}}}};
+	m = ParseMessage(message);
+	CHECK(m.spans.size() == 1 && m.spans[0].url == "https://www.a.org");
+}
+
+
 int
 main()
 {
@@ -655,6 +697,7 @@ main()
 	TestMedia();
 	TestVideosAvatarsSending();
 	TestPhotosAndStickers();
+	TestFormatting();
 	if (sFailures) {
 		std::fprintf(stderr, "%d check(s) failed\n", sFailures);
 		return EXIT_FAILURE;

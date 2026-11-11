@@ -15,6 +15,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "../core/Format.h"
+
 struct MessageRow {
 	int64 id;
 	BString sender;     // empty for outgoing and private chats
@@ -49,6 +51,8 @@ struct MessageRow {
 	BString avatarPath;         // downloaded picture, or empty
 	std::string avatarPreview;  // its tiny JPEG meanwhile
 	BString avatarInitials;     // without any picture
+
+	std::vector<pp::Span> spans; // formatting and links in `text`
 };
 
 class BBitmap;
@@ -84,6 +88,12 @@ private:
 		float forwardTop;   // baseline area of the "Forwarded from" line
 		float replyTop;     // top of the reply block
 		BRect media;        // where the photo or sticker goes
+		std::vector<int32> lineChars;  // first character of each line
+		struct Link {
+			BRect frame;
+			std::string url;
+		};
+		std::vector<Link> links;       // clickable, in view coordinates
 	};
 
 	// Character widths of a string, measured once with one app_server call
@@ -118,7 +128,13 @@ private:
 	const Measured& _Measure(const BString& text, bool bold);
 	float _Width(const BString& text, bool bold = false)
 		{ return _Measure(text, bold).total; }
-	std::vector<BString> _Wrap(const BString& text, float width, float* widest);
+	// Character widths of a formatted message (each run in its own font).
+	const Measured& _MeasureRow(const MessageRow& row);
+	std::vector<BString> _Wrap(const BString& text, const Measured& m, float width,
+		float* widest, std::vector<int32>* lineChars);
+	void _FontFor(uint32 style, BFont* font) const;
+	void _DrawText(const MessageRow& row, const Layout& l, float x, float line,
+		rgb_color fg, rgb_color fill);
 
 	std::vector<MessageRow> fRows;
 	std::vector<Layout> fLayout;

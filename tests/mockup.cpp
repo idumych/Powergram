@@ -17,6 +17,7 @@
 
 #include "../src/app/MainWindow.h"
 #include "../src/app/Messages.h"
+#include "../src/core/Format.h"
 
 namespace {
 
@@ -76,6 +77,7 @@ struct Row {
 	bool showAvatar = false;
 	int64 senderKey = 0;
 	BString avatar, initials;
+	std::vector<pp::Span> spans;
 };
 
 
@@ -109,6 +111,7 @@ Add(BMessage& list, const Row& r)
 	list.AddString("avatar", r.avatar);
 	AddBytes(list, "avatar_mini", "");
 	list.AddString("initials", r.initials);
+	list.AddString("spans", pp::EncodeSpans(r.spans).c_str());
 }
 
 
@@ -313,6 +316,25 @@ private:
 			r.image = Media("sticker2.webp").c_str();
 			r.mediaWidth = r.mediaHeight = 512;
 			r.sender = "";
+			Add(list, r);
+			r = _From(kTeo, 111, "Build with make -j4 first, then see the guide at "
+				"https://www.haiku-os.org/guides. The release is secret until Friday.", now - 900);
+			{
+				std::string t = r.text.String();
+				auto span = [&](const char* word, uint32_t style, const char* url = "") {
+					pp::Span sp;
+					sp.start = (int32_t)t.find(word);
+					sp.length = (int32_t)strlen(word);
+					sp.style = style;
+					sp.url = url;
+					r.spans.push_back(sp);
+				};
+				span("make -j4", pp::kCode);
+				span("first", pp::kBold);
+				span("https://www.haiku-os.org/guides", pp::kLink, "https://www.haiku-os.org/guides");
+				span("secret until Friday", pp::kSpoiler);
+				span("release", pp::kItalic);
+			}
 			Add(list, r);
 			Add(list, _Mine(109, "Great, thanks everyone! I'll look at suspend next.", now - 600));
 			r = _Mine(110, "Sending the logs in a minute", now - 120, false);

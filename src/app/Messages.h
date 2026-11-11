@@ -110,6 +110,9 @@ enum {
 	// "width", "height" (int32), "emoji", "image" (path or empty)
 	kMsgStickers = 'stks',
 
+	// message view → main window: a link was clicked, "url"
+	kMsgOpenUrl = 'ourl',
+
 	kMsgLogOut = 'lout',
 	kMsgLogOutConfirmed = 'loco',
 	kMsgForceQuit = 'fqut'

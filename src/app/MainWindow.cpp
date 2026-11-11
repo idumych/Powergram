@@ -7,6 +7,7 @@
 #include <DataIO.h>
 #include <FilePanel.h>
 #include <TranslationUtils.h>
+#include <Url.h>
 #include <Clipboard.h>
 #include <GroupView.h>
 #include <Invoker.h>
@@ -434,6 +435,7 @@ MainWindow::_UpdateHistory(const BMessage* history)
 		row.avatarPath = history->GetString("avatar", i, "");
 		row.avatarPreview = FindBytes(history, "avatar_mini", i);
 		row.avatarInitials = history->GetString("initials", i, "");
+		row.spans = pp::DecodeSpans(history->GetString("spans", i, ""));
 		rows.push_back(row);
 	}
 	fMessages->SetEmptyText("No messages here yet");
@@ -735,6 +737,14 @@ MainWindow::MessageReceived(BMessage* message)
 		case kMsgMessageProperties:
 			_ShowMessageMenu(message);
 			break;
+		case kMsgOpenUrl:
+		{
+			// The user's browser (or mail app for mailto:) opens it.
+			BUrl url(message->GetString("url", ""), true);
+			if (url.IsValid())
+				url.OpenWithPreferredApplication(false);
+			break;
+		}
 		case kMsgOpenMedia:
 			message->RemoveName("chat_id");
 			message->AddInt64("chat_id", fOpenChat);
