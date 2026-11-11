@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "../src/app/MainWindow.h"
+#include "../src/app/SettingsWindow.h"
 #include "../src/app/Messages.h"
 #include "../src/core/ChatHistory.h"
 #include "../src/core/Format.h"
@@ -177,7 +178,17 @@ public:
 					fMain->PostMessage(kMsgShowEmoji);
 				else if (sScene == "stickers")
 					fMain->PostMessage(kMsgShowStickers);
-				else if (sScene == "reply") {
+				else if (sScene == "settings") {
+					// Large text, then the window, as if chosen from it.
+					AppSettings large;
+					large.textSize = 2;
+					BMessage apply(kMsgSettingsChanged);
+					large.ToMessage(&apply);
+					fMain->PostMessage(&apply);
+					SettingsWindow* settings = new SettingsWindow(BMessenger(this), large);
+					settings->MoveTo(560, 120);
+					settings->Show();
+				} else if (sScene == "reply") {
 					BMessage reply(kMsgReply);
 					reply.AddInt64("message_id", 106);
 					fMain->PostMessage(&reply);
@@ -189,6 +200,9 @@ public:
 					fflush(stdout);
 					fMain->Unlock();
 				}
+				break;
+			case kMsgSettingsChanged:
+				fMain->PostMessage(message);
 				break;
 			case kMsgMessageProperties:
 			{

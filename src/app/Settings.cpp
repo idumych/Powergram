@@ -93,6 +93,7 @@ Settings::Load()
 		archive.FindInt32("api_id", &apiId);
 		archive.FindString("api_hash", &apiHash);
 		archive.FindRect("main_frame", &mainFrame);
+		archive.FindMessage("preferences", &preferences);
 		const char* emoji;
 		for (int32 i = 0; archive.FindString("recent_emoji", i, &emoji) == B_OK; i++)
 			recentEmoji.push_back(emoji);
@@ -113,6 +114,7 @@ Settings::Save() const
 	}
 	if (mainFrame.IsValid())
 		archive.AddRect("main_frame", mainFrame);
+	archive.AddMessage("preferences", &preferences);
 	for (const std::string& emoji : recentEmoji)
 		archive.AddString("recent_emoji", emoji.c_str());
 

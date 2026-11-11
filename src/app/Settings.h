@@ -2,6 +2,7 @@
 // Settings: a flattened BMessage in ~/config/settings/PaperPlane/settings.
 #pragma once
 
+#include <Message.h>
 #include <Path.h>
 #include <Rect.h>
 #include <String.h>
@@ -23,6 +24,7 @@ public:
 	BString apiHash;
 	BRect mainFrame;   // invalid until the window was placed once
 	std::vector<std::string> recentEmoji;  // most recent first
+	BMessage preferences;   // the Settings window's choices (AppSettings)
 
 private:
 	bool _ImportApiKeyFile();

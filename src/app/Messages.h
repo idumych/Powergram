@@ -154,6 +154,13 @@ enum {
 	// app → main window: "index", "count" (int32; index -1 for none)
 	kMsgFindResult = 'fres',
 
+	// settings window → app: the settings (see AppSettings::ToMessage);
+	// app → main window: the same, to apply the text size
+	kMsgSettingsChanged = 'stch',
+	kMsgSettingsClosed = 'stcl',
+	// main window menu → app
+	kMsgShowSettings = 'shst',
+
 	kMsgLogOut = 'lout',
 	kMsgLogOutConfirmed = 'loco',
 	kMsgForceQuit = 'fqut'

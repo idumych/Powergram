@@ -36,6 +36,7 @@
 #include "../core/ChatList.h"
 #include "BitmapUtils.h"
 #include "ChatPicker.h"
+#include "SettingsWindow.h"
 #include "Icons.h"
 #include "Pickers.h"
 #include "MessageView.h"
@@ -338,6 +339,7 @@ MainWindow::MainWindow(BRect frame, bool testDc,
 	BMenu* app = new BMenu(APP_NAME);
 	app->AddItem(new BMenuItem("About " APP_NAME B_UTF8_ELLIPSIS,
 		new BMessage(B_ABOUT_REQUESTED)));
+	app->AddItem(new BMenuItem("Settings" B_UTF8_ELLIPSIS, new BMessage(kMsgShowSettings), ','));
 	app->AddSeparatorItem();
 	app->AddItem(new BMenuItem("Log out", new BMessage(kMsgLogOut)));
 	app->AddSeparatorItem();
@@ -997,6 +999,9 @@ MainWindow::MessageReceived(BMessage* message)
 				fEntry->TextView()->Select(fEntry->TextView()->TextLength(),
 					fEntry->TextView()->TextLength());
 			}
+			break;
+		case kMsgSettingsChanged:
+			fMessages->SetTextScale(AppSettings::Scale(message->GetInt32("text_size", 1)));
 			break;
 		case kMsgChatFilter:
 			_UpdateChats(&fLastChats);

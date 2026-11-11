@@ -29,6 +29,7 @@ MessageView::MessageView()
 	fLastHeight(0)
 {
 	SetViewUIColor(B_LIST_BACKGROUND_COLOR);
+	SetTextScale(1.0f);
 }
 
 
@@ -170,12 +171,12 @@ MessageView::_DrawMedia(const MessageRow& row, const Layout& l, rgb_color fg,
 		// Without an emoji font (noto_emoji) the glyph would be an empty box.
 		bool has[8] = {};
 		int32 chars = std::min<int32>(row.emoji.CountChars(), 8);
-		be_plain_font->GetHasGlyphs(row.emoji.String(), chars, has);
+		(&fPlain)->GetHasGlyphs(row.emoji.String(), chars, has);
 		emojiDrawable = chars > 0 && has[0];
 	}
 	if (emojiDrawable) {
 		// An animated sticker Haiku can't draw: its emoji, large.
-		BFont big(be_plain_font);
+		BFont big((&fPlain));
 		// A whole size: Renku's app_server drops some fallback emoji at
 		// fractional sizes (🎉 at 35.7 pt), though GetHasGlyphs says yes.
 		big.SetSize(floorf(box.Height() * 0.7f));
@@ -186,7 +187,7 @@ MessageView::_DrawMedia(const MessageRow& row, const Layout& l, rgb_color fg,
 		DrawString(row.emoji.String(), BPoint(box.left
 			+ (box.Width() - big.StringWidth(row.emoji.String())) / 2,
 			box.top + (box.Height() + fh.ascent - fh.descent) / 2));
-		SetFont(be_plain_font);
+		SetFont((&fPlain));
 		return;
 	}
 
@@ -214,8 +215,8 @@ MessageView::_DrawMedia(const MessageRow& row, const Layout& l, rgb_color fg,
 				badge << "0";
 			badge << row.duration % 60;
 		}
-		BFont small(be_plain_font);
-		small.SetSize(std::max(9.0f, be_plain_font->Size() * 0.85f));
+		BFont small((&fPlain));
+		small.SetSize(std::max(9.0f, (&fPlain)->Size() * 0.85f));
 		SetFont(&small);
 		font_height sh;
 		small.GetHeight(&sh);
@@ -238,7 +239,7 @@ MessageView::_DrawMedia(const MessageRow& row, const Layout& l, rgb_color fg,
 			tx += triangle + 4;
 		}
 		DrawString(badge.String(), BPoint(tx, pill.top + 2 + sh.ascent));
-		SetFont(be_plain_font);
+		SetFont((&fPlain));
 	}
 
 	if (hidden || bitmap == nullptr) {
@@ -254,7 +255,7 @@ MessageView::_DrawMedia(const MessageRow& row, const Layout& l, rgb_color fg,
 			: row.mediaKind >= 3 ? "Video"
 			: "Loading photo…";
 		BString text(label);
-		be_plain_font->TruncateString(&text, B_TRUNCATE_END, box.Width() - line);
+		(&fPlain)->TruncateString(&text, B_TRUNCATE_END, box.Width() - line);
 		SetHighColor(hidden && bitmap != nullptr ? make_color(255, 255, 255) : fg);
 		font_height fh;
 		GetFontHeight(&fh);
@@ -312,7 +313,7 @@ MessageView::_DrawAvatar(const MessageRow& row, BRect circle)
 		: row.senderKey) % 7];
 	SetHighColor(color);
 	FillEllipse(circle);
-	BFont font(be_bold_font);
+	BFont font((&fBold));
 	font.SetSize(floorf(circle.Height() * 0.38f));
 	SetFont(&font);
 	font_height fh;
@@ -322,7 +323,7 @@ MessageView::_DrawAvatar(const MessageRow& row, BRect circle)
 	float w = font.StringWidth(row.avatarInitials.String());
 	DrawString(row.avatarInitials.String(), BPoint(circle.left + (circle.Width() - w) / 2,
 		circle.top + (circle.Height() + fh.ascent - fh.descent) / 2));
-	SetFont(be_plain_font);
+	SetFont((&fPlain));
 }
 
 
@@ -354,6 +355,29 @@ MessageView::SetMoreBelow(bool moreBelow)
 
 
 void
+MessageView::SetTextScale(float scale)
+{
+	// The system fonts at the chosen size; everything drawn and measured
+	// here uses these copies (Settings: Text size).
+	fPlain = *be_plain_font;
+	fBold = *be_bold_font;
+	fFixed = *be_fixed_font;
+	float size = roundf(be_plain_font->Size() * scale);
+	fPlain.SetSize(size);
+	fBold.SetSize(size);
+	fFixed.SetSize(size);
+	SetFont(&fPlain);
+	fMeasured.clear();
+	if (Window() != nullptr) {
+		Anchor anchor = _SaveAnchor(Bounds().bottom);
+		_Relayout();
+		_RestoreAnchor(anchor);
+		Invalidate();
+	}
+}
+
+
+void
 MessageView::SetHighlight(int64 id)
 {
 	if (fHighlight != id) {
@@ -378,7 +402,7 @@ MessageView::_JumpButtonFrame() const
 {
 	// Bottom right of what's visible, in view coordinates; room for the badge.
 	font_height fh;
-	be_plain_font->GetHeight(&fh);
+	(&fPlain)->GetHeight(&fh);
 	float size = roundf((fh.ascent + fh.descent) * 2.6f);
 	BRect b = Bounds();
 	return BRect(b.right - size - 14, b.bottom - size - 14 - size * 0.3f,
@@ -420,7 +444,7 @@ MessageView::SetMessages(const std::vector<MessageRow>& rows, bool scrollToEnd,
 const MessageView::Measured&
 MessageView::_Measure(const BString& text, bool bold)
 {
-	BFont font(bold ? be_bold_font : be_plain_font);
+	BFont font(bold ? (&fBold) : (&fPlain));
 	if (fMeasured.size() > 20000)
 		fMeasured.clear();
 	// Plain and bold can differ in size: both are part of the key.
@@ -458,15 +482,15 @@ MessageView::_Measure(const BString& text, bool bold)
 void
 MessageView::_FontFor(uint32 style, BFont* font) const
 {
-	// Always from be_plain_font: the view's current font is whatever the
+	// Always from (&fPlain): the view's current font is whatever the
 	// last run drew with (a bold base made links bold and too wide).
-	BFont plain(be_plain_font);
+	BFont plain((&fPlain));
 	if (style & pp::kCode) {
-		*font = *be_fixed_font;
+		*font = *(&fFixed);
 		font->SetSize(plain.Size());
 		return;
 	}
-	*font = (style & pp::kBold) ? *be_bold_font : plain;
+	*font = (style & pp::kBold) ? *(&fBold) : plain;
 	font->SetSize(plain.Size());
 	if (style & pp::kItalic) {
 		// B_REGULAR_FACE can't be combined with italic: build the face.
@@ -491,7 +515,7 @@ MessageView::_MeasureRow(const MessageRow& row)
 {
 	if (row.spans.empty())
 		return _Measure(row.text, false);
-	BFont plain(be_plain_font);
+	BFont plain((&fPlain));
 	char prefix[32];
 	snprintf(prefix, sizeof(prefix), "s%.2f|", plain.Size());
 	std::string key = prefix + pp::EncodeSpans(row.spans) + "|";
@@ -671,8 +695,8 @@ MessageView::_Relayout()
 		}
 		l.textTop = y0;
 		// Reaction pills: one row below the text (wrapping if needed).
-		BFont pillFont(be_plain_font);
-		pillFont.SetSize(std::max(11.0f, floorf(be_plain_font->Size())));
+		BFont pillFont((&fPlain));
+		pillFont.SetSize(std::max(11.0f, floorf((&fPlain)->Size())));
 		float pillH = roundf(line * 1.25f);
 		std::vector<float> pillW;
 		for (const MessageRow::Reaction& r : row.reactions) {
@@ -1023,7 +1047,7 @@ MessageView::_DrawText(const MessageRow& row, const Layout& l, float x, float li
 			c = end;
 		}
 	}
-	SetFont(be_plain_font);
+	SetFont((&fPlain));
 }
 
 
@@ -1108,14 +1132,14 @@ MessageView::Draw(BRect updateRect)
 		float inner = l.bubble.Width() - 2 * pad;
 		rgb_color accent = ui_color(B_CONTROL_HIGHLIGHT_COLOR);
 		if (!row.sender.IsEmpty()) {
-			SetFont(be_bold_font);
+			SetFont((&fBold));
 			SetHighColor(accent);
 			DrawString(row.sender.String(), BPoint(x, l.bubble.top + pad + fh.ascent));
-			SetFont(be_plain_font);
+			SetFont((&fPlain));
 		}
 		if (!row.forward.IsEmpty() && !row.service) {
 			BString label(row.forward);
-			be_plain_font->TruncateString(&label, B_TRUNCATE_END, inner);
+			(&fPlain)->TruncateString(&label, B_TRUNCATE_END, inner);
 			SetHighColor(accent);
 			DrawString(label.String(), BPoint(x, l.forwardTop + fh.ascent));
 		}
@@ -1126,13 +1150,13 @@ MessageView::Draw(BRect updateRect)
 			FillRect(BRect(x, l.replyTop, x + barWidth - 1, l.replyTop + line * 2 - 1));
 			float rx = x + barWidth + pad * 0.6f;
 			BString who(row.replySender);
-			be_bold_font->TruncateString(&who, B_TRUNCATE_END, inner - (rx - x));
-			SetFont(be_bold_font);
+			(&fBold)->TruncateString(&who, B_TRUNCATE_END, inner - (rx - x));
+			SetFont((&fBold));
 			DrawString(who.String(), BPoint(rx, l.replyTop + fh.ascent));
-			SetFont(be_plain_font);
+			SetFont((&fPlain));
 			BString what(row.replyText);
 			what.ReplaceAll('\n', ' ');
-			be_plain_font->TruncateString(&what, B_TRUNCATE_END, inner - (rx - x));
+			(&fPlain)->TruncateString(&what, B_TRUNCATE_END, inner - (rx - x));
 			SetHighColor(fg);
 			DrawString(what.String(), BPoint(rx, l.replyTop + line + fh.ascent));
 		}
@@ -1154,8 +1178,8 @@ MessageView::Draw(BRect updateRect)
 		// Reactions: "👍 3" pills, ours highlighted. A whole font size of at
 		// least 11 pt: Renku's app_server misses some fallback emoji at others.
 		if (!row.reactions.empty()) {
-			BFont pillFont(be_plain_font);
-			pillFont.SetSize(std::max(11.0f, floorf(be_plain_font->Size())));
+			BFont pillFont((&fPlain));
+			pillFont.SetSize(std::max(11.0f, floorf((&fPlain)->Size())));
 			font_height pfh;
 			pillFont.GetHeight(&pfh);
 			for (size_t k = 0; k < row.reactions.size() && k < l.reactions.size(); k++) {
@@ -1171,7 +1195,7 @@ MessageView::Draw(BRect updateRect)
 				SetHighColor(r.chosen ? make_color(255, 255, 255) : fg);
 				DrawString(label.String(), BPoint(pill.left + pill.Height() / 2,
 					pill.top + (pill.Height() + pfh.ascent - pfh.descent) / 2));
-				SetFont(be_plain_font);
+				SetFont((&fPlain));
 				SetLowColor(fill);
 			}
 		}
@@ -1210,16 +1234,16 @@ MessageView::Draw(BRect updateRect)
 			BString badge;
 			badge << fUnreadCount;
 			font_height bfh;
-			be_plain_font->GetHeight(&bfh);
+			(&fPlain)->GetHeight(&bfh);
 			float h = ceilf(bfh.ascent + bfh.descent) + 2;
-			float w = std::max(h, be_plain_font->StringWidth(badge.String()) + h * 0.7f);
+			float w = std::max(h, (&fPlain)->StringWidth(badge.String()) + h * 0.7f);
 			BRect pill(c.x - w / 2, circle.top - h / 2, c.x + w / 2, circle.top + h / 2);
 			SetHighColor(ui_color(B_CONTROL_HIGHLIGHT_COLOR));
 			FillRoundRect(pill, h / 2, h / 2);
 			SetHighColor(255, 255, 255);
 			SetLowColor(ui_color(B_CONTROL_HIGHLIGHT_COLOR));
-			SetFont(be_plain_font);
-			DrawString(badge.String(), BPoint(c.x - be_plain_font->StringWidth(badge.String()) / 2,
+			SetFont((&fPlain));
+			DrawString(badge.String(), BPoint(c.x - (&fPlain)->StringWidth(badge.String()) / 2,
 				pill.top + 1 + bfh.ascent));
 		}
 	}

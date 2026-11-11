@@ -5,6 +5,7 @@
 #include <Application.h>
 #include <Invoker.h>
 #include <MessageRunner.h>
+#include <Beep.h>
 #include <Bitmap.h>
 #include <Entry.h>
 #include <Path.h>
@@ -38,6 +39,7 @@
 #include "MainWindow.h"
 #include "Messages.h"
 #include "Settings.h"
+#include "SettingsWindow.h"
 #include "TdClient.h"
 
 using pp::AuthStep;
@@ -94,6 +96,8 @@ private:
 	pp::Names fNames;
 	pp::FileStore fFiles;
 	pp::Presence fPresence;
+	AppSettings fPrefs;
+	SettingsWindow* fSettingsWindow = nullptr;
 	BMessageRunner* fPresenceRunner = nullptr;
 	std::set<int32_t> fOpenWhenDownloaded;  // clicked photos on their way
 
@@ -146,6 +150,9 @@ App::App()
 	fClosed(false)
 {
 	fSettings.Load();
+	fPrefs = AppSettings::FromMessage(&fSettings.preferences);
+	// The new-message sound, chosen by the user in the Sounds preferences.
+	add_system_beep_event("Paper Plane new message");
 	const char* env = getenv("PAPERPLANE_TEST_DC");
 	fTestDc = env != nullptr && strcmp(env, "1") == 0;
 }
@@ -208,6 +215,11 @@ App::ReadyToRun()
 	if (!placed)
 		frame.Set(0, 0, 380, 640);
 	fMain = new MainWindow(frame, fTestDc, fSettings.recentEmoji);
+	{
+		BMessage apply(kMsgSettingsChanged);
+		fPrefs.ToMessage(&apply);
+		fMain->PostMessage(&apply);
+	}
 	if (!placed)
 		fMain->CenterOnScreen();
 
@@ -931,8 +943,12 @@ App::_Notify(const json& message)
 		return;
 	pp::Message m = pp::ParseMessage(message);
 
+	if (!fPrefs.notifications)
+		return;
+	if (fPrefs.sound)
+		system_beep("Paper Plane new message");
 	BString content;
-	if (fChats.ShowsPreview(chatId)) {
+	if (fPrefs.previews && fChats.ShowsPreview(chatId)) {
 		if (chat->kind == pp::Chat::kGroup) {
 			std::string sender = fNames.Sender(m);
 			if (!sender.empty())
@@ -1133,6 +1149,28 @@ App::MessageReceived(BMessage* message)
 		case kMsgForwardMessage:
 			_Send(pp::request::Forward(message->GetInt64("to_chat_id", 0),
 				message->GetInt64("from_chat_id", 0), {message->GetInt64("message_id", 0)}));
+			break;
+
+		case kMsgShowSettings:
+			if (fSettingsWindow == nullptr) {
+				fSettingsWindow = new SettingsWindow(BMessenger(this), fPrefs);
+				fSettingsWindow->Show();
+			} else if (fSettingsWindow->Lock()) {
+				fSettingsWindow->Activate();
+				fSettingsWindow->Unlock();
+			}
+			break;
+
+		case kMsgSettingsChanged:
+			fPrefs = AppSettings::FromMessage(message);
+			fSettings.preferences.MakeEmpty();
+			fPrefs.ToMessage(&fSettings.preferences);
+			fSettings.Save();
+			fMain->PostMessage(message);  // the text size
+			break;
+
+		case kMsgSettingsClosed:
+			fSettingsWindow = nullptr;
 			break;
 
 		case kMsgShowList:
