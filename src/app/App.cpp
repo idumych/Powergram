@@ -610,6 +610,8 @@ App::_SendHistory()
 			return BString("Video message");
 		if (m.media.kind == pp::Media::kVoice)
 			return BString("Voice message");
+		if (m.media.kind == pp::Media::kIcon)
+			return BString("Icon");
 		return BString("Message");
 	};
 

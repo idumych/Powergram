@@ -33,7 +33,7 @@ struct MessageRow {
 	BString replyText;  // empty without a reply
 
 	// pp::Media::Kind: 0 none, 1 photo, 2 sticker, 3 video, 4 GIF,
-	// 5 round video message, 6 voice message.
+	// 5 round video message, 6 voice message, 7 Haiku vector icon (HVIF).
 	int32 mediaKind;
 	int32 duration;             // videos and voice messages, seconds
 	std::string waveform;       // voice messages: a 0..31 level per byte
@@ -145,6 +145,7 @@ private:
 
 	BBitmap* _Bitmap(const MessageRow& row, bool* blurred, bool round = false);
 	void _DrawVoice(const MessageRow& row, BRect box, rgb_color fg, float line);
+	void _DrawIcon(const MessageRow& row, BRect box, rgb_color fg);
 	void _DrawMedia(const MessageRow& row, const Layout& layout, rgb_color fg,
 		float line);
 	void _DrawAvatar(const MessageRow& row, BRect circle);
@@ -172,6 +173,7 @@ private:
 	// Decoded images by path ("mini:<id>" for inline previews), most
 	// recently used first, at most kMaxBitmaps.
 	std::map<std::string, BBitmap*> fBitmaps;
+	std::map<std::string, BBitmap*> fIcons;  // HVIF files, by path and size
 	std::list<std::string> fBitmapOrder;
 	std::set<int64> fRevealed;  // spoilers clicked open
 

@@ -983,6 +983,21 @@ TestEmojiMessages()
 }
 
 
+static void
+TestHaikuIcons()
+{
+	// An HVIF file is drawn; other documents stay text.
+	json message = Msg(42, 1, "");
+	message["content"] = {{"@type", "messageDocument"}, {"document", {{"file_name", "Plane.HVIF"},
+		{"mime_type", "application/octet-stream"}, {"document", File(55)}}}, {"caption", {{"text", ""}}}};
+	Message parsed = ParseMessage(message);
+	CHECK(parsed.media.kind == Media::kIcon && parsed.media.fileId == 55 && parsed.media.fullFileId == 55);
+	CHECK(parsed.text == "Document: Plane.HVIF");
+	CHECK(IsHaikuIcon({{"file_name", "icon"}, {"mime_type", "image/x-hvif"}}));
+	CHECK(!IsHaikuIcon({{"file_name", "notes.pdf"}, {"mime_type", "application/pdf"}}));
+}
+
+
 int
 main()
 {
@@ -1005,6 +1020,7 @@ main()
 	TestVoice();
 	TestChatInfo();
 	TestEmojiMessages();
+	TestHaikuIcons();
 	if (sFailures) {
 		std::fprintf(stderr, "%d check(s) failed\n", sFailures);
 		return EXIT_FAILURE;

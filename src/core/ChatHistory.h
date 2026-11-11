@@ -16,7 +16,8 @@ namespace pp {
 
 // A photo or sticker in a message, as far as showing it goes.
 struct Media {
-	enum Kind { kNone, kPhoto, kSticker, kVideo, kAnimation, kVideoNote, kVoice } kind = kNone;
+	enum Kind { kNone, kPhoto, kSticker, kVideo, kAnimation, kVideoNote, kVoice, kIcon }
+		kind = kNone;
 	int32_t fileId = 0;        // what to show in the bubble (0: nothing to fetch)
 	int32_t fullFileId = 0;    // the largest photo, for opening in a viewer
 	int32_t width = 0;         // size of what's shown, in pixels
@@ -43,6 +44,9 @@ Media VoiceMedia(const json& voiceNote);
 // Telegram packs a voice message's waveform as 5-bit levels, low bits
 // first; this gives one level (0..31) per byte.
 std::string UnpackWaveform(const std::string& packed);
+
+// A Haiku vector icon (HVIF) sent as a file: drawn in the bubble.
+bool IsHaikuIcon(const json& document);
 
 std::string DecodeBase64(const std::string& text);
 

@@ -459,6 +459,13 @@ private:
 			Add(list, r);
 			r = _Mine(110, "Sending the logs in a minute", now - 120, false);
 			Add(list, r);
+			if (sScene == "icon") {
+				// A Haiku icon sent as a file, drawn from its HVIF data.
+				r = _From(kJonas, 115, "Document: Plane.hvif\nThe new app icon", now - 40);
+				r.mediaKind = 7;
+				r.image = Media("Plane.hvif").c_str();
+				Add(list, r);
+			}
 			if (sScene == "bigemoji") {
 				// A message of one emoji, as App passes it on: a sticker with
 				// no image, only its emoji.

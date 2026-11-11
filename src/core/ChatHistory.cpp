@@ -4,6 +4,7 @@
 #include "ChatList.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 
 namespace pp {
@@ -158,6 +159,18 @@ VoiceMedia(const json& voiceNote)
 }
 
 
+bool
+IsHaikuIcon(const json& document)
+{
+	std::string name = Str(document, "file_name");
+	for (char& c : name)
+		c = (char)std::tolower((unsigned char)c);
+	std::string mime = Str(document, "mime_type");
+	return (name.size() > 5 && name.compare(name.size() - 5, 5, ".hvif") == 0)
+		|| mime.find("hvif") != std::string::npos;
+}
+
+
 // Formatting of the text MessageText returns for `content`.
 static std::vector<Span>
 ContentSpans(const json& content, const std::string& text)
@@ -201,6 +214,13 @@ ParseMedia(const json& content, Message& m)
 		m.media = VideoMedia(Field(content, "video_note"), Media::kVideoNote, "video");
 	else if (type == "messageVoiceNote")
 		m.media = VoiceMedia(Field(content, "voice_note"));
+	else if (type == "messageDocument" && IsHaikuIcon(Field(content, "document"))) {
+		// Tiny files: fetched to draw, and opened like any document.
+		m.media.kind = Media::kIcon;
+		m.media.fileId = m.media.fullFileId
+			= (int32_t)Int(Field(Field(content, "document"), "document"), "id");
+		return;
+	}
 	else if (type == "messageAnimatedEmoji") {
 		// Telegram animates it with a sticker: its still image when Haiku
 		// can decode one (in colour, which emoji fonts aren't on Haiku),

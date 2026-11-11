@@ -2,6 +2,8 @@
 #include "MessageView.h"
 
 #include <Bitmap.h>
+#include <File.h>
+#include <IconUtils.h>
 #include <Clipboard.h>
 #include <Cursor.h>
 #include <DataIO.h>
@@ -125,6 +127,9 @@ MessageView::_ClearBitmaps()
 		delete bitmap;
 	fBitmaps.clear();
 	fBitmapOrder.clear();
+	for (auto& [key, bitmap] : fIcons)
+		delete bitmap;
+	fIcons.clear();
 }
 
 
@@ -201,6 +206,10 @@ MessageView::_DrawMedia(const MessageRow& row, const Layout& l, rgb_color fg,
 	BRect box = l.media;
 	if (row.mediaKind == 6) {
 		_DrawVoice(row, box, fg, line);
+		return;
+	}
+	if (row.mediaKind == 7) {
+		_DrawIcon(row, box, fg);
 		return;
 	}
 	bool hidden = (row.spoiler || row.secret) && !fRevealed.count(row.id);
@@ -372,6 +381,56 @@ MessageView::_DrawVoice(const MessageRow& row, BRect box, rgb_color fg, float li
 	SetHighColor(mix_color(fg, LowColor(), 160));
 	DrawString(time.String(), BPoint(left, box.bottom - sh.descent));
 	SetFont(&fPlain);
+}
+
+
+// A Haiku vector icon sent as a file, rendered at the box's size (so it's
+// sharp at any text size) by the system's own HVIF renderer.
+void
+MessageView::_DrawIcon(const MessageRow& row, BRect box, rgb_color fg)
+{
+	BBitmap* icon = nullptr;
+	const char* problem = "Loading icon…";
+	if (!row.imagePath.IsEmpty()) {
+		int32 side = box.IntegerWidth() + 1;
+		std::string key = std::string(row.imagePath.String()) + "@" + std::to_string(side);
+		auto it = fIcons.find(key);
+		if (it != fIcons.end())
+			icon = it->second;
+		else {
+			BFile file(row.imagePath.String(), B_READ_ONLY);
+			off_t size = 0;
+			if (file.InitCheck() == B_OK && file.GetSize(&size) == B_OK
+				&& size > 0 && size < 1024 * 1024) {
+				std::string data(size, '\0');
+				if (file.Read(&data[0], size) == size) {
+					icon = new BBitmap(BRect(0, 0, side - 1, side - 1), B_RGBA32);
+					if (BIconUtils::GetVectorIcon((const uint8*)data.data(), data.size(),
+							icon) != B_OK) {
+						delete icon;
+						icon = nullptr;
+					}
+				}
+			}
+			fIcons[key] = icon;  // a file that isn't an icon isn't read again
+		}
+		if (icon == nullptr)
+			problem = "Not a Haiku icon";
+	}
+	if (icon != nullptr) {
+		SetDrawingMode(B_OP_ALPHA);
+		DrawBitmapAsync(icon, box.LeftTop());
+		return;
+	}
+	SetHighColor(mix_color(LowColor(), fg, 40));
+	FillRoundRect(box, 4, 4);
+	BString text(problem);
+	fPlain.TruncateString(&text, B_TRUNCATE_END, box.Width() - 4);
+	font_height fh;
+	fPlain.GetHeight(&fh);
+	SetHighColor(fg);
+	DrawString(text.String(), BPoint(box.left + (box.Width() - fPlain.StringWidth(text.String())) / 2,
+		box.top + (box.Height() + fh.ascent - fh.descent) / 2));
 }
 
 
@@ -796,7 +855,10 @@ MessageView::_Relayout()
 		float mediaW = 0, mediaH = 0;
 		// Stickers and round video messages go without a bubble.
 		bool sticker = row.mediaKind == 2 || row.mediaKind == 5;
-		if (row.mediaKind == 6) {
+		if (row.mediaKind == 7) {
+			mediaW = mediaH = roundf(line * 5);
+			bubbleWidth = std::max(bubbleWidth, std::min(maxBubble, mediaW + 2 * pad));
+		} else if (row.mediaKind == 6) {
 			mediaW = std::min(maxBubble - 2 * pad, line * 14);
 			mediaH = roundf(line * 2.4f);
 			bubbleWidth = std::max(bubbleWidth, std::min(maxBubble, mediaW + 2 * pad));
@@ -875,7 +937,7 @@ MessageView::_Relayout()
 		if (row.service)
 			l.textTop = y + pad * 0.5f;
 		if (row.mediaKind != 0)
-			l.media.OffsetBy(sticker ? left : row.mediaKind == 6 ? left + pad
+			l.media.OffsetBy(sticker ? left : row.mediaKind == 6 || row.mediaKind == 7 ? left + pad
 				: left + (bubbleWidth - mediaW) / 2, 0);
 
 		// Where the reaction pills go.
