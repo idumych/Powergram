@@ -54,8 +54,10 @@ made-up data so far.
   the Sounds preferences), text size
 - Photos, videos, GIFs, round video messages and stickers (WebP; animated
   stickers show their emoji); spoilers and self-destructing photos
-- Sending text, photos, files (file panel or drag and drop from Tracker) and
-  stickers; replying, editing, deleting, copying
+- Sending text, photos, videos (MP4 and QuickTime, with their size and
+  length), files (file panel or drag and drop from Tracker) and stickers;
+  several photos and videos at once go as an album; replying, editing,
+  deleting, copying
 - Mentions: typing @ in a group suggests its members (Up, Down, Enter or Tab,
   or a click); people without a username are mentioned by name. An "@" button
   with the count goes to your oldest unread mention
@@ -133,7 +135,8 @@ needs only OpenSSL and zlib at run time. Install `noto_emoji` for emoji.
 files and download progress, stickers, formatting, presence, voice, chat info,
 links and usernames, pinned messages, voice recording, mentions) on any system with a C++17 compiler.
 On Haiku, `make file-saving-test` checks saving received files and
-`make voice-record-test` checks the voice message files it records.
+`make voice-record-test` checks the voice message files it records and
+`make media-probe-test` what files are sent as (photo, video or document).
 
 ## Your API key
 

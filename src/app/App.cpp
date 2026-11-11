@@ -46,6 +46,7 @@
 #include "../core/Stickers.h"
 #include "ChatInfoWindow.h"
 #include "FileSaving.h"
+#include "MediaProbe.h"
 #include "LoginWindow.h"
 #include "MainWindow.h"
 #include "Messages.h"
@@ -992,25 +993,19 @@ App::_SendFiles(const BMessage* message)
 		return;
 	std::string caption = message->GetString("caption", "");
 	int64 replyTo = message->GetInt64("reply_to", 0);
+	// Photos and playable videos together go as albums; the rest as
+	// documents. The caption and the reply go with the first one only.
+	std::vector<pp::OutgoingFile> files;
 	entry_ref ref;
 	for (int32 i = 0; message->FindRef("refs", i, &ref) == B_OK; i++) {
 		BEntry entry(&ref, true);
 		BPath path;
 		if (!entry.IsFile() || entry.GetPath(&path) != B_OK)
 			continue;  // folders aren't sent
-		// Images Haiku can read go as photos (with their size), the rest as
-		// documents. The caption and the reply go with the first one only.
-		BBitmap* image = BTranslationUtils::GetBitmap(&ref);
-		if (image != nullptr) {
-			BRect bounds = image->Bounds();
-			delete image;
-			_Send(pp::request::SendPhoto(chatId, path.Path(),
-				bounds.IntegerWidth() + 1, bounds.IntegerHeight() + 1, caption, replyTo));
-		} else
-			_Send(pp::request::SendDocument(chatId, path.Path(), caption, replyTo));
-		caption.clear();
-		replyTo = 0;
+		files.push_back(ProbeFile(path.Path()));
 	}
+	for (const json& request : pp::request::SendFiles(chatId, files, caption, replyTo))
+		_Send(request);
 	fTyping.Reset();
 }
 

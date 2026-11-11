@@ -1255,6 +1255,53 @@ TestMentions()
 
 
 static void
+TestSendingFiles()
+{
+	CHECK(IsPlayableVideo("video/mp4", "/a/b") && IsPlayableVideo("", "/a/Clip.MOV"));
+	CHECK(!IsPlayableVideo("video/webm", "/a/clip.webm") && !IsPlayableVideo("", "/a/notes.txt"));
+
+	auto file = [](OutgoingFile::Kind kind, const char* path) {
+		OutgoingFile f;
+		f.kind = kind;
+		f.path = path;
+		f.width = 640;
+		f.height = 480;
+		f.duration = kind == OutgoingFile::kVideo ? 12 : 0;
+		return f;
+	};
+	// One photo: a plain message with the caption and the reply.
+	std::vector<json> r = request::SendFiles(42, {file(OutgoingFile::kPhoto, "/p1.jpg")}, "Hi", 7);
+	CHECK(r.size() == 1 && r[0]["@type"] == "sendMessage");
+	CHECK(r[0]["input_message_content"]["caption"]["text"] == "Hi" && r[0]["reply_to"]["message_id"] == 7);
+
+	// Photo, video, photo, a document, then a photo: an album of three (caption
+	// on its first), the document alone, the last photo alone; one reply.
+	r = request::SendFiles(42, {file(OutgoingFile::kPhoto, "/p1.jpg"),
+		file(OutgoingFile::kVideo, "/v.mp4"), file(OutgoingFile::kPhoto, "/p2.jpg"),
+		file(OutgoingFile::kDocument, "/d.pdf"), file(OutgoingFile::kPhoto, "/p3.jpg")}, "Trip", 7);
+	CHECK(r.size() == 3);
+	CHECK(r[0]["@type"] == "sendMessageAlbum" && r[0]["input_message_contents"].size() == 3);
+	const json& album = r[0]["input_message_contents"];
+	CHECK(album[0]["caption"]["text"] == "Trip" && album[1]["caption"]["text"] == "");
+	CHECK(album[1]["@type"] == "inputMessageVideo" && album[1]["video"]["duration"] == 12
+		&& album[1]["video"]["supports_streaming"] == true && album[1]["video"]["width"] == 640);
+	CHECK(r[0]["reply_to"]["message_id"] == 7 && !r[1].contains("reply_to") && !r[2].contains("reply_to"));
+	CHECK(r[1]["input_message_content"]["@type"] == "inputMessageDocument");
+	CHECK(r[1]["input_message_content"]["caption"]["text"] == "");
+	CHECK(r[2]["@type"] == "sendMessage");
+
+	// Twelve photos: ten, then two.
+	std::vector<OutgoingFile> many(12, file(OutgoingFile::kPhoto, "/p.jpg"));
+	r = request::SendFiles(42, many, "", 0);
+	CHECK(r.size() == 2 && r[0]["input_message_contents"].size() == 10
+		&& r[1]["input_message_contents"].size() == 2);
+	// Two documents: one by one.
+	r = request::SendFiles(42, {file(OutgoingFile::kDocument, "/a"), file(OutgoingFile::kDocument, "/b")}, "x");
+	CHECK(r.size() == 2 && r[0]["@type"] == "sendMessage" && r[1]["@type"] == "sendMessage");
+}
+
+
+static void
 TestHaikuIcons()
 {
 	// An HVIF file is drawn; other documents get a card.
@@ -1296,6 +1343,7 @@ main()
 	TestPinned();
 	TestVoiceRecording();
 	TestMentions();
+	TestSendingFiles();
 	if (sFailures) {
 		std::fprintf(stderr, "%d check(s) failed\n", sFailures);
 		return EXIT_FAILURE;

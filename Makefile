@@ -15,7 +15,7 @@ APP_SRCS := src/app/App.cpp src/app/TdClient.cpp src/app/Settings.cpp \
 	src/app/BitmapUtils.cpp src/app/Icons.cpp src/app/Pickers.cpp src/app/ChatPicker.cpp \
 	src/app/SettingsWindow.cpp src/app/VoicePlayer.cpp \
 	src/app/ChatInfoWindow.cpp src/app/FileSaving.cpp src/app/OpenLinkWindow.cpp \
-	src/app/VoiceRecorder.cpp src/app/MentionPopup.cpp
+	src/app/VoiceRecorder.cpp src/app/MentionPopup.cpp src/app/MediaProbe.cpp
 
 BUILD := obj
 CORE_OBJS := $(CORE_SRCS:%.cpp=$(BUILD)/%.o)
@@ -73,6 +73,14 @@ voice-record-live: $(BUILD)/voice_record_live
 $(BUILD)/voice_record_live: $(BUILD)/tests/voice_record_live.o $(BUILD)/src/app/VoiceRecorder.o \
 		$(BUILD)/src/core/VoiceNote.o
 	$(CXX) -o $@ $^ -lbe -lmedia -lopus -logg
+
+# What files to be sent are: photos, videos (size and length), documents.
+media-probe-test: $(BUILD)/media_probe_test
+	$(BUILD)/media_probe_test tests/data
+$(BUILD)/media_probe_test: $(BUILD)/tests/media_probe_test.o $(BUILD)/src/app/MediaProbe.o \
+		$(BUILD)/src/core/ChatHistory.o $(BUILD)/src/core/ChatList.o \
+		$(BUILD)/src/core/Format.o
+	$(CXX) -o $@ $^ -lbe -lmedia -ltranslation
 
 # Layout timing for the message view; not part of the app.
 bench: $(BUILD)/bench_messageview

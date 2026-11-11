@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
+#include <cstring>
 
 namespace pp {
 
@@ -156,6 +157,23 @@ VoiceMedia(const json& voiceNote)
 	media.waveform = UnpackWaveform(DecodeBase64(Str(voiceNote, "waveform")));
 	media.fullFileId = (int32_t)Int(Field(voiceNote, "voice"), "id");
 	return media;
+}
+
+
+bool
+IsPlayableVideo(const std::string& mimeType, const std::string& path)
+{
+	if (mimeType == "video/mp4" || mimeType == "video/quicktime" || mimeType == "video/x-m4v")
+		return true;
+	std::string name = path;
+	for (char& c : name)
+		c = (char)std::tolower((unsigned char)c);
+	for (const char* extension : {".mp4", ".m4v", ".mov"}) {
+		size_t n = strlen(extension);
+		if (name.size() > n && name.compare(name.size() - n, n, extension) == 0)
+			return true;
+	}
+	return false;
 }
 
 
@@ -948,6 +966,65 @@ SendDocument(int64_t chatId, const std::string& path, const std::string& caption
 			{"caption", Caption(caption)}}}};
 	AddReply(request, replyTo);
 	return request;
+}
+
+
+// What goes inside sendMessage or sendMessageAlbum for one file.
+static json
+FileContent(const OutgoingFile& file, const std::string& caption)
+{
+	json input = {{"@type", "inputFileLocal"}, {"path", file.path}};
+	switch (file.kind) {
+		case OutgoingFile::kPhoto:
+			return {{"@type", "inputMessagePhoto"},
+				{"photo", {{"@type", "inputPhoto"}, {"photo", input},
+					{"width", file.width}, {"height", file.height}}},
+				{"caption", Caption(caption)}};
+		case OutgoingFile::kVideo:
+			return {{"@type", "inputMessageVideo"},
+				{"video", {{"@type", "inputVideo"}, {"video", input},
+					{"duration", file.duration}, {"width", file.width},
+					{"height", file.height}, {"supports_streaming", true}}},
+				{"caption", Caption(caption)}};
+		default:
+			return {{"@type", "inputMessageDocument"},
+				{"document", {{"@type", "inputDocument"}, {"document", input}}},
+				{"caption", Caption(caption)}};
+	}
+}
+
+
+std::vector<json>
+SendFiles(int64_t chatId, const std::vector<OutgoingFile>& files, const std::string& caption,
+	int64_t replyTo)
+{
+	std::vector<json> requests;
+	std::string text = caption;
+	for (size_t i = 0; i < files.size(); ) {
+		// A run of photos and videos, up to ten: one album.
+		size_t end = i + 1;
+		if (files[i].kind != OutgoingFile::kDocument) {
+			while (end < files.size() && end - i < 10
+				&& files[end].kind != OutgoingFile::kDocument)
+				end++;
+		}
+		json request;
+		if (end - i == 1) {
+			request = {{"@type", "sendMessage"}, {"chat_id", chatId},
+				{"input_message_content", FileContent(files[i], text)}};
+		} else {
+			json contents = json::array();
+			for (size_t k = i; k < end; k++)
+				contents.push_back(FileContent(files[k], k == i ? text : std::string()));
+			request = {{"@type", "sendMessageAlbum"}, {"chat_id", chatId},
+				{"input_message_contents", contents}};
+		}
+		AddReply(request, requests.empty() ? replyTo : 0);
+		requests.push_back(request);
+		text.clear();
+		i = end;
+	}
+	return requests;
 }
 
 

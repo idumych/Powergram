@@ -229,6 +229,31 @@ json Online(bool online);
 
 } // namespace request
 
+// A file being sent, as found on disk: a photo, a video Telegram plays
+// (with its size and length), or anything else as a document.
+struct OutgoingFile {
+	enum Kind { kPhoto, kVideo, kDocument } kind = kDocument;
+	std::string path;
+	int32_t width = 0;
+	int32_t height = 0;
+	int32_t duration = 0;   // videos, seconds
+};
+
+// Whether a video file goes as a video (MP4 and QuickTime, which every
+// Telegram app plays) rather than as a document; by MIME type or name.
+bool IsPlayableVideo(const std::string& mimeType, const std::string& path);
+
+namespace request {
+
+// The requests that send files picked or dropped together: photos and
+// videos next to each other go as albums of up to ten, documents one by
+// one. The caption goes with the first file and the reply with the first
+// message.
+std::vector<json> SendFiles(int64_t chatId, const std::vector<OutgoingFile>& files,
+	const std::string& caption, int64_t replyTo = 0);
+
+} // namespace request
+
 // Rate limit for typing notifications: true when one should be sent now.
 class TypingThrottle {
 public:
