@@ -37,6 +37,7 @@ made-up data so far.
   italic, code, spoilers and clickable links; opening at the first unread
   message, with a jump-to-latest button; messages of a single emoji shown large
 - Selecting text in messages (drag, double- or triple-click) and copying it
+- Haiku vector icons (HVIF files) sent in chats, drawn in the message
 - Typing, online and "last seen" status and group sizes in the chat header
 - Reactions (shown and added), forwarding, polls, locations, places and contacts
 - Voice messages, played in the app with a waveform
