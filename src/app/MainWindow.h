@@ -67,6 +67,12 @@ private:
 	BButton* fAttachButton;
 	BButton* fEmojiButton;
 	BButton* fStickerButton;
+	BButton* fMicButton;
+	// Recording a voice message: the bar over the entry says so, Send sends
+	// it and Cancel or Escape drops it.
+	bool fRecording = false;
+	void _Record(const char* action);
+	void _SetRecording(bool recording, int32 seconds, float level);
 	EmojiWindow* fEmojiWindow;
 	StickerWindow* fStickerWindow;
 	std::vector<std::string> fRecentEmoji;

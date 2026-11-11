@@ -9,12 +9,13 @@ override CXXFLAGS += -std=c++17 -Wall -Wextra -O2
 CORE_SRCS := src/core/AuthFlow.cpp src/core/ChatList.cpp src/core/ChatHistory.cpp \
 	src/core/SendQueue.cpp src/core/Files.cpp src/core/Stickers.cpp \
 	src/core/Format.cpp src/core/Presence.cpp src/core/ChatInfo.cpp \
-	src/core/Links.cpp src/core/Pinned.cpp
+	src/core/Links.cpp src/core/Pinned.cpp src/core/VoiceNote.cpp
 APP_SRCS := src/app/App.cpp src/app/TdClient.cpp src/app/Settings.cpp \
 	src/app/LoginWindow.cpp src/app/MainWindow.cpp src/app/MessageView.cpp \
 	src/app/BitmapUtils.cpp src/app/Icons.cpp src/app/Pickers.cpp src/app/ChatPicker.cpp \
 	src/app/SettingsWindow.cpp src/app/VoicePlayer.cpp \
-	src/app/ChatInfoWindow.cpp src/app/FileSaving.cpp src/app/OpenLinkWindow.cpp
+	src/app/ChatInfoWindow.cpp src/app/FileSaving.cpp src/app/OpenLinkWindow.cpp \
+	src/app/VoiceRecorder.cpp
 
 BUILD := obj
 CORE_OBJS := $(CORE_SRCS:%.cpp=$(BUILD)/%.o)
@@ -31,7 +32,7 @@ all: $(NAME)
 
 # The app at ./Powergram, resources from obj/ (packaging/build-hpkg.sh).
 $(NAME): $(CORE_OBJS) $(APP_OBJS) $(BUILD)/$(NAME).rsrc
-	$(CXX) -o $@ $(CORE_OBJS) $(APP_OBJS) $(LDFLAGS) -lbe -lmedia -ltracker -ltranslation -llocalestub $(TD_LIBS)
+	$(CXX) -o $@ $(CORE_OBJS) $(APP_OBJS) $(LDFLAGS) -lbe -lmedia -ltracker -ltranslation -llocalestub -lopus -logg $(TD_LIBS)
 	xres -o $@ $(BUILD)/$(NAME).rsrc
 	mimeset -f $@
 
@@ -40,7 +41,7 @@ MOCKUP_OBJS := $(filter-out $(BUILD)/src/app/App.o $(BUILD)/src/app/TdClient.o \
 	$(BUILD)/src/app/LoginWindow.o $(BUILD)/src/app/Settings.o, $(APP_OBJS))
 mockup: $(BUILD)/PowergramMockup
 $(BUILD)/PowergramMockup: $(BUILD)/tests/mockup.o $(CORE_OBJS) $(MOCKUP_OBJS)
-	$(CXX) -o $@ $^ -lbe -lmedia -ltracker -ltranslation -llocalestub
+	$(CXX) -o $@ $^ -lbe -lmedia -ltracker -ltranslation -llocalestub -lopus -logg
 
 # The entry's icon buttons and a picker with made-up content.
 pickers-demo: $(BUILD)/pickers_demo
@@ -59,6 +60,19 @@ file-saving-test: $(BUILD)/file_saving_test
 	$(BUILD)/file_saving_test
 $(BUILD)/file_saving_test: $(BUILD)/tests/file_saving_test.o $(BUILD)/src/app/FileSaving.o
 	$(CXX) -o $@ $^ -lbe
+
+# Recording voice messages: the OGG/Opus file, read back by the Media Kit.
+voice-record-test: $(BUILD)/voice_record_test
+	$(BUILD)/voice_record_test
+$(BUILD)/voice_record_test: $(BUILD)/tests/voice_record_test.o $(BUILD)/src/app/VoiceRecorder.o \
+		$(BUILD)/src/core/VoiceNote.o
+	$(CXX) -o $@ $^ -lbe -lmedia -lopus -logg
+
+# Two seconds from the real sound input (needs one; not part of make test).
+voice-record-live: $(BUILD)/voice_record_live
+$(BUILD)/voice_record_live: $(BUILD)/tests/voice_record_live.o $(BUILD)/src/app/VoiceRecorder.o \
+		$(BUILD)/src/core/VoiceNote.o
+	$(CXX) -o $@ $^ -lbe -lmedia -lopus -logg
 
 # Layout timing for the message view; not part of the app.
 bench: $(BUILD)/bench_messageview

@@ -8,6 +8,8 @@
 #include <Beep.h>
 #include <Bitmap.h>
 #include <Entry.h>
+#include <FindDirectory.h>
+#include <Directory.h>
 #include <Path.h>
 #include <TranslationUtils.h>
 #include <Roster.h>
@@ -38,6 +40,7 @@
 #include "../core/Files.h"
 #include "../core/Links.h"
 #include "../core/Pinned.h"
+#include "../core/VoiceNote.h"
 #include "../core/Presence.h"
 #include "../core/Stickers.h"
 #include "ChatInfoWindow.h"
@@ -49,6 +52,7 @@
 #include "SettingsWindow.h"
 #include "TdClient.h"
 #include "VoicePlayer.h"
+#include "VoiceRecorder.h"
 
 using pp::AuthStep;
 using pp::json;
@@ -137,6 +141,17 @@ private:
 	BMessageRunner* fVoiceRunner = nullptr;
 	std::map<int32_t, int64> fPlayWhenDownloaded;  // file → message
 
+	// Recording a voice message, for one chat at a time.
+	void _Record(const BMessage* message);
+	void _StopRecording(bool send);
+	void _SendRecordState();
+	VoiceRecorder fRecorder;
+	BMessageRunner* fRecordRunner = nullptr;
+	int64 fRecordChat = 0;
+	int64 fRecordReply = 0;
+	BString fRecordPath;
+	bigtime_t fRecordAction = 0;   // last "recording a voice message" sent
+
 	// The info window, for one chat at a time.
 	void _ShowChatInfo(int64 chatId);
 	void _SendChatInfo();
@@ -209,6 +224,7 @@ App::~App()
 	delete fHistoryRunner;
 	delete fPresenceRunner;
 	delete fVoiceRunner;
+	delete fRecordRunner;
 }
 
 
@@ -506,6 +522,8 @@ App::_OpenChat(int64 id, bool latest)
 		_Send(pp::request::Typing(fHistory->ChatId(), false));
 		_Send(pp::request::CloseChat(fHistory->ChatId()));
 	}
+	if (fRecorder.IsRecording())
+		_StopRecording(false);
 	fHistory.reset();
 	fPinned = pp::PinnedMessages();
 	fTyping.Reset();
@@ -1397,6 +1415,85 @@ App::_HandleLinkReply(const json& object, const std::string& extra)
 
 
 void
+App::_Record(const BMessage* message)
+{
+	BString action = message->GetString("action", "");
+	if (action == "start") {
+		if (fRecorder.IsRecording())
+			return;
+		_StopVoice();
+		// Recordings wait in the cache until TDLib has uploaded them; ones
+		// older than a day go when the next starts.
+		BPath dir;
+		if (find_directory(B_USER_CACHE_DIRECTORY, &dir, true) != B_OK)
+			dir.SetTo("/tmp");
+		dir.Append("Powergram/voice");
+		create_directory(dir.Path(), 0700);
+		BDirectory folder(dir.Path());
+		BEntry old;
+		while (folder.GetNextEntry(&old) == B_OK) {
+			time_t modified = 0;
+			if (old.GetModificationTime(&modified) == B_OK
+				&& modified < time(nullptr) - 24 * 3600)
+				old.Remove();
+		}
+		fRecordPath = dir.Path();
+		fRecordPath << "/voice-" << (int64)real_time_clock_usecs() << ".ogg";
+		fRecordChat = message->GetInt64("chat_id", 0);
+		fRecordReply = message->GetInt64("reply_to", 0);
+		BString problem;
+		if (fRecorder.Start(fRecordPath.String(), &problem) != B_OK) {
+			_SendRecordState();
+			_ShowError(problem.String());
+			return;
+		}
+		fRecordAction = system_time();
+		_Send(pp::request::RecordingVoice(fRecordChat, true));
+		BMessage tick(kMsgVoiceRecordTick);
+		delete fRecordRunner;
+		fRecordRunner = new BMessageRunner(BMessenger(this), &tick, 200000);
+		_SendRecordState();
+	} else if (fRecorder.IsRecording())
+		_StopRecording(action == "send");
+}
+
+
+void
+App::_StopRecording(bool send)
+{
+	delete fRecordRunner;
+	fRecordRunner = nullptr;
+	int32 seconds = 0;
+	std::string levels;
+	// Under a second is a slip, as in the official apps: not sent.
+	bool keep = send && fRecorder.Seconds() >= 1.0;
+	status_t status = fRecorder.Stop(keep, &seconds, &levels);
+	_Send(pp::request::RecordingVoice(fRecordChat, false));
+	if (keep && status == B_OK)
+		_Send(pp::request::SendVoice(fRecordChat, fRecordPath.String(), seconds, levels,
+			fRecordReply));
+	else if (keep) {
+		BString text("Could not finish the voice message: ");
+		text << strerror(status);
+		_ShowError(text);
+	}
+	fRecordChat = fRecordReply = 0;
+	_SendRecordState();
+}
+
+
+void
+App::_SendRecordState()
+{
+	BMessage state(kMsgVoiceRecordState);
+	state.AddBool("recording", fRecorder.IsRecording());
+	state.AddInt32("seconds", (int32)fRecorder.Seconds());
+	state.AddFloat("level", fRecorder.TakeLevel());
+	fMain->PostMessage(&state);
+}
+
+
+void
 App::_SendPinned()
 {
 	BMessage pinned(kMsgPinned);
@@ -1812,6 +1909,25 @@ App::MessageReceived(BMessage* message)
 		case kMsgJoinInvite:
 			if (message->GetInt32("which", 1) == 0)
 				_Send(pp::request::JoinByInvite(message->GetString("link", ""), "openchat"));
+			break;
+
+		case kMsgVoiceRecord:
+			_Record(message);
+			break;
+
+		case kMsgVoiceRecordTick:
+			if (!fRecorder.IsRecording())
+				break;
+			// Telegram's longest is an hour; stop well before, sending it.
+			if (fRecorder.Seconds() >= 30 * 60) {
+				_StopRecording(true);
+				break;
+			}
+			if (system_time() - fRecordAction > 5000000) {
+				fRecordAction = system_time();
+				_Send(pp::request::RecordingVoice(fRecordChat, true));
+			}
+			_SendRecordState();
 			break;
 
 		case kMsgPinnedClicked:

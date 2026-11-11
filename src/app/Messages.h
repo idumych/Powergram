@@ -112,6 +112,14 @@ enum {
 	// message menu → main window → app: "message_id" (int64), "pin" (bool),
 	// plus "chat_id" (int64) on the way to the app
 	kMsgPin = 'pin ',
+	// main window → app: "action" (string: "start", "send" or "cancel"),
+	// "chat_id" and "reply_to" (int64)
+	kMsgVoiceRecord = 'vrec',
+	// app → main window: "recording" (bool), "seconds" (int32), "level"
+	// (float, 0..1)
+	kMsgVoiceRecordState = 'vrst',
+	// app → itself, while recording
+	kMsgVoiceRecordTick = 'vrtk',
 	kMsgSaveAsk = 'svak',
 
 	// app → main window: the voice message playing, "message_id" (int64,

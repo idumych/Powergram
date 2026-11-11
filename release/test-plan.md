@@ -28,8 +28,13 @@ time only (static libraries), so extract it instead of installing it:
     mkdir -p /Data/powergram-sdk/tdlib && cd /Data/powergram-sdk
     curl -fsSLO https://eu.hpkg.haiku-os.org/haikuports/r1beta6/x86_64/current/packages/tdlib-0.0.20260718-2-x86_64.hpkg
     package extract -C tdlib tdlib-0.0.20260718-2-x86_64.hpkg
-    CXXFLAGS="-I/Data/powergram-sdk/tdlib/develop/headers" \
-    LDFLAGS="-L/Data/powergram-sdk/tdlib/develop/lib" TMPDIR=/Data/tmp \
+    # Voice recording: Opus and OGG headers (the libraries come with Haiku).
+    for p in opus_devel-1.3.1-2 libogg_devel-1.3.6-2; do
+        curl -fsSLO https://eu.hpkg.haiku-os.org/haikuports/r1beta6/x86_64/current/packages/$p-x86_64.hpkg
+        package extract -C av $p-x86_64.hpkg
+    done
+    CXXFLAGS="-I/Data/powergram-sdk/tdlib/develop/headers -I/Data/powergram-sdk/av/develop/headers" \
+    LDFLAGS="-L/Data/powergram-sdk/tdlib/develop/lib -L/Data/powergram-sdk/av/develop/lib" TMPDIR=/Data/tmp \
         sh packaging/build-hpkg.sh
 
 ## Feature checks

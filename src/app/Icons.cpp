@@ -86,6 +86,17 @@ MakeIcon(IconKind kind, float size, rgb_color color)
 			view->StrokeShape(&peel);
 			break;
 		}
+		case kIconMic:
+		{
+			// A capsule on a stand: the mic, the cradle around it, the stem.
+			float w = s * 0.26f;
+			BRect capsule(s / 2 - w / 2, s * 0.10f, s / 2 + w / 2, s * 0.58f);
+			view->StrokeRoundRect(capsule, w / 2, w / 2);
+			view->StrokeArc(BRect(s * 0.24f, s * 0.22f, s * 0.76f, s * 0.70f), 180, 180);
+			view->StrokeLine(BPoint(s / 2, s * 0.70f), BPoint(s / 2, s * 0.86f));
+			view->StrokeLine(BPoint(s * 0.36f, s * 0.86f), BPoint(s * 0.64f, s * 0.86f));
+			break;
+		}
 	}
 	view->Sync();
 	bitmap->Unlock();

@@ -32,6 +32,7 @@
 #include <algorithm>
 #include <cmath>
 #include <ctime>
+#include <cstring>
 
 #include "../core/ChatList.h"
 #include "../core/Links.h"
@@ -507,6 +508,8 @@ MainWindow::MainWindow(BRect frame, bool testDc,
 	fAttachButton = _IconButton("attach", kIconAttach, kMsgAttach, "Attach files");
 	fEmojiButton = _IconButton("emoji", kIconEmoji, kMsgShowEmoji, "Emoji");
 	fStickerButton = _IconButton("stickers", kIconSticker, kMsgShowStickers, "Stickers");
+	fMicButton = _IconButton("record", kIconMic, kMsgVoiceRecord,
+		"Record a voice message (click again to send)");
 	fEntry->SetEnabled(false);
 	fSendButton->SetEnabled(false);
 
@@ -568,6 +571,7 @@ MainWindow::MainWindow(BRect frame, bool testDc,
 					.Add(fEntry, 1.0f)
 					.Add(fEmojiButton)
 					.Add(fStickerButton)
+					.Add(fMicButton)
 					.Add(fSendButton)
 				.End()
 			.End()
@@ -670,12 +674,15 @@ MainWindow::_SelectionChanged()
 	if (!fPinnedBar->IsHidden())
 		fPinnedBar->Hide();
 	fCanJoin = false;
+	if (fRecording)
+		_SetRecording(false, 0, 0);   // the app stops it when the chat changes
 	fSendButton->SetLabel("Send");
 	fEntry->SetEnabled(id != 0);
 	fSendButton->SetEnabled(id != 0);
 	fAttachButton->SetEnabled(id != 0);
 	fEmojiButton->SetEnabled(id != 0);
 	fStickerButton->SetEnabled(id != 0);
+	fMicButton->SetEnabled(id != 0);
 	if (id != 0)
 		fEntry->MakeFocus(true);
 
@@ -898,6 +905,61 @@ MainWindow::_CancelCompose()
 
 
 void
+MainWindow::_Record(const char* action)
+{
+	if (fOpenChat == 0)
+		return;
+	if (strcmp(action, "start") == 0 && fEditing != 0)
+		_CancelCompose();   // an edit can't become a voice message
+	BMessage record(kMsgVoiceRecord);
+	record.AddString("action", action);
+	record.AddInt64("chat_id", fOpenChat);
+	record.AddInt64("reply_to", fReplyTo);
+	be_app->PostMessage(&record);
+	if (strcmp(action, "send") == 0)
+		fReplyTo = 0;   // answered
+}
+
+
+void
+MainWindow::_SetRecording(bool recording, int32 seconds, float level)
+{
+	if (recording) {
+		// "● Recording 0:07" and a level meter of eight blocks.
+		BString text("\xE2\x97\x8F Recording ");
+		text << seconds / 60 << ":" << (seconds % 60 < 10 ? "0" : "") << seconds % 60 << "   ";
+		int blocks = (int)roundf(std::min(1.0f, level * 2) * 8);
+		for (int i = 0; i < 8; i++)
+			text << (i < blocks ? "\xE2\x96\xAE" : "\xE2\x96\xAF");
+		fComposeLabel->SetText(text);
+	}
+	if (recording == fRecording)
+		return;
+	fRecording = recording;
+	if (recording) {
+		fComposeLabel->SetHighUIColor(B_FAILURE_COLOR);
+		if (fComposeBar->IsHidden())
+			fComposeBar->Show();
+		fSendButton->SetLabel("Send");
+		fMicButton->SetToolTip("Send the voice message");
+	} else {
+		fComposeLabel->SetHighUIColor(B_PANEL_TEXT_COLOR);
+		fMicButton->SetToolTip("Record a voice message (click again to send)");
+		// Back to the reply it was recorded for, if any.
+		if (fReplyTo != 0)
+			_StartReply(fReplyTo);
+		else if (!fComposeBar->IsHidden())
+			fComposeBar->Hide();
+		fSendButton->SetLabel(fCanJoin ? "Join" : fEditing != 0 ? "Save" : "Send");
+	}
+	fEntry->SetEnabled(!recording && !fCanJoin);
+	fAttachButton->SetEnabled(!recording && !fCanJoin);
+	fEmojiButton->SetEnabled(!recording && !fCanJoin);
+	fStickerButton->SetEnabled(!recording && !fCanJoin);
+}
+
+
+void
 MainWindow::_SetCanJoin(bool canJoin)
 {
 	if (canJoin == fCanJoin || fOpenChat == 0)
@@ -910,6 +972,7 @@ MainWindow::_SetCanJoin(bool canJoin)
 	fAttachButton->SetEnabled(!canJoin);
 	fEmojiButton->SetEnabled(!canJoin);
 	fStickerButton->SetEnabled(!canJoin);
+	fMicButton->SetEnabled(!canJoin);
 	if (!canJoin)
 		fEntry->MakeFocus(true);
 }
@@ -1221,6 +1284,10 @@ MainWindow::MessageReceived(BMessage* message)
 			_SelectionChanged();
 			break;
 		case kMsgSend:
+			if (fRecording) {
+				_Record("send");
+				break;
+			}
 			if (fCanJoin) {
 				BMessage join(kMsgJoinChat);
 				join.AddInt64("chat_id", fOpenChat);
@@ -1353,10 +1420,19 @@ MainWindow::MessageReceived(BMessage* message)
 		}
 		case kMsgCancelCompose:
 			// Escape: a selection goes first, then a reply or edit.
-			if (!fMessages->SelectedText().IsEmpty())
+			if (fRecording)
+				_Record("cancel");
+			else if (!fMessages->SelectedText().IsEmpty())
 				fMessages->ClearSelection();
 			else
 				_CancelCompose();
+			break;
+		case kMsgVoiceRecord:
+			_Record(fRecording ? "send" : "start");
+			break;
+		case kMsgVoiceRecordState:
+			_SetRecording(message->GetBool("recording", false),
+				message->GetInt32("seconds", 0), message->GetFloat("level", 0));
 			break;
 		case kMsgForward:
 		{

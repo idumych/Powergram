@@ -267,6 +267,21 @@ public:
 					(long long)message->GetInt64("message_id", 0));
 				fflush(stdout);
 				break;
+			case kMsgVoiceRecord:
+			{
+				// As App answers, frozen at 0:07 with a middling level.
+				BString action = message->GetString("action", "");
+				printf("record %s chat %lld reply %lld\n", action.String(),
+					(long long)message->GetInt64("chat_id", 0),
+					(long long)message->GetInt64("reply_to", 0));
+				fflush(stdout);
+				BMessage state(kMsgVoiceRecordState);
+				state.AddBool("recording", action == "start");
+				state.AddInt32("seconds", 7);
+				state.AddFloat("level", 0.3f);
+				fMain->PostMessage(&state);
+				break;
+			}
 			case kMsgOpenLink:
 				printf("link %s\n", message->GetString("url", ""));
 				fflush(stdout);

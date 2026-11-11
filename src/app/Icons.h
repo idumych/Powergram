@@ -10,7 +10,8 @@ class BBitmap;
 enum IconKind {
 	kIconAttach,    // a paper clip
 	kIconEmoji,     // a smiling face
-	kIconSticker    // a square with a peeled corner
+	kIconSticker,   // a square with a peeled corner
+	kIconMic        // a microphone
 };
 
 // A B_RGBA32 bitmap `size` pixels square; the caller owns it.

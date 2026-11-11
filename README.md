@@ -45,7 +45,8 @@ made-up data so far.
 - Pinned messages: a bar under the chat's name (click to jump, and again for
   the next one); pin and unpin from the message's menu
 - Reactions (shown and added), forwarding, polls, locations, places and contacts
-- Voice messages, played in the app with a waveform
+- Voice messages, played in the app with a waveform, and recorded: click the
+  microphone, then Send (or the microphone again); Escape cancels
 - Files and music sent to you, shown with their type's icon, name and size:
   click to open one in its application, or "Save as…" from its menu
 - A chat info window: picture, bio or description, members, shared photos
@@ -61,7 +62,7 @@ made-up data so far.
   apps send them, and every request throttled (a few at a time, and a full
   stop when Telegram asks to wait)
 
-Not yet: recording voice messages, calls, secret chats, QR-code login, video
+Not yet: calls, secret chats, QR-code login, video
 playback inside the app (videos open in MediaPlayer), a Linux (Cosmoe) build.
 
 ## Screenshots
@@ -115,7 +116,7 @@ Settings apply at once; here the text size is Large.
 On Haiku or Renku OS:
 
 ```sh
-pkgman install tdlib openssl3_devel zlib_devel
+pkgman install tdlib openssl3_devel zlib_devel opus_devel libogg_devel
 make
 ./Powergram
 ```
@@ -128,7 +129,8 @@ needs only OpenSSL and zlib at run time. Install `noto_emoji` for emoji.
 `make test` runs the core tests (login flow, chat list, history, throttling,
 files and download progress, stickers, formatting, presence, voice, chat info,
 links and usernames, pinned messages) on any system with a C++17 compiler.
-On Haiku, `make file-saving-test` checks saving received files.
+On Haiku, `make file-saving-test` checks saving received files and
+`make voice-record-test` checks the voice message files it records.
 
 ## Your API key
 

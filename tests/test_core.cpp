@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Host tests for the portable core: `make test`.
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 
@@ -11,6 +12,7 @@
 #include "../src/core/Format.h"
 #include "../src/core/Links.h"
 #include "../src/core/Pinned.h"
+#include "../src/core/VoiceNote.h"
 #include "../src/core/Presence.h"
 #include "../src/core/SendQueue.h"
 #include "../src/core/Stickers.h"
@@ -1146,6 +1148,62 @@ TestPinned()
 
 
 static void
+TestVoiceRecording()
+{
+	// Packing is the inverse of Telegram's unpacking.
+	std::string levels;
+	for (int i = 0; i < 100; i++)
+		levels += (char)(i * 7 % 32);
+	std::string packed = PackWaveform(levels);
+	CHECK(packed.size() == 63);
+	CHECK(UnpackWaveform(packed).substr(0, 100) == levels);
+	CHECK(EncodeBase64("Man") == "TWFu" && EncodeBase64("Ma") == "TWE=" && EncodeBase64("M") == "TQ==");
+	CHECK(DecodeBase64(EncodeBase64(packed)) == packed);
+
+	// 44.1 kHz stereo to 48 kHz mono, in uneven chunks: the right length,
+	// and a sine stays a sine.
+	Resampler resampler(44100, 2);
+	std::vector<float> in, out;
+	for (int i = 0; i < 44100; i++) {
+		float v = (float)std::sin(2 * M_PI * 440 * i / 44100.0);
+		in.push_back(v);
+		in.push_back(v);
+	}
+	size_t done = 0;
+	for (size_t chunk : {1000, 1, 7000, 513, 35586}) {
+		resampler.Process(in.data() + done * 2, chunk, out);
+		done += chunk;
+	}
+	CHECK(done == 44100);
+	CHECK(out.size() > 47990 && out.size() <= 48000);
+	double worst = 0;
+	for (size_t i = 0; i < out.size(); i++)
+		worst = std::max(worst, std::fabs(out[i] - std::sin(2 * M_PI * 440 * i / 48000.0)));
+	CHECK(worst < 0.01);
+
+	// The waveform: quiet then loud gives low bars then full ones; the
+	// level is the peak since it was last taken.
+	WaveformMeter meter;
+	std::vector<float> quiet(48000, 0.05f), loud(48000, -0.5f);
+	meter.Add(quiet.data(), quiet.size());
+	CHECK(std::fabs(meter.TakeLevel() - 0.05f) < 1e-6 && meter.TakeLevel() == 0);
+	meter.Add(loud.data(), loud.size());
+	std::string bars = meter.Levels();
+	CHECK(bars.size() == 100 && bars[0] == 3 && bars[99] == 31);
+	CHECK(std::fabs(meter.Seconds() - 2.0) < 1e-9);
+	CHECK(WaveformMeter().Levels().empty());
+
+	json send = request::SendVoice(42, "/tmp/v.ogg", 2, bars, 7);
+	const json& note = send["input_message_content"]["voice_note"];
+	CHECK(send["input_message_content"]["@type"] == "inputMessageVoiceNote");
+	CHECK(note["voice_note"]["path"] == "/tmp/v.ogg" && note["duration"] == 2);
+	CHECK(UnpackWaveform(DecodeBase64(note["waveform"].get<std::string>())).substr(0, 100) == bars);
+	CHECK(send["reply_to"]["message_id"] == 7);
+	CHECK(request::RecordingVoice(42, true)["action"]["@type"] == "chatActionRecordingVoiceNote");
+}
+
+
+static void
 TestHaikuIcons()
 {
 	// An HVIF file is drawn; other documents get a card.
@@ -1185,6 +1243,7 @@ main()
 	TestHaikuIcons();
 	TestLinks();
 	TestPinned();
+	TestVoiceRecording();
 	if (sFailures) {
 		std::fprintf(stderr, "%d check(s) failed\n", sFailures);
 		return EXIT_FAILURE;
