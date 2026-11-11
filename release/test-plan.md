@@ -31,8 +31,12 @@ time only (static libraries), so extract it instead of installing it:
     # Voice recording: Opus and OGG headers (the libraries come with Haiku).
     for p in opus_devel-1.3.1-2 libogg_devel-1.3.6-2; do
         curl -fsSLO https://eu.hpkg.haiku-os.org/haikuports/r1beta6/x86_64/current/packages/$p-x86_64.hpkg
-        package extract -C av $p-x86_64.hpkg
+        mkdir -p av && package extract -C av $p-x86_64.hpkg
     done
+    # Their develop/lib links point at ../../lib, which only exists once
+    # installed: point that at the system's copies (Haiku ships the libraries).
+    mkdir -p av/lib
+    ln -sf /boot/system/lib/libopus.so.0.8.0 /boot/system/lib/libogg.so.0.8.6 av/lib/
     CXXFLAGS="-I/Data/powergram-sdk/tdlib/develop/headers -I/Data/powergram-sdk/av/develop/headers" \
     LDFLAGS="-L/Data/powergram-sdk/tdlib/develop/lib -L/Data/powergram-sdk/av/develop/lib" TMPDIR=/Data/tmp \
         sh packaging/build-hpkg.sh
