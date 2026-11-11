@@ -4,6 +4,7 @@
 //   make mockup && obj/PowergramMockup group|media|emoji|stickers|reply MEDIA_DIR
 // Prints the main window's content frame, for cropping to just it.
 #include <Application.h>
+#include <Path.h>
 #include <File.h>
 #include <MessageRunner.h>
 #include <TimeFormat.h>
@@ -84,6 +85,8 @@ struct Row {
 	std::vector<pp::Span> spans;
 	BString reactions;
 	std::string waveform;
+	BString fileName, fileTitle, fileType;
+	int64 fileSize = 0, fileDone = -1;
 };
 
 
@@ -120,6 +123,11 @@ Add(BMessage& list, const Row& r)
 	list.AddString("spans", pp::EncodeSpans(r.spans).c_str());
 	list.AddString("reactions", r.reactions);
 	AddBytes(list, "waveform", r.waveform);
+	list.AddString("file_name", r.fileName);
+	list.AddString("file_title", r.fileTitle);
+	list.AddString("file_type", r.fileType);
+	list.AddInt64("file_size", r.fileSize);
+	list.AddInt64("file_done", r.fileDone);
 }
 
 
@@ -242,6 +250,22 @@ public:
 			case kMsgSettingsChanged:
 				fMain->PostMessage(message);
 				break;
+			case kMsgSaveFile:
+			case kMsgOpenMedia:
+			{
+				// What App would get, for checking from the shell.
+				entry_ref dir;
+				BPath path;
+				if (message->FindRef("directory", &dir) == B_OK)
+					path.SetTo(&dir);
+				printf("%s chat %lld message %lld to %s/%s\n",
+					message->what == kMsgSaveFile ? "save" : "open",
+					(long long)message->GetInt64("chat_id", 0),
+					(long long)message->GetInt64("message_id", 0),
+					path.Path() != nullptr ? path.Path() : "", message->GetString("name", ""));
+				fflush(stdout);
+				break;
+			}
 			case kMsgMessageProperties:
 			{
 				// Everything allowed, for the message menu.
@@ -461,9 +485,42 @@ private:
 			Add(list, r);
 			if (sScene == "icon") {
 				// A Haiku icon sent as a file, drawn from its HVIF data.
-				r = _From(kJonas, 115, "Document: Plane.hvif\nThe new app icon", now - 40);
+				r = _From(kJonas, 115, "The new app icon", now - 40);
 				r.mediaKind = 7;
+				r.fileName = "Plane.hvif";
 				r.image = Media("Plane.hvif").c_str();
+				Add(list, r);
+			}
+			if (sScene == "files") {
+				// Documents and music as cards: one not fetched, one on its
+				// way, one downloaded.
+				r = _From(kJonas, 116, "The suspend logs from last night", now - 80);
+				r.mediaKind = 8;
+				r.fileName = r.fileTitle = "syslog-t480-suspend.txt";
+				r.fileType = "text/plain";
+				r.fileSize = 348 * 1024;
+				Add(list, r);
+				r = _From(kMira, 117, "", now - 70);
+				r.mediaKind = 8;
+				r.fileName = r.fileTitle = "Haiku-R1-beta6-release-notes.pdf";
+				r.fileType = "application/pdf";
+				r.fileSize = 2400 * 1024;
+				r.fileDone = 1100 * 1024;
+				Add(list, r);
+				r = _Mine(118, "Boot chime, for the theme", now - 50);
+				r.mediaKind = 8;
+				r.fileName = "chime.ogg";
+				r.fileTitle = "The Planes \xE2\x80\x93 Boot Chime";
+				r.fileType = "audio/ogg";
+				r.fileSize = 412 * 1024;
+				r.fileDone = r.fileSize;
+				r.duration = 7;
+				Add(list, r);
+				r = _From(kTeo, 119, "", now - 30);
+				r.mediaKind = 8;
+				r.fileName = r.fileTitle = "powergram-0.2.1-1-x86_64.hpkg";
+				r.fileType = "application/x-vnd.haiku-package";
+				r.fileSize = 21 * 1024 * 1024;
 				Add(list, r);
 			}
 			if (sScene == "bigemoji") {

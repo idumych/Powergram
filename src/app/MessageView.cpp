@@ -4,6 +4,8 @@
 #include <Bitmap.h>
 #include <File.h>
 #include <IconUtils.h>
+#include <Mime.h>
+#include <Roster.h>
 #include <Clipboard.h>
 #include <Cursor.h>
 #include <DataIO.h>
@@ -210,6 +212,10 @@ MessageView::_DrawMedia(const MessageRow& row, const Layout& l, rgb_color fg,
 	}
 	if (row.mediaKind == 7) {
 		_DrawIcon(row, box, fg);
+		return;
+	}
+	if (row.mediaKind == 8) {
+		_DrawFile(row, box, fg, line);
 		return;
 	}
 	bool hidden = (row.spoiler || row.secret) && !fRevealed.count(row.id);
@@ -431,6 +437,127 @@ MessageView::_DrawIcon(const MessageRow& row, BRect box, rgb_color fg)
 	SetHighColor(fg);
 	DrawString(text.String(), BPoint(box.left + (box.Width() - fPlain.StringWidth(text.String())) / 2,
 		box.top + (box.Height() + fh.ascent - fh.descent) / 2));
+}
+
+
+// "340 KB", "1.2 MB": sizes as Tracker shows them.
+static BString
+SizeText(int64 bytes)
+{
+	char text[32];
+	if (bytes < 1024)
+		snprintf(text, sizeof(text), "%d bytes", (int)bytes);
+	else if (bytes < 1024 * 1024)
+		snprintf(text, sizeof(text), "%.0f KB", bytes / 1024.0);
+	else if (bytes < 1024LL * 1024 * 1024)
+		snprintf(text, sizeof(text), "%.1f MB", bytes / (1024.0 * 1024));
+	else
+		snprintf(text, sizeof(text), "%.2f GB", bytes / (1024.0 * 1024 * 1024));
+	return text;
+}
+
+
+// The system's icon for a file type (from the sender's type, else guessed
+// from the name), as Tracker would show the file: the type's own icon, the
+// one its preferred application gives it, its supertype's, or a plain file.
+BBitmap*
+MessageView::_TypeIcon(const BString& type, const BString& name, int32 side)
+{
+	BMimeType mime;
+	if (type.IsEmpty() || type == B_FILE_MIME_TYPE || mime.SetTo(type) != B_OK)
+		BMimeType::GuessMimeType(name.String(), &mime);
+	std::string key = std::string("type:") + (mime.Type() != nullptr ? mime.Type() : "")
+		+ "@" + std::to_string(side);
+	auto it = fIcons.find(key);
+	if (it != fIcons.end())
+		return it->second;
+
+	uint8* data = nullptr;
+	size_t size = 0;
+	status_t status = mime.InitCheck() == B_OK ? mime.GetIcon(&data, &size) : B_ERROR;
+	if (status != B_OK && mime.InitCheck() == B_OK) {
+		char signature[B_MIME_TYPE_LENGTH];
+		BMimeType app;
+		if (mime.GetPreferredApp(signature) == B_OK && app.SetTo(signature) == B_OK)
+			status = app.GetIconForType(mime.Type(), &data, &size);
+	}
+	if (status != B_OK && mime.InitCheck() == B_OK) {
+		BMimeType super;
+		if (mime.GetSupertype(&super) == B_OK)
+			status = super.GetIcon(&data, &size);
+	}
+	if (status != B_OK)
+		status = BMimeType(B_FILE_MIME_TYPE).GetIcon(&data, &size);
+
+	BBitmap* icon = nullptr;
+	if (status == B_OK) {
+		icon = new BBitmap(BRect(0, 0, side - 1, side - 1), B_RGBA32);
+		if (BIconUtils::GetVectorIcon(data, size, icon) != B_OK) {
+			delete icon;
+			icon = nullptr;
+		}
+	}
+	delete[] data;
+	fIcons[key] = icon;
+	return icon;
+}
+
+
+// A document or music file: its type's icon, the name (or the song), and
+// its size, or how much of it is here while it downloads.
+void
+MessageView::_DrawFile(const MessageRow& row, BRect box, rgb_color fg, float line)
+{
+	float d = box.Height();
+	int32 side = (int32)d;
+	BBitmap* icon = _TypeIcon(row.fileType, row.fileName, side);
+	if (icon != nullptr) {
+		SetDrawingMode(B_OP_ALPHA);
+		DrawBitmapAsync(icon, box.LeftTop());
+	}
+
+	float left = box.left + d + roundf(line * 0.4f);
+	float width = box.right - left;
+	font_height bh;
+	fBold.GetHeight(&bh);
+	BString title(row.fileTitle);
+	fBold.TruncateString(&title, B_TRUNCATE_MIDDLE, width);
+	SetFont(&fBold);
+	SetHighColor(fg);
+	float top = box.top + roundf((d - 2 * line) / 2);
+	DrawString(title.String(), BPoint(left, top + bh.ascent));
+
+	BString detail;
+	bool downloading = row.fileDone >= 0 && row.fileDone < row.fileSize;
+	if (downloading) {
+		detail << "Downloading" B_UTF8_ELLIPSIS " " << (int)(100 * row.fileDone / row.fileSize)
+			<< "% of " << SizeText(row.fileSize);
+	} else {
+		detail = row.fileSize > 0 ? SizeText(row.fileSize) : BString("File");
+		if (row.duration > 0) {
+			detail << " \xC2\xB7 " << row.duration / 60 << ":"
+				<< (row.duration % 60 < 10 ? "0" : "") << row.duration % 60;
+		}
+	}
+	BFont small(&fPlain);
+	small.SetSize(std::max(9.0f, floorf(fPlain.Size() * 0.85f)));
+	font_height sh;
+	small.GetHeight(&sh);
+	small.TruncateString(&detail, B_TRUNCATE_END, width);
+	SetFont(&small);
+	SetHighColor(mix_color(fg, LowColor(), 160));
+	float baseline = top + line + sh.ascent + 1;
+	DrawString(detail.String(), BPoint(left, baseline));
+	if (downloading) {
+		// A thin bar under the text, filling as it comes.
+		rgb_color accent = ui_color(B_CONTROL_HIGHLIGHT_COLOR);
+		float y = std::min(box.bottom - 1, baseline + sh.descent + 2);
+		SetHighColor(mix_color(accent, LowColor(), 110));
+		FillRect(BRect(left, y, box.right, y + 1));
+		SetHighColor(accent);
+		FillRect(BRect(left, y, left + (box.right - left) * row.fileDone / row.fileSize, y + 1));
+	}
+	SetFont(&fPlain);
 }
 
 
@@ -858,6 +985,12 @@ MessageView::_Relayout()
 		if (row.mediaKind == 7) {
 			mediaW = mediaH = roundf(line * 5);
 			bubbleWidth = std::max(bubbleWidth, std::min(maxBubble, mediaW + 2 * pad));
+		} else if (row.mediaKind == 8) {
+			// The name decides the width, within reason.
+			mediaH = roundf(line * 2.4f);
+			mediaW = std::min(maxBubble - 2 * pad, std::max(line * 10,
+				mediaH + roundf(line * 0.4f) + _Width(row.fileTitle, true) + 2));
+			bubbleWidth = std::max(bubbleWidth, std::min(maxBubble, mediaW + 2 * pad));
 		} else if (row.mediaKind == 6) {
 			mediaW = std::min(maxBubble - 2 * pad, line * 14);
 			mediaH = roundf(line * 2.4f);
@@ -937,7 +1070,7 @@ MessageView::_Relayout()
 		if (row.service)
 			l.textTop = y + pad * 0.5f;
 		if (row.mediaKind != 0)
-			l.media.OffsetBy(sticker ? left : row.mediaKind == 6 || row.mediaKind == 7 ? left + pad
+			l.media.OffsetBy(sticker ? left : row.mediaKind >= 6 ? left + pad
 				: left + (bubbleWidth - mediaW) / 2, 0);
 
 		// Where the reaction pills go.

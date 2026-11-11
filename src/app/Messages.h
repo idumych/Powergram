@@ -89,6 +89,11 @@ enum {
 	// message view → main window → app: a photo was clicked;
 	// "message_id" (int64), plus "chat_id" (int64) on the way to the app
 	kMsgOpenMedia = 'opmd',
+	// message menu → save panel → main window → app: save a message's file;
+	// "message_id" (int64), the panel's "directory" (entry_ref) and "name",
+	// plus "chat_id" (int64) on the way to the app
+	kMsgSaveFile = 'svfl',
+	kMsgSaveAsk = 'svak',
 
 	// app → main window: the voice message playing, "message_id" (int64,
 	// 0 when none) and "progress" (float, 0..1)

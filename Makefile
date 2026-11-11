@@ -13,7 +13,7 @@ APP_SRCS := src/app/App.cpp src/app/TdClient.cpp src/app/Settings.cpp \
 	src/app/LoginWindow.cpp src/app/MainWindow.cpp src/app/MessageView.cpp \
 	src/app/BitmapUtils.cpp src/app/Icons.cpp src/app/Pickers.cpp src/app/ChatPicker.cpp \
 	src/app/SettingsWindow.cpp src/app/VoicePlayer.cpp \
-	src/app/ChatInfoWindow.cpp
+	src/app/ChatInfoWindow.cpp src/app/FileSaving.cpp
 
 BUILD := obj
 CORE_OBJS := $(CORE_SRCS:%.cpp=$(BUILD)/%.o)
@@ -52,6 +52,12 @@ live-scroll: $(BUILD)/live_scroll
 $(BUILD)/live_scroll: $(BUILD)/tests/live_scroll.o $(BUILD)/src/app/MessageView.o \
 		$(BUILD)/src/app/BitmapUtils.o $(BUILD)/src/core/Format.o
 	$(CXX) -o $@ $^ -lbe -ltranslation
+
+# Saving received files: copying, and the file type the copy gets.
+file-saving-test: $(BUILD)/file_saving_test
+	$(BUILD)/file_saving_test
+$(BUILD)/file_saving_test: $(BUILD)/tests/file_saving_test.o $(BUILD)/src/app/FileSaving.o
+	$(CXX) -o $@ $^ -lbe
 
 # Layout timing for the message view; not part of the app.
 bench: $(BUILD)/bench_messageview

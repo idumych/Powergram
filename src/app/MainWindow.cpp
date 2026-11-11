@@ -639,6 +639,11 @@ MainWindow::_UpdateHistory(const BMessage* history)
 		row.emoji = history->GetString("emoji", i, "");
 		row.duration = history->GetInt32("duration", i, 0);
 		row.waveform = FindBytes(history, "waveform", i);
+		row.fileName = history->GetString("file_name", i, "");
+		row.fileTitle = history->GetString("file_title", i, "");
+		row.fileType = history->GetString("file_type", i, "");
+		row.fileSize = history->GetInt64("file_size", i, 0);
+		row.fileDone = history->GetInt64("file_done", i, -1);
 		row.showAvatar = history->GetBool("show_avatar", i, false);
 		row.senderKey = history->GetInt64("sender_key", i, 0);
 		row.avatarPath = history->GetString("avatar", i, "");
@@ -734,6 +739,12 @@ MainWindow::_ShowMessageMenu(const BMessage* properties)
 	}
 	react->SetTargetForItems(this);
 	menu->AddItem(react);
+	// Anything with a file behind it (not a sticker's bare emoji).
+	if (row->mediaKind != 0 && !(row->mediaKind == 2 && row->imagePath.IsEmpty())) {
+		menu->AddSeparatorItem();
+		item(row->mediaKind == 8 ? "Open" : "Open in viewer", kMsgOpenMedia, true);
+		item("Save as" B_UTF8_ELLIPSIS, kMsgSaveAsk, true);
+	}
 	bool canSelf = properties->GetBool("can_delete_self", false);
 	bool canAll = properties->GetBool("can_delete_all", false);
 	if (properties->GetBool("can_edit", false)) {
@@ -1292,6 +1303,34 @@ MainWindow::MessageReceived(BMessage* message)
 				act.AddString("action", "delete");
 				be_app->PostMessage(&act);
 			}
+			break;
+		case kMsgSaveAsk:
+		{
+			const MessageRow* row = fMessages->Row(message->GetInt64("message_id", 0));
+			if (row == nullptr)
+				break;
+			BMessage save(kMsgSaveFile);
+			save.AddInt64("message_id", row->id);
+			if (fSavePanel == nullptr) {
+				fSavePanel = new BFilePanel(B_SAVE_PANEL, new BMessenger(this));
+				fSavePanel->Window()->SetTitle(APP_NAME ": Save file");
+			}
+			fSavePanel->SetMessage(&save);
+			// The sender's name for the file, or one for its kind.
+			static const char* const kNames[] = {"File", "Photo.jpg", "Sticker.webp",
+				"Video.mp4", "GIF.mp4", "Video message.mp4", "Voice message.ogg",
+				"Icon.hvif", "File"};
+			BString name = row->fileName;
+			if (name.IsEmpty())
+				name = kNames[std::min<int32>(std::max<int32>(row->mediaKind, 0), 8)];
+			fSavePanel->SetSaveText(name.String());
+			fSavePanel->Show();
+			break;
+		}
+		case kMsgSaveFile:
+			message->RemoveName("chat_id");
+			message->AddInt64("chat_id", fOpenChat);
+			be_app->PostMessage(message);
 			break;
 		case kMsgAttach:
 		{

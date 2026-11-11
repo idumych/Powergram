@@ -33,7 +33,8 @@ struct MessageRow {
 	BString replyText;  // empty without a reply
 
 	// pp::Media::Kind: 0 none, 1 photo, 2 sticker, 3 video, 4 GIF,
-	// 5 round video message, 6 voice message, 7 Haiku vector icon (HVIF).
+	// 5 round video message, 6 voice message, 7 Haiku vector icon (HVIF),
+	// 8 document or music file.
 	int32 mediaKind;
 	int32 duration;             // videos and voice messages, seconds
 	std::string waveform;       // voice messages: a 0..31 level per byte
@@ -44,6 +45,11 @@ struct MessageRow {
 	bool spoiler;               // hidden until clicked
 	bool secret;                // self-destructing: hidden until opened
 	BString emoji;              // a sticker without an image
+	BString fileName;           // what Save As suggests
+	BString fileTitle;          // a document's card: its name, or the song
+	BString fileType;           // its MIME type, for the icon
+	int64 fileSize;
+	int64 fileDone;             // bytes here so far, -1 when not asked for
 
 	// Groups: the sender's picture beside their incoming messages, drawn
 	// once per run of messages from the same sender.
@@ -146,6 +152,8 @@ private:
 	BBitmap* _Bitmap(const MessageRow& row, bool* blurred, bool round = false);
 	void _DrawVoice(const MessageRow& row, BRect box, rgb_color fg, float line);
 	void _DrawIcon(const MessageRow& row, BRect box, rgb_color fg);
+	void _DrawFile(const MessageRow& row, BRect box, rgb_color fg, float line);
+	BBitmap* _TypeIcon(const BString& type, const BString& name, int32 side);
 	void _DrawMedia(const MessageRow& row, const Layout& layout, rgb_color fg,
 		float line);
 	void _DrawAvatar(const MessageRow& row, BRect circle);

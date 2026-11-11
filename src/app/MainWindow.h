@@ -70,6 +70,7 @@ private:
 	StickerWindow* fStickerWindow;
 	std::vector<std::string> fRecentEmoji;
 	BFilePanel* fFilePanel;
+	BFilePanel* fSavePanel = nullptr;
 	std::map<std::string, BBitmap*> fAvatars;   // round chat photos by path
 	BView* fComposeBar;         // "Reply to …" / "Edit message", over the entry
 	BStringView* fComposeLabel;

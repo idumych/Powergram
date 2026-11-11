@@ -37,6 +37,7 @@
 #include "../core/Presence.h"
 #include "../core/Stickers.h"
 #include "ChatInfoWindow.h"
+#include "FileSaving.h"
 #include "LoginWindow.h"
 #include "MainWindow.h"
 #include "Messages.h"
@@ -76,8 +77,10 @@ private:
 	void _FlushHistory(bool scrollToEnd = false);
 	void _SendHistory();
 	void _StartDownloads();
+	const pp::Message* _FindMessage(int64 chatId, int64 messageId) const;
 	void _OpenMedia(int64 chatId, int64 messageId);
-	void _Launch(const std::string& path);
+	void _SaveFile(const BMessage* message);
+	void _Launch(const std::string& path, const std::string& mimeType = "");
 	void _SendFiles(const BMessage* message);
 	void _SendStickerSets();
 	void _SendChatStatus();
@@ -103,6 +106,10 @@ private:
 	SettingsWindow* fSettingsWindow = nullptr;
 	BMessageRunner* fPresenceRunner = nullptr;
 	std::set<int32_t> fOpenWhenDownloaded;  // clicked photos on their way
+	std::multimap<int32_t, std::string> fSaveWhenDownloaded;  // file → where
+	std::map<int32_t, std::string> fFileTypes;  // documents' MIME types
+	std::set<int32_t> fProgressFiles;  // documents downloading in the open chat
+	bigtime_t fLastProgress = 0;
 
 	// Voice messages play here rather than in MediaPlayer.
 	void _PlayVoice(const std::string& path, int64 messageId);
@@ -266,7 +273,11 @@ App::_HandleObject(const json& object)
 		bool shown = false;
 		for (int32_t id : completed) {
 			if (fOpenWhenDownloaded.erase(id))
-				_Launch(fFiles.Path(id));
+				_Launch(fFiles.Path(id), fFileTypes[id]);
+			auto saves = fSaveWhenDownloaded.equal_range(id);
+			for (auto it = saves.first; it != saves.second; ++it)
+				SaveCopy(fFiles.Path(id), it->second, fFileTypes[id]);
+			fSaveWhenDownloaded.erase(id);
 			auto voice = fPlayWhenDownloaded.find(id);
 			if (voice != fPlayWhenDownloaded.end()) {
 				_PlayVoice(fFiles.Path(id), voice->second);
@@ -286,8 +297,15 @@ App::_HandleObject(const json& object)
 		if (type == "updateFile")
 			return;
 	}
-	if (type == "updateFile")
+	if (type == "updateFile") {
+		// A document's card shows how far it's got, twice a second.
+		int32 id = (int32)pp::Int(pp::Field(object, "file"), "id");
+		if (fProgressFiles.count(id) && system_time() - fLastProgress > 500000) {
+			fLastProgress = system_time();
+			_FlushHistory();
+		}
 		return;
+	}
 
 	std::vector<json> requests;
 	if (fAuth->Handle(object, requests)) {
@@ -332,7 +350,14 @@ App::_HandleObject(const json& object)
 		if (type == "error") {
 			int32 id = atoi(extra.c_str() + 9);
 			fFiles.DownloadFailed(id);
-			fOpenWhenDownloaded.erase(id);
+			bool asked = fOpenWhenDownloaded.erase(id) + fSaveWhenDownloaded.erase(id) > 0;
+			if (asked) {
+				BString text("Could not download the file. ");
+				text << pp::AuthFlow::ErrorText(object).c_str();
+				_ShowError(text);
+			}
+			if (fHistory != nullptr)
+				_FlushHistory();
 			_StartDownloads();
 		}
 		return;
@@ -562,6 +587,8 @@ App::_SendHistory()
 		std::vector<pp::Span> spans;
 		BString reactions;   // "emoji\tcount\tchosen" per line
 		std::string waveform;
+		BString fileName, fileTitle, fileType;
+		int64 fileSize = 0, fileDone = -1;
 	};
 	auto add = [&](const Row& r) {
 		list.AddInt64("id", r.id);
@@ -594,6 +621,11 @@ App::_SendHistory()
 		list.AddString("spans", pp::EncodeSpans(r.spans).c_str());
 		list.AddString("reactions", r.reactions);
 		AddBytes(list, "waveform", r.waveform);
+		list.AddString("file_name", r.fileName);
+		list.AddString("file_title", r.fileTitle);
+		list.AddString("file_type", r.fileType);
+		list.AddInt64("file_size", r.fileSize);
+		list.AddInt64("file_done", r.fileDone);
 	};
 	auto summary = [](const pp::Message& m) {
 		if (!m.text.empty())
@@ -612,6 +644,8 @@ App::_SendHistory()
 			return BString("Voice message");
 		if (m.media.kind == pp::Media::kIcon)
 			return BString("Icon");
+		if (m.media.kind == pp::Media::kDocument)
+			return BString((m.media.title.empty() ? m.media.fileName : m.media.title).c_str());
 		return BString("Message");
 	};
 
@@ -621,6 +655,7 @@ App::_SendHistory()
 	int64 lastSender = 0;  // name only on the first message of a run
 	bool unreadMarked = false;
 	std::vector<pp::Message> messages = fHistory->Sorted();
+	fProgressFiles.clear();
 	for (size_t i = 0; i < messages.size(); i++) {
 		const pp::Message& m = messages[i];
 		// A centred date between days, as Paper Plane shows.
@@ -715,6 +750,23 @@ App::_SendHistory()
 			// only when it's opened.
 			if (!media.secret && r.image.IsEmpty())
 				fFiles.Want(media.fileId, 1 + (int)std::min<size_t>(30, 30 * i / messages.size()));
+			// The file that's opened or saved: its name and, for a
+			// document's card, how much of it is here.
+			int32 file = media.fullFileId != 0 ? media.fullFileId : media.fileId;
+			std::string path = fFiles.Path(file);
+			r.fileName = media.fileName.c_str();
+			if (r.fileName.IsEmpty() && !path.empty())
+				r.fileName = BPath(path.c_str()).Leaf();
+			r.fileTitle = media.title.empty() ? media.fileName.c_str() : media.title.c_str();
+			r.fileType = media.mimeType.c_str();
+			r.fileSize = media.fileSize;
+			if (!path.empty())
+				r.fileDone = media.fileSize;
+			else if (fFiles.Downloading(file)) {
+				r.fileDone = fFiles.Downloaded(file);
+				if (media.kind == pp::Media::kDocument)
+					fProgressFiles.insert(file);
+			}
 		}
 		add(r);
 	}
@@ -737,8 +789,8 @@ App::_StartDownloads()
 }
 
 
-void
-App::_OpenMedia(int64 chatId, int64 messageId)
+const pp::Message*
+App::_FindMessage(int64 chatId, int64 messageId) const
 {
 	const pp::Message* m = nullptr;
 	if (fHistory != nullptr && fHistory->ChatId() == chatId)
@@ -750,6 +802,14 @@ App::_OpenMedia(int64 chatId, int64 messageId)
 				m = &photo;
 		}
 	}
+	return m;
+}
+
+
+void
+App::_OpenMedia(int64 chatId, int64 messageId)
+{
+	const pp::Message* m = _FindMessage(chatId, messageId);
 	if (m == nullptr || m->media.kind == pp::Media::kNone
 		|| m->media.kind == pp::Media::kSticker)
 		return;
@@ -778,13 +838,43 @@ App::_OpenMedia(int64 chatId, int64 messageId)
 		}
 		return;
 	}
+	if (!m->media.mimeType.empty())
+		fFileTypes[file] = m->media.mimeType;
 	if (!fFiles.Path(file).empty()) {
-		_Launch(fFiles.Path(file));
+		_Launch(fFiles.Path(file), m->media.mimeType);
 		return;
 	}
 	fOpenWhenDownloaded.insert(file);
 	fFiles.Want(file, 32);
 	_StartDownloads();
+	_FlushHistory();  // "Downloading…" on the card
+}
+
+
+void
+App::_SaveFile(const BMessage* message)
+{
+	const pp::Message* m = _FindMessage(message->GetInt64("chat_id", 0),
+		message->GetInt64("message_id", 0));
+	entry_ref dir;
+	const char* name = message->GetString("name", nullptr);
+	if (m == nullptr || message->FindRef("directory", &dir) != B_OK || name == nullptr)
+		return;
+	int32 file = m->media.fullFileId != 0 ? m->media.fullFileId : m->media.fileId;
+	if (file == 0)
+		return;
+	BPath to(&dir);
+	to.Append(name);
+	if (!m->media.mimeType.empty())
+		fFileTypes[file] = m->media.mimeType;
+	if (!fFiles.Path(file).empty()) {
+		SaveCopy(fFiles.Path(file), to.Path(), m->media.mimeType);
+		return;
+	}
+	fSaveWhenDownloaded.insert({file, to.Path()});
+	fFiles.Want(file, 32);
+	_StartDownloads();
+	_FlushHistory();
 }
 
 
@@ -1097,13 +1187,21 @@ App::_StopVoice()
 
 
 void
-App::_Launch(const std::string& path)
+App::_Launch(const std::string& path, const std::string& mimeType)
 {
 	// The user's viewer for the file's type opens it (ShowImage for photos,
-	// MediaPlayer for videos by default).
+	// MediaPlayer for videos by default). TDLib's files have no type yet:
+	// sniffed, or else the one the sender's app gave.
+	GiveFileType(path.c_str(), mimeType);
 	entry_ref ref;
-	if (get_ref_for_path(path.c_str(), &ref) == B_OK)
-		be_roster->Launch(&ref);
+	if (get_ref_for_path(path.c_str(), &ref) != B_OK)
+		return;
+	status_t status = be_roster->Launch(&ref);
+	if (status != B_OK && status != B_ALREADY_RUNNING) {
+		BString text("No application here opens \"");
+		text << ref.name << "\". Use Save As" B_UTF8_ELLIPSIS " from the message's menu to keep it.";
+		_ShowError(text);
+	}
 }
 
 
@@ -1591,6 +1689,9 @@ App::MessageReceived(BMessage* message)
 			_SendFiles(message);
 			break;
 
+		case kMsgSaveFile:
+			_SaveFile(message);
+			break;
 		case kMsgOpenMedia:
 			_OpenMedia(message->GetInt64("chat_id", 0), message->GetInt64("message_id", 0));
 			break;

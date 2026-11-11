@@ -21,7 +21,7 @@ your login and settings.
 Built and run on Renku OS and Haiku R1/beta6, x86_64. Used with a real
 account (0.1.0): logging in, the chat list, reading chats, photos in chats,
 sending and editing messages, emoji, stickers and notifications. Everything
-added in 0.2.0 and 0.2.1, and videos, GIFs, round video messages, sending photos and
+added since 0.2.0, and videos, GIFs, round video messages, sending photos and
 files, spoilers and self-destructing photos, has only been checked with
 made-up data so far.
 
@@ -41,6 +41,8 @@ made-up data so far.
 - Typing, online and "last seen" status and group sizes in the chat header
 - Reactions (shown and added), forwarding, polls, locations, places and contacts
 - Voice messages, played in the app with a waveform
+- Files and music sent to you, shown with their type's icon, name and size:
+  click to open one in its application, or "Save as…" from its menu
 - A chat info window: picture, bio or description, members, shared photos
 - Settings: notifications, message text in notifications, a sound (chosen in
   the Sounds preferences), text size
@@ -79,6 +81,9 @@ Replying: the message being answered is shown over the entry.
 
 ![Voice messages](docs/screenshots/haiku-voice.png)
 Voice messages play in the app; the waveform fills as they play.
+
+![Files in a chat](docs/screenshots/haiku-files.png)
+Files show their type's icon from Haiku's file types, and their progress while downloading.
 
 ![The chat info window](docs/screenshots/haiku-info.png)
 Chat info: the description, members and shared photos.

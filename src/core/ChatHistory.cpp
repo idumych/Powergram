@@ -171,6 +171,49 @@ IsHaikuIcon(const json& document)
 }
 
 
+Media
+DocumentMedia(const json& document)
+{
+	Media media;
+	media.kind = Media::kDocument;
+	const json& file = Field(document, "document");
+	media.fullFileId = (int32_t)Int(file, "id");
+	media.fileName = Str(document, "file_name");
+	media.mimeType = Str(document, "mime_type");
+	media.fileSize = Int(file, "size");
+	if (media.fileSize == 0)
+		media.fileSize = Int(file, "expected_size");
+	if (media.fileName.empty())
+		media.fileName = "File";
+	return media;
+}
+
+
+Media
+AudioMedia(const json& audio)
+{
+	Media media;
+	media.kind = Media::kDocument;
+	const json& file = Field(audio, "audio");
+	media.fullFileId = (int32_t)Int(file, "id");
+	media.fileName = Str(audio, "file_name");
+	media.mimeType = Str(audio, "mime_type");
+	media.fileSize = Int(file, "size");
+	if (media.fileSize == 0)
+		media.fileSize = Int(file, "expected_size");
+	media.duration = (int32_t)Int(audio, "duration");
+	// "Performer – Title" reads better than "track01.mp3"; the file is
+	// still saved under its own name.
+	std::string title = Str(audio, "title");
+	std::string performer = Str(audio, "performer");
+	if (!title.empty())
+		media.title = performer.empty() ? title : performer + " \xE2\x80\x93 " + title;
+	if (media.fileName.empty())
+		media.fileName = title.empty() ? "Audio" : title;
+	return media;
+}
+
+
 // Formatting of the text MessageText returns for `content`.
 static std::vector<Span>
 ContentSpans(const json& content, const std::string& text)
@@ -180,7 +223,7 @@ ContentSpans(const json& content, const std::string& text)
 	if (type == "messageText")
 		formatted = &Field(content, "text");
 	else if (type == "messagePhoto" || type == "messageVideo" || type == "messageAnimation"
-		|| type == "messageVoiceNote")
+		|| type == "messageVoiceNote" || type == "messageDocument" || type == "messageAudio")
 		formatted = &Field(content, "caption");
 	std::vector<Span> spans;
 	if (formatted != nullptr && Str(*formatted, "text") == text)
@@ -216,9 +259,17 @@ ParseMedia(const json& content, Message& m)
 		m.media = VoiceMedia(Field(content, "voice_note"));
 	else if (type == "messageDocument" && IsHaikuIcon(Field(content, "document"))) {
 		// Tiny files: fetched to draw, and opened like any document.
+		m.media = DocumentMedia(Field(content, "document"));
 		m.media.kind = Media::kIcon;
-		m.media.fileId = m.media.fullFileId
-			= (int32_t)Int(Field(Field(content, "document"), "document"), "id");
+		m.media.fileId = m.media.fullFileId;
+		return;
+	}
+	else if (type == "messageDocument") {
+		m.media = DocumentMedia(Field(content, "document"));
+		return;
+	}
+	else if (type == "messageAudio") {
+		m.media = AudioMedia(Field(content, "audio"));
 		return;
 	}
 	else if (type == "messageAnimatedEmoji") {
@@ -249,7 +300,7 @@ MessageText(const json& content)
 		return Str(Field(content, "text"), "text");
 	// Shown as images: only the caption is text.
 	if (type == "messagePhoto" || type == "messageVideo" || type == "messageAnimation"
-		|| type == "messageVoiceNote")
+		|| type == "messageVoiceNote" || type == "messageDocument" || type == "messageAudio")
 		return Str(Field(content, "caption"), "text");
 	if (type == "messageVideoNote")
 		return std::string();
@@ -299,11 +350,6 @@ MessageText(const json& content)
 		if (!last.empty())
 			name += " " + last;
 		return "Contact: " + name + "\n" + Str(contact, "phone_number");
-	}
-	if (type == "messageDocument") {
-		std::string text = "Document: " + Str(Field(content, "document"), "file_name");
-		std::string caption = Str(Field(content, "caption"), "text");
-		return caption.empty() ? text : text + "\n" + caption;
 	}
 	if (type == "messageSticker" || type == "messageAnimatedEmoji")
 		return std::string();

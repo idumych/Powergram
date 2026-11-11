@@ -580,10 +580,37 @@ TestVideosAvatarsSending()
 	m = ParseMessage(message);
 	CHECK(m.media.kind == Media::kVideoNote && m.media.width == 384 && m.media.height == 384);
 
-	message["content"] = {{"@type", "messageDocument"}, {"document", {{"file_name", "notes.pdf"}}},
+	// Documents and music: a card with the name and size, the caption as
+	// text, and the file fetched only when asked for.
+	json pdf = File(25);
+	pdf["size"] = 1000;
+	message["content"] = {{"@type", "messageDocument"}, {"document", {{"file_name", "notes.pdf"},
+		{"mime_type", "application/pdf"}, {"document", pdf}}},
 		{"caption", {{"text", "Read this"}}}};
 	m = ParseMessage(message);
-	CHECK(m.media.kind == Media::kNone && m.text == "Document: notes.pdf\nRead this");
+	CHECK(m.media.kind == Media::kDocument && m.text == "Read this");
+	CHECK(m.media.fileId == 0 && m.media.fullFileId == 25 && m.media.fileName == "notes.pdf");
+	CHECK(m.media.mimeType == "application/pdf" && m.media.fileSize == 1000);
+	message["content"] = {{"@type", "messageAudio"}, {"audio", {{"file_name", "track01.mp3"},
+		{"title", "Blue"}, {"performer", "Band"}, {"duration", 185}, {"audio", File(26)}}},
+		{"caption", {{"text", ""}}}};
+	m = ParseMessage(message);
+	CHECK(m.media.kind == Media::kDocument && m.text.empty() && m.media.fullFileId == 26);
+	CHECK(m.media.title == "Band \xE2\x80\x93 Blue" && m.media.fileName == "track01.mp3");
+	CHECK(m.media.duration == 185);
+
+	// Download progress, for the card.
+	FileStore progress;
+	progress.Want(25, 32);
+	CHECK(progress.Downloading(25) && progress.TakeDownloads().size() == 1);
+	json part = File(25, "", false, true);
+	part["local"]["downloaded_size"] = 400;
+	progress.Apply({{"@type", "updateFile"}, {"file", part}});
+	CHECK(progress.Downloaded(25) == 400 && progress.Downloading(25));
+	part = File(25, "/f/notes.pdf", true);
+	part["local"]["downloaded_size"] = 1000;
+	CHECK(progress.Apply({{"@type", "updateFile"}, {"file", part}}).size() == 1);
+	CHECK(!progress.Downloading(25) && progress.Path(25) == "/f/notes.pdf");
 
 	// Chat photos: the small file, its preview, and updates to both.
 	ChatList list;
@@ -986,13 +1013,13 @@ TestEmojiMessages()
 static void
 TestHaikuIcons()
 {
-	// An HVIF file is drawn; other documents stay text.
+	// An HVIF file is drawn; other documents get a card.
 	json message = Msg(42, 1, "");
 	message["content"] = {{"@type", "messageDocument"}, {"document", {{"file_name", "Plane.HVIF"},
 		{"mime_type", "application/octet-stream"}, {"document", File(55)}}}, {"caption", {{"text", ""}}}};
 	Message parsed = ParseMessage(message);
 	CHECK(parsed.media.kind == Media::kIcon && parsed.media.fileId == 55 && parsed.media.fullFileId == 55);
-	CHECK(parsed.text == "Document: Plane.HVIF");
+	CHECK(parsed.text.empty() && parsed.media.fileName == "Plane.HVIF");
 	CHECK(IsHaikuIcon({{"file_name", "icon"}, {"mime_type", "image/x-hvif"}}));
 	CHECK(!IsHaikuIcon({{"file_name", "notes.pdf"}, {"mime_type", "application/pdf"}}));
 }

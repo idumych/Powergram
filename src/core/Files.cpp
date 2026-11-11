@@ -17,6 +17,7 @@ FileStore::_Record(const json& file, std::vector<int32_t>& completed)
 	entry.complete = Bool(local, "is_downloading_completed")
 		&& !Str(local, "path").empty();
 	entry.path = entry.complete ? Str(local, "path") : std::string();
+	entry.downloaded = Int(local, "downloaded_size");
 
 	bool active = Bool(local, "is_downloading_active");
 	if (entry.complete) {
@@ -66,6 +67,14 @@ FileStore::Path(int32_t fileId) const
 {
 	auto it = fFiles.find(fileId);
 	return it != fFiles.end() && it->second.complete ? it->second.path : std::string();
+}
+
+
+int64_t
+FileStore::Downloaded(int32_t fileId) const
+{
+	auto it = fFiles.find(fileId);
+	return it != fFiles.end() ? it->second.downloaded : 0;
 }
 
 

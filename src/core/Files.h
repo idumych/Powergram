@@ -24,6 +24,11 @@ public:
 
 	// The local path of a downloaded file, or "".
 	std::string Path(int32_t fileId) const;
+	// How much of a file is here so far (all of it once downloaded), and
+	// whether it's on its way: asked for and not finished.
+	int64_t Downloaded(int32_t fileId) const;
+	bool Downloading(int32_t fileId) const
+		{ return fActive.count(fileId) > 0 || fWanted.count(fileId) > 0; }
 
 	// Asks for a file; higher priority first (1-32, as TDLib's).
 	void Want(int32_t fileId, int priority);
@@ -46,6 +51,7 @@ private:
 	struct Entry {
 		std::string path;
 		bool complete = false;
+		int64_t downloaded = 0;
 	};
 	std::map<int32_t, Entry> fFiles;
 	std::map<int32_t, int> fWanted;   // waiting: id → priority
