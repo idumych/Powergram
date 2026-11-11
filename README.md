@@ -32,6 +32,9 @@ made-up data so far.
   drafts, archived chats and chat folders; right-click to mark read or
   unread, mute, pin, archive or delete
 - Search: filter the chat list by name, find messages in a chat (Cmd+F, Cmd+G)
+- Telegram links and @usernames open in the app: public chats, invite links
+  (asking first), links to messages; Chat > Open username or link (Cmd+O);
+  a Join button in groups and channels you're not in
 - Reading chats: replies, forwards, edits, read ticks, date separators,
   sender pictures in groups, older messages loading as you scroll up; bold,
   italic, code, spoilers and clickable links; opening at the first unread

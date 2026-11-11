@@ -63,6 +63,14 @@ ParseEntities(const json& formattedText)
 		} else if (t == "textEntityTypeTextUrl") {
 			s.style = kLink;
 			s.url = Str(type, "url");
+		} else if (t == "textEntityTypeMention") {
+			// "@name": opened in the app, as a t.me link.
+			s.style = kLink;
+			std::string name = text.substr(s.start, s.length);
+			s.url = "https://t.me/" + (name[0] == '@' ? name.substr(1) : name);
+		} else if (t == "textEntityTypeMentionName") {
+			s.style = kLink;
+			s.url = "tg://user?id=" + std::to_string(Int(type, "user_id"));
 		} else if (t == "textEntityTypeEmailAddress") {
 			s.style = kLink;
 			s.url = "mailto:" + text.substr(s.start, s.length);

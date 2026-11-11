@@ -32,6 +32,9 @@ public:
 	// The basic group or supergroup behind a chat, 0 if it isn't one.
 	int64_t BasicGroup(int64_t chatId) const;
 	int64_t Supergroup(int64_t chatId) const;
+	// Not a member of this group or channel (left, banned, or just looking
+	// at a public one): the chat offers to join instead of the entry.
+	bool CanJoin(int64_t chatId) const;
 
 	struct Action {
 		int64_t senderId;
@@ -49,6 +52,8 @@ private:
 	std::map<int64_t, bool> fChannel;            // chat → is a channel
 	std::map<int64_t, int32_t> fBasicCounts;
 	std::map<int64_t, int32_t> fSuperCounts;
+	std::map<int64_t, bool> fBasicMember;        // basic group → we're in it
+	std::map<int64_t, bool> fSuperMember;        // supergroup → we're in it
 	std::map<int64_t, std::map<int64_t, Action>> fActions;  // chat → sender → action
 };
 

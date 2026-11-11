@@ -182,11 +182,15 @@ public:
 				status.AddInt64("chat_id", id);
 				status.AddString("status", id == kGroup ? "Jonas is typing…" : "last seen today at 22:41");
 				status.AddBool("active", id == kGroup);
+				// "links": looking at a group we aren't in.
+				status.AddBool("can_join", sScene == "links" && id == kGroup);
 				fMain->PostMessage(&status);
 				break;
 			}
 			case kMsgNextStep:
-				if (sScene == "emoji")
+				if (sScene == "links")
+					fMain->PostMessage(kMsgOpenLinkAsk);
+				else if (sScene == "emoji")
 					fMain->PostMessage(kMsgShowEmoji);
 				else if (sScene == "stickers")
 					fMain->PostMessage(kMsgShowStickers);
@@ -249,6 +253,14 @@ public:
 				break;
 			case kMsgSettingsChanged:
 				fMain->PostMessage(message);
+				break;
+			case kMsgOpenLink:
+				printf("link %s\n", message->GetString("url", ""));
+				fflush(stdout);
+				break;
+			case kMsgJoinChat:
+				printf("join chat %lld\n", (long long)message->GetInt64("chat_id", 0));
+				fflush(stdout);
 				break;
 			case kMsgSaveFile:
 			case kMsgOpenMedia:
@@ -489,6 +501,23 @@ private:
 				r.mediaKind = 7;
 				r.fileName = "Plane.hvif";
 				r.image = Media("Plane.hvif").c_str();
+				Add(list, r);
+			}
+			if (sScene == "links") {
+				// A mention and a t.me link, opened in the app.
+				r = _From(kJonas, 120, "Ask @mira_o, or see t.me/haiku_apps for the others", now - 40);
+				std::string t = r.text.String();
+				pp::Span mention;
+				mention.start = (int32_t)t.find("@mira_o");
+				mention.length = 7;
+				mention.style = pp::kLink;
+				mention.url = "https://t.me/mira_o";
+				r.spans.push_back(mention);
+				pp::Span link = mention;
+				link.start = (int32_t)t.find("t.me/haiku_apps");
+				link.length = 15;
+				link.url = "https://t.me/haiku_apps";
+				r.spans.push_back(link);
 				Add(list, r);
 			}
 			if (sScene == "files") {

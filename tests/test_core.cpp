@@ -9,6 +9,7 @@
 #include "../src/core/ChatList.h"
 #include "../src/core/Files.h"
 #include "../src/core/Format.h"
+#include "../src/core/Links.h"
 #include "../src/core/Presence.h"
 #include "../src/core/SendQueue.h"
 #include "../src/core/Stickers.h"
@@ -709,7 +710,7 @@ TestFormatting()
 		{{"offset", 6}, {"length", 4}, {"type", {{"@type", "textEntityTypeBold"}}}},
 		{{"offset", 11}, {"length", 4}, {"type", {{"@type", "textEntityTypeTextUrl"},
 			{"url", "https://haiku-os.org"}}}},
-		{{"offset", 0}, {"length", 2}, {"type", {{"@type", "textEntityTypeMentionName"}}}}})}};
+		{{"offset", 0}, {"length", 2}, {"type", {{"@type", "textEntityTypeHashtag"}}}}})}};
 	auto spans = ParseEntities(formatted);
 	CHECK(spans.size() == 2);
 	CHECK(spans[0].style == kBold && text.substr(spans[0].start, spans[0].length) == "bold");
@@ -1011,6 +1012,87 @@ TestEmojiMessages()
 
 
 static void
+TestLinks()
+{
+	// Which links TDLib looks at; the rest go to the browser.
+	CHECK(IsTelegramLink("https://t.me/haiku_os"));
+	CHECK(IsTelegramLink("http://www.telegram.me/+AbC"));
+	CHECK(IsTelegramLink("t.me/joinchat/xyz"));
+	CHECK(IsTelegramLink("tg://resolve?domain=durov"));
+	CHECK(IsTelegramLink("HTTPS://T.ME"));
+	CHECK(!IsTelegramLink("https://t.meadow.com/x"));
+	CHECK(!IsTelegramLink("https://example.com/t.me/x"));
+	CHECK(!IsTelegramLink("https://www.haiku-os.org"));
+	CHECK(!IsTelegramLink("mailto:a@t.me"));
+
+	// What people type in "Open username or link…".
+	CHECK(NormalizeLink(" @haiku_os ") == "https://t.me/haiku_os");
+	CHECK(NormalizeLink("haiku_os") == "https://t.me/haiku_os");
+	CHECK(NormalizeLink("+AbC-d_9") == "https://t.me/+AbC-d_9");
+	CHECK(NormalizeLink("t.me/haiku_os/12") == "https://t.me/haiku_os/12");
+	CHECK(NormalizeLink("https://t.me/c/123/45") == "https://t.me/c/123/45");
+	CHECK(NormalizeLink("tg://resolve?domain=x") == "tg://resolve?domain=x");
+	CHECK(NormalizeLink("two words").empty() && NormalizeLink("@").empty()
+		&& NormalizeLink("").empty() && NormalizeLink("+").empty());
+
+	LinkAction a = ParseLinkType({{"@type", "internalLinkTypePublicChat"},
+		{"chat_username", "haiku_os"}, {"draft_text", ""}, {"open_profile", false}});
+	CHECK(a.kind == LinkAction::kPublicChat && a.value == "haiku_os");
+	a = ParseLinkType({{"@type", "internalLinkTypeChatInvite"}, {"invite_link", "https://t.me/+AbC"}});
+	CHECK(a.kind == LinkAction::kInvite && a.value == "https://t.me/+AbC");
+	a = ParseLinkType({{"@type", "internalLinkTypeMessage"}, {"url", "tg://privatepost?channel=1&post=2"}});
+	CHECK(a.kind == LinkAction::kMessage && a.value == "tg://privatepost?channel=1&post=2");
+	CHECK(ParseLinkType({{"@type", "internalLinkTypeSettings"}}).kind == LinkAction::kBrowser);
+	CHECK(MentionedUser("tg://user?id=777") == 777 && MentionedUser("https://t.me/x") == 0);
+
+	// Mentions in messages are links into the app.
+	json text = {{"text", "Ask @mira or Jonas"}, {"entities", json::array({
+		{{"offset", 4}, {"length", 5}, {"type", {{"@type", "textEntityTypeMention"}}}},
+		{{"offset", 13}, {"length", 5}, {"type", {{"@type", "textEntityTypeMentionName"},
+			{"user_id", 31}}}}})}};
+	std::vector<Span> spans = ParseEntities(text);
+	CHECK(spans.size() == 2 && spans[0].style == kLink && spans[0].url == "https://t.me/mira");
+	CHECK(spans[1].url == "tg://user?id=31" && spans[1].start == 13);
+
+	// Invite links: the question, and the chat when it can be opened already.
+	json info = {{"@type", "chatInviteLinkInfo"}, {"chat_id", 0}, {"accessible_for", 0},
+		{"type", {{"@type", "inviteLinkChatTypeSupergroup"}}}, {"title", "Haiku app makers"},
+		{"description", ""}, {"member_count", 1204}};
+	CHECK(InviteQuestion(info) == "Join the group \xE2\x80\x9CHaiku app makers\xE2\x80\x9D?\n1,204 members");
+	CHECK(InviteChat(info) == 0);
+	info["chat_id"] = -1005;
+	CHECK(InviteChat(info) == -1005);
+	info["accessible_for"] = 300;  // a preview for a while: still join first
+	CHECK(InviteChat(info) == 0);
+	info["type"] = {{"@type", "inviteLinkChatTypeChannel"}};
+	info["member_count"] = 1;
+	CHECK(InviteQuestion(info) == "Join the channel \xE2\x80\x9CHaiku app makers\xE2\x80\x9D?\n1 subscriber");
+
+	json join = request::JoinByInvite("https://t.me/+AbC", "join");
+	CHECK(join["@type"] == "joinChatByInviteLink" && join["invite_link"] == "https://t.me/+AbC");
+	CHECK(request::SearchPublicChat("mira", "x")["username"] == "mira");
+	CHECK(request::CreatePrivateChat(31, "x")["user_id"] == 31);
+
+	// Joining: offered in groups and channels we aren't in.
+	Presence presence;
+	json chat = NewChat(-1005, "Haiku app makers", "");
+	chat["chat"]["type"] = {{"@type", "chatTypeSupergroup"}, {"supergroup_id", 5}, {"is_channel", false}};
+	presence.Apply(chat, 0);
+	CHECK(!presence.CanJoin(-1005));  // not known yet: don't offer
+	presence.Apply({{"@type", "updateSupergroup"}, {"supergroup", {{"id", 5}, {"member_count", 9},
+		{"status", {{"@type", "chatMemberStatusLeft"}}}}}}, 0);
+	CHECK(presence.CanJoin(-1005));
+	presence.Apply({{"@type", "updateSupergroup"}, {"supergroup", {{"id", 5}, {"member_count", 10},
+		{"status", {{"@type", "chatMemberStatusMember"}}}}}}, 0);
+	CHECK(!presence.CanJoin(-1005));
+	presence.Apply({{"@type", "updateSupergroup"}, {"supergroup", {{"id", 5},
+		{"status", {{"@type", "chatMemberStatusCreator"}, {"is_member", false}}}}}}, 0);
+	CHECK(presence.CanJoin(-1005));
+	CHECK(!presence.CanJoin(42));  // private chats never
+}
+
+
+static void
 TestHaikuIcons()
 {
 	// An HVIF file is drawn; other documents get a card.
@@ -1048,6 +1130,7 @@ main()
 	TestChatInfo();
 	TestEmojiMessages();
 	TestHaikuIcons();
+	TestLinks();
 	if (sFailures) {
 		std::fprintf(stderr, "%d check(s) failed\n", sFailures);
 		return EXIT_FAILURE;

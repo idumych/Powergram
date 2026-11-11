@@ -71,6 +71,9 @@ private:
 	std::vector<std::string> fRecentEmoji;
 	BFilePanel* fFilePanel;
 	BFilePanel* fSavePanel = nullptr;
+	// A group or channel we're not in: the Send button joins it.
+	bool fCanJoin = false;
+	void _SetCanJoin(bool canJoin);
 	std::map<std::string, BBitmap*> fAvatars;   // round chat photos by path
 	BView* fComposeBar;         // "Reply to …" / "Edit message", over the entry
 	BStringView* fComposeLabel;

@@ -34,12 +34,14 @@
 #include <ctime>
 
 #include "../core/ChatList.h"
+#include "../core/Links.h"
 #include "BitmapUtils.h"
 #include "ChatPicker.h"
 #include "SettingsWindow.h"
 #include "Icons.h"
 #include "Pickers.h"
 #include "MessageView.h"
+#include "OpenLinkWindow.h"
 #include "Messages.h"
 
 namespace {
@@ -384,6 +386,9 @@ MainWindow::MainWindow(BRect frame, bool testDc,
 	fInfoItem = new BMenuItem("Info" B_UTF8_ELLIPSIS, new BMessage(kMsgShowChatInfo), 'I');
 	fInfoItem->SetEnabled(false);
 	chat->AddItem(fInfoItem);
+	chat->AddSeparatorItem();
+	chat->AddItem(new BMenuItem("Open username or link" B_UTF8_ELLIPSIS,
+		new BMessage(kMsgOpenLinkAsk), 'O'));
 	bar->AddItem(chat);
 
 	fList = new ChatListView();
@@ -592,6 +597,8 @@ MainWindow::_SelectionChanged()
 	fFindText->SetText("");
 	fFindResult->SetText("");
 	fEntry->SetText("");
+	fCanJoin = false;
+	fSendButton->SetLabel("Send");
 	fEntry->SetEnabled(id != 0);
 	fSendButton->SetEnabled(id != 0);
 	fAttachButton->SetEnabled(id != 0);
@@ -808,9 +815,27 @@ MainWindow::_CancelCompose()
 	fEditing = 0;
 	if (!fComposeBar->IsHidden())
 		fComposeBar->Hide();
-	fSendButton->SetLabel("Send");
+	fSendButton->SetLabel(fCanJoin ? "Join" : "Send");
 	if (wasEditing)
 		fEntry->SetText("");
+}
+
+
+void
+MainWindow::_SetCanJoin(bool canJoin)
+{
+	if (canJoin == fCanJoin || fOpenChat == 0)
+		return;
+	fCanJoin = canJoin;
+	if (canJoin)
+		_CancelCompose();
+	fSendButton->SetLabel(canJoin ? "Join" : "Send");
+	fEntry->SetEnabled(!canJoin);
+	fAttachButton->SetEnabled(!canJoin);
+	fEmojiButton->SetEnabled(!canJoin);
+	fStickerButton->SetEnabled(!canJoin);
+	if (!canJoin)
+		fEntry->MakeFocus(true);
 }
 
 
@@ -1113,12 +1138,19 @@ MainWindow::MessageReceived(BMessage* message)
 					fSubtitle->SetHighUIColor(B_CONTROL_HIGHLIGHT_COLOR);
 				else
 					fSubtitle->SetHighUIColor(B_PANEL_TEXT_COLOR, B_DARKEN_2_TINT);
+				_SetCanJoin(message->GetBool("can_join", false));
 			}
 			break;
 		case kMsgSelectionChanged:
 			_SelectionChanged();
 			break;
 		case kMsgSend:
+			if (fCanJoin) {
+				BMessage join(kMsgJoinChat);
+				join.AddInt64("chat_id", fOpenChat);
+				be_app->PostMessage(&join);
+				break;
+			}
 			_Send();
 			break;
 		case kMsgEntryModified:
@@ -1149,10 +1181,21 @@ MainWindow::MessageReceived(BMessage* message)
 		case kMsgMessageProperties:
 			_ShowMessageMenu(message);
 			break;
+		case kMsgOpenLinkAsk:
+			(new OpenLinkWindow(this))->Show();
+			break;
 		case kMsgOpenUrl:
 		{
-			// The user's browser (or mail app for mailto:) opens it.
-			BUrl url(message->GetString("url", ""), true);
+			// Telegram links and mentions open in the app; the rest in the
+			// user's browser (or mail app for mailto:).
+			const char* address = message->GetString("url", "");
+			if (pp::IsTelegramLink(address) || pp::MentionedUser(address) != 0) {
+				BMessage open(kMsgOpenLink);
+				open.AddString("url", address);
+				be_app->PostMessage(&open);
+				break;
+			}
+			BUrl url(address, true);
 			if (url.IsValid())
 				url.OpenWithPreferredApplication(false);
 			break;

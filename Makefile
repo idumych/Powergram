@@ -8,12 +8,13 @@ override CXXFLAGS += -std=c++17 -Wall -Wextra -O2
 
 CORE_SRCS := src/core/AuthFlow.cpp src/core/ChatList.cpp src/core/ChatHistory.cpp \
 	src/core/SendQueue.cpp src/core/Files.cpp src/core/Stickers.cpp \
-	src/core/Format.cpp src/core/Presence.cpp src/core/ChatInfo.cpp
+	src/core/Format.cpp src/core/Presence.cpp src/core/ChatInfo.cpp \
+	src/core/Links.cpp
 APP_SRCS := src/app/App.cpp src/app/TdClient.cpp src/app/Settings.cpp \
 	src/app/LoginWindow.cpp src/app/MainWindow.cpp src/app/MessageView.cpp \
 	src/app/BitmapUtils.cpp src/app/Icons.cpp src/app/Pickers.cpp src/app/ChatPicker.cpp \
 	src/app/SettingsWindow.cpp src/app/VoicePlayer.cpp \
-	src/app/ChatInfoWindow.cpp src/app/FileSaving.cpp
+	src/app/ChatInfoWindow.cpp src/app/FileSaving.cpp src/app/OpenLinkWindow.cpp
 
 BUILD := obj
 CORE_OBJS := $(CORE_SRCS:%.cpp=$(BUILD)/%.o)

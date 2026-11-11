@@ -93,6 +93,16 @@ enum {
 	// "message_id" (int64), the panel's "directory" (entry_ref) and "name",
 	// plus "chat_id" (int64) on the way to the app
 	kMsgSaveFile = 'svfl',
+	// main window → app: a Telegram link or @username to open in the app,
+	// "url" (string); the Open window posts it to the main window first
+	kMsgOpenLink = 'opln',
+	// Chat menu → main window: show the "Open username or link" window
+	kMsgOpenLinkAsk = 'olak',
+	// invite question → app: join through "link" (string); its "which"
+	// (int32) is the alert's button, 0 for Join
+	kMsgJoinInvite = 'jnin',
+	// main window → app: join the public chat "chat_id" (int64) on screen
+	kMsgJoinChat = 'jnch',
 	kMsgSaveAsk = 'svak',
 
 	// app → main window: the voice message playing, "message_id" (int64,

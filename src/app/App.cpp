@@ -11,11 +11,13 @@
 #include <Path.h>
 #include <TranslationUtils.h>
 #include <Roster.h>
+#include <Url.h>
 #include <Screen.h>
 #include <TimeFormat.h>
 #include <DateFormat.h>
 #include <Notification.h>
 
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
@@ -34,6 +36,7 @@
 #include "../core/ChatInfo.h"
 #include "../core/ChatList.h"
 #include "../core/Files.h"
+#include "../core/Links.h"
 #include "../core/Presence.h"
 #include "../core/Stickers.h"
 #include "ChatInfoWindow.h"
@@ -90,6 +93,17 @@ private:
 	void _SetOnline(bool online);
 	void _Notify(const json& message);
 	void _ShowError(const char* text);
+
+	// Telegram links and usernames, opened in the app.
+	void _OpenLink(const std::string& url);
+	bool _HandleLinkReply(const json& object, const std::string& extra);
+	// Selects a chat, adding it at the top of the list for now if it isn't
+	// in the one shown (a public chat found by its username); `messageId`
+	// to scroll to, once it's open.
+	void _ShowChat(int64 chatId, int64 messageId = 0);
+	int64 fExtraChat = 0;
+	int64 fPendingChat = 0;
+	int64 fPendingMessage = 0;
 
 	Settings fSettings;
 	bool fTestDc;
@@ -366,6 +380,8 @@ App::_HandleObject(const json& object)
 		_HandleHistoryReply(object);
 		return;
 	}
+	if (_HandleLinkReply(object, extra))
+		return;
 	if (extra.rfind("info:", 0) == 0) {
 		if (fInfoWindow != nullptr && atoll(extra.c_str() + 5) == fInfo.chatId
 			&& fInfo.Apply(object))
@@ -934,6 +950,7 @@ App::_SendChatStatus()
 	message.AddInt64("chat_id", chatId);
 	message.AddString("status", status);
 	message.AddBool("active", active);
+	message.AddBool("can_join", fPresence.CanJoin(chatId));
 	fMain->PostMessage(&message);
 	if (fInfoWindow != nullptr && fInfo.chatId == chatId)
 		_SendChatInfo();
@@ -1267,6 +1284,112 @@ App::_ShowError(const char* text)
 
 
 void
+App::_OpenLink(const std::string& url)
+{
+	if (int64 user = pp::MentionedUser(url)) {
+		_Send(pp::request::CreatePrivateChat(user, "openchat"));
+		return;
+	}
+	if (!pp::IsTelegramLink(url)) {
+		BUrl(url.c_str(), true).OpenWithPreferredApplication(false);
+		return;
+	}
+	// TDLib knows what each kind of t.me link is.
+	_Send(pp::request::LinkType(url, "link:" + url));
+}
+
+
+bool
+App::_HandleLinkReply(const json& object, const std::string& extra)
+{
+	std::string type = pp::Type(object);
+	if (extra.rfind("link:", 0) == 0) {
+		std::string url = extra.substr(5);
+		pp::LinkAction action = pp::ParseLinkType(object);
+		switch (action.kind) {
+			case pp::LinkAction::kPublicChat:
+				_Send(pp::request::SearchPublicChat(action.value, "openchat"));
+				break;
+			case pp::LinkAction::kInvite:
+				_Send(pp::request::CheckInvite(action.value, "invite:" + action.value));
+				break;
+			case pp::LinkAction::kMessage:
+				_Send(pp::request::MessageLinkInfo(action.value, "msglink"));
+				break;
+			default:
+				// Stickers, proxies, settings…: the web page explains.
+				BUrl(url.c_str(), true).OpenWithPreferredApplication(false);
+		}
+		return true;
+	}
+	if (extra == "openchat" || extra == "join" || extra == "msglink"
+		|| extra.rfind("invite:", 0) == 0) {
+		if (type == "error") {
+			BString text(extra == "join" ? "Could not join the chat. "
+				: extra.rfind("invite:", 0) == 0 ? "Could not open the invite link. "
+				: "Could not open the chat. ");
+			text << pp::LinkErrorText(object).c_str();
+			_ShowError(text);
+			return true;
+		}
+		if (type == "chat")
+			_ShowChat(pp::Int(object, "id"));
+		else if (type == "messageLinkInfo") {
+			int64 chat = pp::Int(object, "chat_id");
+			int64 message = pp::Int(pp::Field(object, "message"), "id");
+			if (chat != 0)
+				_ShowChat(chat, message);
+			else
+				_ShowError("This message could not be found. It may have been deleted, "
+					"or it is in a chat you are not in.");
+		} else if (type == "chatInviteLinkInfo") {
+			int64 chat = pp::InviteChat(object);
+			if (chat != 0) {
+				_ShowChat(chat);
+				return true;
+			}
+			BAlert* alert = new BAlert(APP_NAME, pp::InviteQuestion(object).c_str(),
+				"Join", "Cancel", nullptr, B_WIDTH_AS_USUAL, B_IDEA_ALERT);
+			alert->SetShortcut(1, B_ESCAPE);
+			BMessage* join = new BMessage(kMsgJoinInvite);
+			join->AddString("link", extra.substr(7).c_str());
+			alert->Go(new BInvoker(join, this));
+		}
+		// joinChat answers "ok": the supergroup update redraws the header.
+		return true;
+	}
+	return false;
+}
+
+
+void
+App::_ShowChat(int64 chatId, int64 messageId)
+{
+	if (chatId == 0)
+		return;
+	if (fHistory != nullptr && fHistory->ChatId() == chatId) {
+		if (messageId != 0)
+			_ShowMessage(messageId);
+		BMessage select(kMsgSelectChat);
+		select.AddInt64("id", chatId);
+		fMain->PostMessage(&select);
+		return;
+	}
+	std::vector<pp::Chat> chats = fChats.Sorted(fShownList);
+	if (std::none_of(chats.begin(), chats.end(),
+			[&](const pp::Chat& c) { return c.id == chatId; })) {
+		fExtraChat = chatId;
+		_FlushChats();   // before the selection, so the row is there
+	}
+	fPendingChat = chatId;
+	fPendingMessage = messageId;
+	BMessage select(kMsgSelectChat);
+	select.AddInt64("id", chatId);
+	fMain->PostMessage(&select);
+}
+
+
+void
 App::_SetOnline(bool online)
 {
 	if (fAuth == nullptr || fAuth->State().step != AuthStep::Ready)
@@ -1382,7 +1505,13 @@ App::_FlushChats()
 	fFlushRunner = nullptr;
 
 	BMessage list(kMsgChatList);
-	for (const pp::Chat& c : fChats.Sorted(fShownList)) {
+	std::vector<pp::Chat> chats = fChats.Sorted(fShownList);
+	// A chat opened from a link that isn't in this list: first, for now.
+	if (fExtraChat != 0 && fChats.Find(fExtraChat) != nullptr
+		&& std::none_of(chats.begin(), chats.end(),
+			[&](const pp::Chat& c) { return c.id == fExtraChat; }))
+		chats.insert(chats.begin(), *fChats.Find(fExtraChat));
+	for (const pp::Chat& c : chats) {
 		list.AddInt64("id", c.id);
 		list.AddString("title", c.title.c_str());
 		list.AddString("text", c.lastText.c_str());
@@ -1472,6 +1601,7 @@ App::MessageReceived(BMessage* message)
 		case kMsgShowList:
 		{
 			fShownList = message->GetString("key", "main");
+			fExtraChat = 0;
 			// Each list is loaded the first time it's shown.
 			if (fLoadedLists.insert(fShownList).second)
 				_Send(pp::ChatList::LoadRequest(100, fShownList));
@@ -1618,7 +1748,26 @@ App::MessageReceived(BMessage* message)
 			break;
 
 		case kMsgOpenChat:
-			_OpenChat(message->GetInt64("id", 0));
+		{
+			int64 id = message->GetInt64("id", 0);
+			_OpenChat(id);
+			if (id != 0 && id == fPendingChat && fPendingMessage != 0)
+				_ShowMessage(fPendingMessage);
+			fPendingChat = fPendingMessage = 0;
+			break;
+		}
+
+		case kMsgOpenLink:
+			_OpenLink(message->GetString("url", ""));
+			break;
+
+		case kMsgJoinInvite:
+			if (message->GetInt32("which", 1) == 0)
+				_Send(pp::request::JoinByInvite(message->GetString("link", ""), "openchat"));
+			break;
+
+		case kMsgJoinChat:
+			_Send(pp::request::JoinChat(message->GetInt64("chat_id", 0), "join"));
 			break;
 
 		case kMsgLoadOlder:

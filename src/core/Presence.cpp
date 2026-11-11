@@ -3,6 +3,18 @@
 
 namespace pp {
 
+// In the group: an owner who hasn't left, an admin, a member, or a
+// restricted member who still is one.
+static bool
+IsMemberStatus(const json& status)
+{
+	std::string type = Type(status);
+	if (type == "chatMemberStatusCreator" || type == "chatMemberStatusRestricted")
+		return Bool(status, "is_member", true);
+	return type != "chatMemberStatusLeft" && type != "chatMemberStatusBanned";
+}
+
+
 static UserStatus
 ParseStatus(const json& status)
 {
@@ -78,11 +90,13 @@ Presence::Apply(const json& object, int64_t now)
 	if (type == "updateBasicGroup") {
 		const json& g = Field(object, "basic_group");
 		fBasicCounts[Int(g, "id")] = (int32_t)Int(g, "member_count");
+		fBasicMember[Int(g, "id")] = IsMemberStatus(Field(g, "status"));
 		return true;
 	}
 	if (type == "updateSupergroup") {
 		const json& g = Field(object, "supergroup");
 		fSuperCounts[Int(g, "id")] = (int32_t)Int(g, "member_count");
+		fSuperMember[Int(g, "id")] = IsMemberStatus(Field(g, "status"));
 		return true;
 	}
 	if (type == "updateChatAction") {
@@ -130,6 +144,23 @@ Presence::Supergroup(int64_t chatId) const
 {
 	auto it = fSupergroup.find(chatId);
 	return it != fSupergroup.end() ? it->second : 0;
+}
+
+
+bool
+Presence::CanJoin(int64_t chatId) const
+{
+	auto basic = fBasicGroup.find(chatId);
+	if (basic != fBasicGroup.end()) {
+		auto member = fBasicMember.find(basic->second);
+		return member != fBasicMember.end() && !member->second;
+	}
+	auto super = fSupergroup.find(chatId);
+	if (super != fSupergroup.end()) {
+		auto member = fSuperMember.find(super->second);
+		return member != fSuperMember.end() && !member->second;
+	}
+	return false;
 }
 
 
