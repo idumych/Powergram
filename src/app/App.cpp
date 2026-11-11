@@ -44,9 +44,11 @@
 #include "../core/Pinned.h"
 #include "../core/VoiceNote.h"
 #include "../core/Mentions.h"
+#include "../core/Profile.h"
 #include "../core/Presence.h"
 #include "../core/Stickers.h"
 #include "ChatInfoWindow.h"
+#include "ProfileWindow.h"
 #include "FileSaving.h"
 #include "MediaProbe.h"
 #include "LoginWindow.h"
@@ -117,7 +119,15 @@ private:
 	void _UpdateDeskbar();
 	void _SendUnread();
 	BMessenger fDeskbarItem;
-	int32 fUnreadSent = -1;   // the user's own id (TDLib's "my_id" option)
+	int32 fUnreadSent = -1;
+
+	// The Profile window, and what it shows.
+	void _SendProfile();
+	bool _HandleProfileReply(const json& object, const std::string& extra);
+	BMessenger fProfileWindow;
+	pp::Profile fProfile;
+	int fProfileSaving = 0;       // setName/setBio answers still to come
+	std::string fProfileError;   // the user's own id (TDLib's "my_id" option)
 	// The open chat's pinned messages, for the bar over it.
 	pp::PinnedMessages fPinned;
 	void _SendPinned();
@@ -342,6 +352,8 @@ App::_HandleObject(const json& object)
 			_SendStickers(true);
 		if (shown && fInfoWindow != nullptr)
 			_SendChatInfo();
+		if (shown && fProfileWindow.IsValid())
+			_SendProfile();
 		_StartDownloads();
 		if (type == "updateFile")
 			return;
@@ -367,6 +379,9 @@ App::_HandleObject(const json& object)
 	fNames.Apply(object);
 	if (type == "updateOption" && pp::Str(object, "name") == "my_id")
 		fMyId = pp::Int(pp::Field(object, "value"), "value");
+	if (fProfileWindow.IsValid() && fProfile.userId != 0
+		&& (type == "updateUser" || type == "updateUserFullInfo") && fProfile.Apply(object))
+		_SendProfile();
 	if (fPinned.Affects(object))
 		_Send(pp::request::Pinned(fPinned.ChatId()));
 	if (fPresence.Apply(object, time(nullptr))) {
@@ -420,6 +435,8 @@ App::_HandleObject(const json& object)
 		return;
 	}
 	if (_HandleLinkReply(object, extra))
+		return;
+	if (_HandleProfileReply(object, extra))
 		return;
 	if (extra.rfind("pinned:", 0) == 0) {
 		if (type == "foundChatMessages" && atoll(extra.c_str() + 7) == fPinned.ChatId()) {
@@ -1543,6 +1560,85 @@ App::_SendRecordState()
 }
 
 
+bool
+App::_HandleProfileReply(const json& object, const std::string& extra)
+{
+	if (extra.rfind("profile:", 0) != 0)
+		return false;
+	std::string type = pp::Type(object);
+	auto result = [&](const std::string& text) {
+		BMessage message(kMsgProfileResult);
+		message.AddString("text", text.c_str());
+		fProfileWindow.SendMessage(&message);
+	};
+	if (extra == "profile:me" && type == "user") {
+		fProfile.Apply(object);
+		_Send(pp::request::UserFullInfo(fProfile.userId, "profile:full"));
+		_SendProfile();
+	} else if (extra == "profile:full" && type == "userFullInfo") {
+		fProfile.Apply(object);
+		_SendProfile();
+	} else if (extra == "profile:sessions" && type == "sessions") {
+		BMessage list(kMsgProfileSessions);
+		BDateFormat dates;
+		for (const pp::Session& s : pp::ParseSessions(object)) {
+			list.AddInt64("session_id", s.id);
+			list.AddString("application", s.application.c_str());
+			list.AddString("device", s.device.c_str());
+			list.AddString("location", s.location.c_str());
+			BString active = pp::ActiveText(s.lastActive, time(nullptr)).c_str();
+			if (active.IsEmpty())
+				dates.Format(active, (time_t)s.lastActive, B_MEDIUM_DATE_FORMAT);
+			list.AddString("active", active);
+			list.AddBool("current", s.current);
+			list.AddBool("unconfirmed", s.unconfirmed);
+		}
+		fProfileWindow.SendMessage(&list);
+	} else if (extra == "profile:save") {
+		if (type == "error" && fProfileError.empty())
+			fProfileError = "Could not save: " + pp::AuthFlow::ErrorText(object);
+		if (--fProfileSaving <= 0) {
+			fProfileSaving = 0;
+			result(fProfileError);
+			// The updates that follow refresh the window; the bio's comes
+			// with the full info.
+			_Send(pp::request::UserFullInfo(fProfile.userId, "profile:full"));
+		}
+	} else if (extra == "profile:photo") {
+		result(type == "error" ? "Could not change the picture: "
+			+ pp::AuthFlow::ErrorText(object) : std::string());
+	} else if (extra == "profile:terminate") {
+		if (type == "error")
+			result("Could not log out the device: " + pp::AuthFlow::ErrorText(object));
+		_Send(pp::request::ActiveSessions("profile:sessions"));
+	}
+	return true;
+}
+
+
+void
+App::_SendProfile()
+{
+	if (!fProfileWindow.IsValid())
+		return;
+	BMessage data(kMsgProfileData);
+	data.AddInt64("user_id", fProfile.userId);
+	data.AddString("first", fProfile.firstName.c_str());
+	data.AddString("last", fProfile.lastName.c_str());
+	data.AddString("username", fProfile.username.c_str());
+	data.AddString("bio", fProfile.bio.c_str());
+	data.AddBool("has_photo", fProfile.photoId != 0);
+	BString photo = fFiles.Path(fProfile.photoFileId).c_str();
+	data.AddString("photo", photo);
+	AddBytes(data, "photo_mini", fProfile.photoPreview);
+	fProfileWindow.SendMessage(&data);
+	if (photo.IsEmpty() && fProfile.photoFileId != 0) {
+		fFiles.Want(fProfile.photoFileId, 32);
+		_StartDownloads();
+	}
+}
+
+
 void
 App::_SendPinned()
 {
@@ -1758,6 +1854,75 @@ App::MessageReceived(BMessage* message)
 		case kMsgForwardMessage:
 			_Send(pp::request::Forward(message->GetInt64("to_chat_id", 0),
 				message->GetInt64("from_chat_id", 0), {message->GetInt64("message_id", 0)}));
+			break;
+
+		case kMsgShowProfile:
+		{
+			BMessenger window = fProfileWindow;
+			if (window.IsValid()) {
+				BMessage activate(B_EXECUTE_PROPERTY);
+				activate.AddSpecifier("Active");
+				activate.AddBool("data", true);
+				window.SendMessage(&activate);
+				break;
+			}
+			ProfileWindow* profile = new ProfileWindow(BMessenger(this));
+			fProfileWindow = BMessenger(profile);
+			profile->Show();
+			fProfile = pp::Profile();
+			_Send(pp::request::GetMe("profile:me"));
+			_Send(pp::request::ActiveSessions("profile:sessions"));
+			break;
+		}
+
+		case kMsgProfileClosed:
+			fProfileWindow = BMessenger();
+			break;
+
+		case kMsgProfileSave:
+		{
+			std::string first = message->GetString("first", "");
+			std::string last = message->GetString("last", "");
+			std::string bio = message->GetString("bio", "");
+			fProfileError.clear();
+			fProfileSaving = 0;
+			if (first != fProfile.firstName || last != fProfile.lastName) {
+				_Send(pp::request::SetName(first, last, "profile:save"));
+				fProfileSaving++;
+			}
+			if (bio != fProfile.bio) {
+				_Send(pp::request::SetBio(bio, "profile:save"));
+				fProfileSaving++;
+			}
+			if (fProfileSaving == 0) {
+				BMessage result(kMsgProfileResult);
+				result.AddString("text", "");
+				fProfileWindow.SendMessage(&result);
+			}
+			break;
+		}
+
+		case kMsgProfilePhoto:
+		{
+			entry_ref ref;
+			BPath path;
+			if (message->FindRef("refs", &ref) == B_OK && path.SetTo(&ref) == B_OK)
+				_Send(pp::request::SetProfilePhoto(path.Path(), "profile:photo"));
+			break;
+		}
+
+		case kMsgProfileRemovePhoto:
+			if (fProfile.photoId != 0)
+				_Send(pp::request::DeleteProfilePhoto(fProfile.photoId, "profile:photo"));
+			break;
+
+		case kMsgTerminateSession:
+			_Send(pp::request::TerminateSession(message->GetInt64("session_id", 0),
+				"profile:terminate"));
+			break;
+
+		case kMsgTerminateOthers:
+			_Send(pp::request::TerminateOtherSessions("profile:terminate"));
 			break;
 
 		case kMsgShowChatInfo:

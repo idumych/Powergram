@@ -50,6 +50,8 @@ made-up data so far.
 - Files and music sent to you, shown with their type's icon, name and size:
   click to open one in its application, or "Save as…" from its menu
 - A chat info window: picture, bio or description, members, shared photos
+- Your profile (Powergram > Profile): picture, name and bio, and the devices
+  logged in to your account, any of which you can log out
 - Settings: notifications, message text in notifications, a sound (chosen in
   the Sounds preferences), text size
 - Photos, videos, GIFs, round video messages and stickers (WebP; animated
@@ -108,6 +110,9 @@ The pinned bar: click to jump to the message, and again for the next one.
 ![The chat info window](docs/screenshots/haiku-info.png)
 Chat info: the description, members and shared photos.
 
+![The Profile window](docs/screenshots/haiku-profile.png)
+Your profile, and the devices logged in to your account.
+
 ![The Settings window](docs/screenshots/haiku-settings.png)
 Settings apply at once; here the text size is Large.
 
@@ -136,7 +141,7 @@ needs only OpenSSL and zlib at run time. Install `noto_emoji` for emoji.
 
 `make test` runs the core tests (login flow, chat list, history, throttling,
 files and download progress, stickers, formatting, presence, voice, chat info,
-links and usernames, pinned messages, voice recording, mentions) on any system with a C++17 compiler.
+links and usernames, pinned messages, voice recording, mentions, profile and devices) on any system with a C++17 compiler.
 On Haiku, `make file-saving-test` checks saving received files and
 `make voice-record-test` checks the voice message files it records and
 `make media-probe-test` what files are sent as (photo, video or document).

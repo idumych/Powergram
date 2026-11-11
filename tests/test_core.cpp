@@ -14,6 +14,7 @@
 #include "../src/core/Pinned.h"
 #include "../src/core/VoiceNote.h"
 #include "../src/core/Mentions.h"
+#include "../src/core/Profile.h"
 #include "../src/core/Presence.h"
 #include "../src/core/SendQueue.h"
 #include "../src/core/Stickers.h"
@@ -1324,6 +1325,71 @@ TestUnreadChats()
 
 
 static void
+TestProfile()
+{
+	Profile me;
+	json user = {{"@type", "user"}, {"id", 77}, {"first_name", "Ian"}, {"last_name", "D"},
+		{"usernames", {{"active_usernames", {"ian_d"}}}},
+		{"profile_photo", {{"id", "5551234567890"}, {"small", File(40)}, {"big", File(41)},
+			{"minithumbnail", {{"data", "AAEC"}}}}}};
+	CHECK(me.Apply(user));
+	CHECK(me.userId == 77 && me.firstName == "Ian" && me.lastName == "D" && me.username == "ian_d");
+	CHECK(me.photoId == 5551234567890LL && me.photoFileId == 41 && me.photoPreview.size() == 3);
+	// Someone else's update isn't ours; ours is.
+	json other = {{"@type", "updateUser"}, {"user", {{"id", 78}, {"first_name", "Bo"}}}};
+	CHECK(!me.Apply(other) && me.firstName == "Ian");
+	json renamed = {{"@type", "updateUser"}, {"user", {{"id", 77}, {"first_name", "Ian"},
+		{"last_name", ""}}}};
+	CHECK(me.Apply(renamed) && me.lastName.empty() && me.photoId == 0 && me.username.empty());
+	CHECK(me.Apply({{"@type", "userFullInfo"}, {"bio", {{"text", "Haiku fan"}}}}) && me.bio == "Haiku fan");
+	CHECK(me.Apply({{"@type", "updateUserFullInfo"}, {"user_id", 77},
+		{"user_full_info", {{"bio", {{"text", "New"}}}}}}) && me.bio == "New");
+	CHECK(!me.Apply({{"@type", "updateUserFullInfo"}, {"user_id", 78},
+		{"user_full_info", {{"bio", {{"text", "Not mine"}}}}}}) && me.bio == "New");
+
+	CHECK(ProfileProblem("", "x", "") == "Enter a first name.");
+	CHECK(ProfileProblem("  ", "", "") == "Enter a first name.");
+	CHECK(ProfileProblem("Ian", "", "").empty());
+	CHECK(!ProfileProblem(std::string(65, 'a'), "", "").empty());
+	std::string bio;
+	for (int i = 0; i < 70; i++)
+		bio += "\xC3\xA9";   // é: 70 characters, 140 bytes
+	CHECK(CharacterCount(bio) == 70 && ProfileProblem("Ian", "", bio).empty());
+	CHECK(!ProfileProblem("Ian", "", bio + "x").empty());
+
+	json reply = {{"@type", "sessions"}, {"sessions", json::array({
+		{{"id", "11"}, {"is_current", false}, {"application_name", "Telegram Android"},
+			{"application_version", "11.2"}, {"device_model", "Pixel 8"}, {"platform", "Android"},
+			{"system_version", "14"}, {"location", "Berlin, Germany"}, {"last_active_date", 900}},
+		{{"id", "12"}, {"is_current", true}, {"application_name", "Powergram"},
+			{"application_version", "0.2.3"}, {"device_model", "Haiku"}, {"platform", "Haiku"},
+			{"system_version", "R1/beta6"}, {"last_active_date", 1000}},
+		{{"id", "13"}, {"is_current", false}, {"application_name", "Telegram Desktop"},
+			{"device_model", "MacBook Pro"}, {"platform", "macOS"}, {"system_version", "14.4"},
+			{"last_active_date", 950}, {"is_unconfirmed", true}}})}};
+	std::vector<Session> sessions = ParseSessions(reply);
+	CHECK(sessions.size() == 3 && sessions[0].current && sessions[0].id == 12);
+	CHECK(sessions[0].application == "Powergram 0.2.3" && sessions[0].device == "Haiku, Haiku R1/beta6");
+	CHECK(sessions[1].id == 13 && sessions[1].unconfirmed && sessions[1].application == "Telegram Desktop");
+	CHECK(sessions[1].device == "MacBook Pro, macOS 14.4");
+	CHECK(sessions[2].device == "Pixel 8, Android 14" && sessions[2].location == "Berlin, Germany");
+
+	CHECK(ActiveText(1000, 1100) == "online");
+	CHECK(ActiveText(1000, 1000 + 12 * 60) == "12 minutes ago");
+	CHECK(ActiveText(1000, 1000 + 3600) == "an hour ago");
+	CHECK(ActiveText(1000, 1000 + 5 * 3600) == "5 hours ago");
+	CHECK(ActiveText(1000, 1000 + 30 * 3600) == "yesterday");
+	CHECK(ActiveText(1000, 1000 + 5 * 86400).empty());
+
+	CHECK(request::SetName("Ian", "", "p")["@type"] == "setName");
+	CHECK(request::SetProfilePhoto("/a.jpg", "p")["photo"]["photo"]["path"] == "/a.jpg");
+	CHECK(request::DeleteProfilePhoto(5551234567890LL, "p")["profile_photo_id"] == "5551234567890");
+	CHECK(request::TerminateSession(13, "p")["session_id"] == "13");
+	CHECK(request::TerminateOtherSessions("p")["@type"] == "terminateAllOtherSessions");
+}
+
+
+static void
 TestHaikuIcons()
 {
 	// An HVIF file is drawn; other documents get a card.
@@ -1367,6 +1433,7 @@ main()
 	TestMentions();
 	TestSendingFiles();
 	TestUnreadChats();
+	TestProfile();
 	if (sFailures) {
 		std::fprintf(stderr, "%d check(s) failed\n", sFailures);
 		return EXIT_FAILURE;

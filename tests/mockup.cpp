@@ -19,6 +19,7 @@
 
 #include "../src/app/MainWindow.h"
 #include "../src/app/SettingsWindow.h"
+#include "../src/app/ProfileWindow.h"
 #include "../src/app/ChatInfoWindow.h"
 #include "../src/app/Messages.h"
 #include "../src/core/ChatHistory.h"
@@ -192,6 +193,8 @@ public:
 			case kMsgNextStep:
 				if (sScene == "links")
 					fMain->PostMessage(kMsgOpenLinkAsk);
+				else if (sScene == "profile")
+					PostMessage(kMsgShowProfile);
 				else if (sScene == "deskbarfiles") {
 					// Two files dropped on the Deskbar item.
 					BMessage files(kMsgDeskbarFiles);
@@ -265,6 +268,73 @@ public:
 				break;
 			case kMsgSettingsChanged:
 				fMain->PostMessage(message);
+				break;
+			case kMsgShowProfile:
+			{
+				// A made-up user and devices, as App would send them.
+				ProfileWindow* profile = new ProfileWindow(BMessenger(this));
+				profile->Show();
+				fProfile = BMessenger(profile);
+				BMessage data(kMsgProfileData);
+				data.AddInt64("user_id", 99);
+				data.AddString("first", "Alex");
+				data.AddString("last", "Moreau");
+				data.AddString("username", "alex_m");
+				data.AddString("bio", "Building things on Haiku");
+				data.AddBool("has_photo", true);
+				data.AddString("photo", Media("avatar2.jpg").c_str());
+				AddBytes(data, "photo_mini", "");
+				fProfile.SendMessage(&data);
+				BMessage sessions(kMsgProfileSessions);
+				struct { int64 id; const char* app; const char* device; const char* where;
+					const char* active; bool current; bool unconfirmed; } rows[] = {
+					{1, "Powergram 0.2.3", "Haiku, Haiku R1/beta6", "Lisbon, Portugal", "online", true, false},
+					{2, "Telegram Android 11.2", "Pixel 8, Android 14", "Lisbon, Portugal", "12 minutes ago", false, false},
+					{3, "Telegram Desktop 5.6", "ThinkPad T480, Linux", "Porto, Portugal", "yesterday", false, false},
+					{4, "Telegram Web A 10.9", "Firefox, Windows 11", "Madrid, Spain", "Oct 2, 2026", false, true}};
+				for (const auto& r : rows) {
+					sessions.AddInt64("session_id", r.id);
+					sessions.AddString("application", r.app);
+					sessions.AddString("device", r.device);
+					sessions.AddString("location", r.where);
+					sessions.AddString("active", r.active);
+					sessions.AddBool("current", r.current);
+					sessions.AddBool("unconfirmed", r.unconfirmed);
+				}
+				fProfile.SendMessage(&sessions);
+				break;
+			}
+			case kMsgProfileSave:
+			{
+				printf("profile save \"%s\" \"%s\" bio \"%s\"\n", message->GetString("first", ""),
+					message->GetString("last", ""), message->GetString("bio", ""));
+				fflush(stdout);
+				BMessage data(kMsgProfileData);
+				data.AddInt64("user_id", 99);
+				data.AddString("first", message->GetString("first", ""));
+				data.AddString("last", message->GetString("last", ""));
+				data.AddString("username", "alex_m");
+				data.AddString("bio", message->GetString("bio", ""));
+				data.AddBool("has_photo", true);
+				data.AddString("photo", Media("avatar2.jpg").c_str());
+				AddBytes(data, "photo_mini", "");
+				fProfile.SendMessage(&data);
+				BMessage result(kMsgProfileResult);
+				result.AddString("text", "");
+				fProfile.SendMessage(&result);
+				break;
+			}
+			case kMsgTerminateSession:
+				printf("log out session %lld\n", (long long)message->GetInt64("session_id", 0));
+				fflush(stdout);
+				break;
+			case kMsgTerminateOthers:
+				printf("log out all other sessions\n");
+				fflush(stdout);
+				break;
+			case kMsgProfileRemovePhoto:
+				printf("remove photo\n");
+				fflush(stdout);
 				break;
 			case kMsgSendFiles:
 			{
@@ -478,6 +548,7 @@ private:
 
 	// "pinned": two pinned messages, the bar showing one at a time.
 	int fPinnedIndex = 0;
+	BMessenger fProfile;
 	void _SendPinned()
 	{
 		BMessage pinned(kMsgPinned);

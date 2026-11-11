@@ -138,6 +138,26 @@ enum {
 	kMsgDeskbarUnread = 'dbur',
 	// Deskbar item → app (→ main window): "refs" dropped on it, to send
 	kMsgDeskbarFiles = 'dbfl',
+
+	// The Profile window. Main window menu → app: open it.
+	kMsgShowProfile = 'prsh',
+	// app → window: "first", "last", "username", "bio", "photo" (path),
+	// "photo_mini" (bytes), "has_photo" (bool), "user_id" (int64)
+	kMsgProfileData = 'prdt',
+	// app → window: per device "session_id" (int64), "application",
+	// "device", "location", "active" (string), "current", "unconfirmed" (bool)
+	kMsgProfileSessions = 'prss',
+	// app → window: "text" (string) of a failure, or "" when saved
+	kMsgProfileResult = 'prrs',
+	// window → app: "first", "last", "bio" (string)
+	kMsgProfileSave = 'prsv',
+	// window → app: "refs" (entry_ref) of the new picture
+	kMsgProfilePhoto = 'prph',
+	kMsgProfileRemovePhoto = 'prrm',
+	// window → app: log out "session_id" (int64), or every other device
+	kMsgTerminateSession = 'prts',
+	kMsgTerminateOthers = 'prto',
+	kMsgProfileClosed = 'prcl',
 	kMsgSaveAsk = 'svak',
 
 	// app → main window: the voice message playing, "message_id" (int64,

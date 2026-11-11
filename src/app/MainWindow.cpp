@@ -456,6 +456,7 @@ MainWindow::MainWindow(BRect frame, bool testDc,
 	BMenu* app = new BMenu(APP_NAME);
 	app->AddItem(new BMenuItem("About " APP_NAME B_UTF8_ELLIPSIS,
 		new BMessage(B_ABOUT_REQUESTED)));
+	app->AddItem(new BMenuItem("Profile" B_UTF8_ELLIPSIS, new BMessage(kMsgShowProfile)));
 	app->AddItem(new BMenuItem("Settings" B_UTF8_ELLIPSIS, new BMessage(kMsgShowSettings), ','));
 	app->AddSeparatorItem();
 	app->AddItem(new BMenuItem("Log out", new BMessage(kMsgLogOut)));
