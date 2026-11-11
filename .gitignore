@@ -13,3 +13,12 @@ tdlib-test/
 *.binlog
 *.log
 *.report
+
+# Release pipeline (beos-app-platforms)
+/PaperPlane
+obj/
+dist/
+*.hpkg
+*.AppImage
+.cosmoe/
+.haiku-headers/

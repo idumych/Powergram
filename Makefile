@@ -12,7 +12,7 @@ APP_SRCS := src/app/App.cpp src/app/TdClient.cpp src/app/Settings.cpp \
 	src/app/LoginWindow.cpp src/app/MainWindow.cpp src/app/MessageView.cpp \
 	src/app/BitmapUtils.cpp src/app/Icons.cpp src/app/Pickers.cpp
 
-BUILD := build
+BUILD := obj
 CORE_OBJS := $(CORE_SRCS:%.cpp=$(BUILD)/%.o)
 APP_OBJS := $(APP_SRCS:%.cpp=$(BUILD)/%.o)
 
@@ -23,9 +23,10 @@ TD_LIBS := -ltdjson_static -ltdjson_private -ltdclient -ltdcore -ltdapi \
 	-lssl -lcrypto -lz -lnetwork
 
 ifeq ($(shell uname -s),Haiku)
-all: $(BUILD)/$(NAME)
+all: $(NAME)
 
-$(BUILD)/$(NAME): $(CORE_OBJS) $(APP_OBJS) $(BUILD)/$(NAME).rsrc
+# The app at ./PaperPlane, resources from obj/ (packaging/build-hpkg.sh).
+$(NAME): $(CORE_OBJS) $(APP_OBJS) $(BUILD)/$(NAME).rsrc
 	$(CXX) -o $@ $(CORE_OBJS) $(APP_OBJS) $(LDFLAGS) -lbe -ltracker -ltranslation -llocalestub $(TD_LIBS)
 	xres -o $@ $(BUILD)/$(NAME).rsrc
 	mimeset -f $@
@@ -75,7 +76,7 @@ test: $(BUILD)/test_core
 	$(BUILD)/test_core
 
 clean:
-	rm -rf $(BUILD)
+	rm -rf $(BUILD) $(NAME)
 
 -include $(CORE_OBJS:.o=.d) $(APP_OBJS:.o=.d) $(BUILD)/tests/test_core.d
 

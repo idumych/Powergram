@@ -7,17 +7,12 @@ It talks to Telegram through [TDLib](https://github.com/tdlib/td), Telegram's
 own client library, and keeps Paper Plane's layout: the chat list on the left,
 the open chat on the right.
 
-**Work in progress.** Not released or packaged yet.
+**Preview.** Version 0.1.0 is a first preview for Haiku and Renku OS
+(x86_64): download the `.hpkg` from
+[Releases](https://github.com/idumych/paper-plane-haiku/releases) and install it
+with `pkgman install ./paperplane-0.1.0-1-x86_64.hpkg`.
 
-![Paper Plane with a group chat open](screenshots/group.png)
-
-The screenshots show the real app windows filled with made-up chats
-(`tests/mockup.cpp`); no real account appears in them.
-
-| | |
-|---|---|
-| ![Photos and videos](screenshots/media.png) | ![Spoilers, stickers and GIFs](screenshots/media2.png) |
-| ![Emoji picker](screenshots/emoji.png) | ![Sticker picker](screenshots/stickers.png) |
+![Paper Plane with a group chat open](docs/screenshots/haiku-group.png)
 
 ## What works
 
@@ -42,6 +37,26 @@ has been checked with made-up data and still needs real-world use.
 Not yet: voice messages, calls, secret chats, search, QR-code login, media
 playback inside the app, a Linux (Cosmoe) build, an app icon.
 
+## Screenshots
+
+The real app windows filled with made-up chats (`tests/mockup.cpp`); no real
+account appears in them.
+
+![A private chat with a photo, a video and a round video message](docs/screenshots/haiku-media.png)
+Photos load blurred first; videos show their length; round video messages are drawn round.
+
+![A spoiler, a sticker and a GIF](docs/screenshots/haiku-media2.png)
+Spoilers stay blurred until clicked; WebP stickers keep their transparency.
+
+![The emoji picker](docs/screenshots/haiku-emoji.png)
+The emoji picker, recently used first.
+
+![The sticker picker](docs/screenshots/haiku-stickers.png)
+The sticker picker: your sets on the left, their stickers on the right.
+
+![Replying to a message](docs/screenshots/haiku-reply.png)
+Replying: the message being answered is shown over the entry.
+
 ## Platforms
 
 | Platform | State |
@@ -57,8 +72,10 @@ On Haiku or Renku OS:
 ```sh
 pkgman install tdlib openssl3_devel zlib_devel
 make
-build/PaperPlane
+./PaperPlane
 ```
+
+`sh packaging/build-hpkg.sh` builds the package.
 
 HaikuPorts' TDLib is static only, so it's linked into the app; the result
 needs only OpenSSL and zlib at run time. Install `noto_emoji` for emoji.

@@ -1,0 +1,3 @@
+Paper Plane is a Telegram client for Haiku, written with the native Haiku API after the GNOME app of the same name. It talks to Telegram through TDLib, Telegram's own client library.
+
+This is a preview: logging in, the chat list, reading and sending messages, replies, edits, photos, videos, stickers, emoji and sticker pickers, and notifications work. You need an API ID of your own from my.telegram.org.
