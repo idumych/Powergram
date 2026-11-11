@@ -108,9 +108,14 @@ FormatDate(int64 date)
 class ChatItem : public BListItem {
 public:
 	ChatItem(const BMessage* list, int32 index, BBitmap* avatar)
-		:
-		fAvatar(avatar)
 	{
+		Set(list, index, avatar);
+	}
+
+	// New contents for the row (its height stays).
+	void Set(const BMessage* list, int32 index, BBitmap* avatar)
+	{
+		fAvatar = avatar;
 		fId = list->GetInt64("id", index, 0);
 		fTitle = list->GetString("title", index, "");
 		fText = list->GetString("text", index, "");
@@ -125,7 +130,27 @@ public:
 		fMarkedUnread = list->GetBool("marked_unread", index, false);
 		fKind = list->GetInt32("kind", index, 0);
 		fInitials = pp::Initials(fTitle.String()).c_str();
+		fKey = Key(list, index);
 	}
+
+	// Everything the row shows, to tell whether it needs redrawing.
+	static BString Key(const BMessage* list, int32 index)
+	{
+		BString key;
+		key << list->GetInt64("id", index, 0) << '\x1f' << list->GetString("title", index, "")
+			<< '\x1f' << list->GetString("text", index, "") << '\x1f'
+			<< list->GetString("sender", index, "") << '\x1f'
+			<< FormatDate(list->GetInt64("date", index, 0)) << '\x1f'
+			<< list->GetInt32("unread", index, 0) << '\x1f' << list->GetInt32("mentions", index, 0)
+			<< '\x1f' << (int)list->GetBool("pinned", index, false)
+			<< (int)list->GetBool("read", index, false) << (int)list->GetBool("muted", index, false)
+			<< (int)list->GetBool("marked_unread", index, false) << '\x1f'
+			<< list->GetString("typing", index, "") << '\x1f' << list->GetString("draft", index, "")
+			<< '\x1f' << list->GetString("photo", index, "") << '\x1f'
+			<< (int32)FindBytes(list, "photo_mini", index).size();
+		return key;
+	}
+	const BString& ItemKey() const { return fKey; }
 
 	int64 Id() const { return fId; }
 	const char* Title() const { return fTitle.String(); }
@@ -275,6 +300,7 @@ public:
 	int32 Kind() const { return fKind; }
 private:
 	BBitmap* fAvatar;   // round chat photo (owned by the window), or null
+	BString fKey;
 };
 
 // The chat list: a right click opens the chat's menu.
@@ -508,15 +534,25 @@ MainWindow::_UpdateChats(const BMessage* incoming)
 	if (ChatItem* item = dynamic_cast<ChatItem*>(fList->ItemAt(fList->CurrentSelection())))
 		selected = item->Id();
 
-	while (BListItem* item = fList->RemoveItem((int32)0))
-		delete item;
-
+	// Only rows that changed are replaced (and redrawn): rebuilding the
+	// whole list on every update, every few seconds, made it flicker.
 	int32 count = 0;
 	list->GetInfo("id", nullptr, &count);
-	BList items(count);
-	for (int32 i = 0; i < count; i++)
-		items.AddItem(new ChatItem(list, i, _Avatar(list, i)));
-	fList->AddList(&items);
+	while (fList->CountItems() > count)
+		delete fList->RemoveItem(fList->CountItems() - 1);
+	for (int32 i = 0; i < count; i++) {
+		ChatItem* old = static_cast<ChatItem*>(fList->ItemAt(i));
+		if (old != nullptr && old->ItemKey() == ChatItem::Key(list, i))
+			continue;
+		if (old == nullptr)
+			fList->AddItem(new ChatItem(list, i, _Avatar(list, i)));
+		else {
+			// The row object stays (BListView::ReplaceItem on beta6 leaves
+			// the new row without a height); it takes the new contents.
+			old->Set(list, i, _Avatar(list, i));
+			fList->InvalidateItem(i);
+		}
+	}
 
 	for (int32 i = 0; i < count; i++) {
 		if (static_cast<ChatItem*>(fList->ItemAt(i))->Id() == selected)

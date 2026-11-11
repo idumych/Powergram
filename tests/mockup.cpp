@@ -216,6 +216,11 @@ public:
 					info->PostMessage(&data);
 					info->MoveTo(600, 60);
 					info->Show();
+				} else if (sScene == "relist") {
+					// The list again unchanged, then with two chats moved.
+					_SendChats();
+					snooze(300000);
+					_SendChats(true);
 				} else if (sScene == "voice") {
 					BMessage progress(kMsgVoiceProgress);
 					progress.AddInt64("message_id", 111);
@@ -295,7 +300,8 @@ public:
 	}
 
 private:
-	void _SendChats()
+	// swapped: Mira's chat first with a new message, as after an update.
+	void _SendChats(bool swapped = false)
 	{
 		time_t now = time(nullptr);
 		struct Chat {
@@ -320,6 +326,11 @@ private:
 			{2010, "Kofi Mensah", "Voice message", "", 20 * 86400, 0, 0, false, false, "avatar5.jpg"},
 			{2011, "Sam Ito", "Ok", "You", 40 * 86400, 0, 0, false, true, "avatar2.jpg"},
 		};
+		if (swapped) {
+			std::swap(chats[0], chats[1]);
+			chats[0].text = "Here's the new build";
+			chats[0].ago = 5;
+		}
 		BMessage list(kMsgChatList);
 		for (const Chat& c : chats) {
 			list.AddInt64("id", c.id);
