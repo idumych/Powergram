@@ -23,8 +23,8 @@ enum {
 	kMsgOpenApiSite = 'oapi',
 	kMsgApiKeyEdited = 'eapi'
 };
-// my.telegram.org's login, which goes on to the "API development tools".
-const char* kApiSite = "https://my.telegram.org/auth?to=apps";
+// my.telegram.org's "API development tools" page (it asks for a login first).
+const char* kApiSite = "https://my.telegram.org/apps";
 }
 
 // Width of every text block; heights follow the wrapped text.
