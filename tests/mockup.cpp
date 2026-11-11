@@ -192,6 +192,16 @@ public:
 			case kMsgNextStep:
 				if (sScene == "links")
 					fMain->PostMessage(kMsgOpenLinkAsk);
+				else if (sScene == "deskbarfiles") {
+					// Two files dropped on the Deskbar item.
+					BMessage files(kMsgDeskbarFiles);
+					entry_ref ref;
+					get_ref_for_path("/boot/home/paper_plane/tests/data/photo.png", &ref);
+					files.AddRef("refs", &ref);
+					get_ref_for_path("/boot/home/paper_plane/tests/data/clip.mp4", &ref);
+					files.AddRef("refs", &ref);
+					fMain->PostMessage(&files);
+				}
 				else if (sScene == "emoji")
 					fMain->PostMessage(kMsgShowEmoji);
 				else if (sScene == "stickers")
@@ -256,6 +266,17 @@ public:
 			case kMsgSettingsChanged:
 				fMain->PostMessage(message);
 				break;
+			case kMsgSendFiles:
+			{
+				entry_ref ref;
+				printf("send files to %lld:", (long long)message->GetInt64("to_chat_id",
+					message->GetInt64("chat_id", 0)));
+				for (int32 i = 0; message->FindRef("refs", i, &ref) == B_OK; i++)
+					printf(" %s", ref.name);
+				printf("\n");
+				fflush(stdout);
+				break;
+			}
 			case kMsgPinnedClicked:
 				fPinnedIndex = (fPinnedIndex + 1) % 2;
 				printf("pinned clicked, now %d\n", fPinnedIndex);

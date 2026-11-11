@@ -1302,6 +1302,28 @@ TestSendingFiles()
 
 
 static void
+TestUnreadChats()
+{
+	ChatList list;
+	CHECK(list.UnreadChats() == 0);
+	list.Apply(NewChat(1, "Ann", "100"));
+	list.Apply(NewChat(2, "Bo", "90"));
+	list.Apply(NewChat(3, "Cy", "80"));
+	list.Apply({{"@type", "updateChatReadInbox"}, {"chat_id", 1}, {"last_read_inbox_message_id", 0},
+		{"unread_count", 4}});
+	CHECK(list.UnreadChats() == 1);
+	list.Apply({{"@type", "updateChatIsMarkedAsUnread"}, {"chat_id", 2}, {"is_marked_as_unread", true}});
+	CHECK(list.UnreadChats() == 2);
+	// Muted: not counted, unless someone mentions you.
+	list.Apply({{"@type", "updateChatNotificationSettings"}, {"chat_id", 1},
+		{"notification_settings", {{"use_default_mute_for", false}, {"mute_for", 1000000}}}});
+	CHECK(list.UnreadChats() == 1);
+	list.Apply({{"@type", "updateChatUnreadMentionCount"}, {"chat_id", 1}, {"unread_mention_count", 1}});
+	CHECK(list.UnreadChats() == 2);
+}
+
+
+static void
 TestHaikuIcons()
 {
 	// An HVIF file is drawn; other documents get a card.
@@ -1344,6 +1366,7 @@ main()
 	TestVoiceRecording();
 	TestMentions();
 	TestSendingFiles();
+	TestUnreadChats();
 	if (sFailures) {
 		std::fprintf(stderr, "%d check(s) failed\n", sFailures);
 		return EXIT_FAILURE;

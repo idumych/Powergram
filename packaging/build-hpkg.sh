@@ -36,6 +36,12 @@ ln -s "../apps/$APP_NAME" "$PKG/bin/$APP_CMD"
 ln -s "../../../../apps/$APP_NAME" \
 	"$PKG/data/deskbar/menu/Applications/${DESKBAR_NAME:-$APP_NAME}"
 cp README.md LICENSE "$PKG/documentation/packages/$APP_CMD/" 2>/dev/null || :
+# Other files the app needs (haiku-app.env: "built-file:path-in-package").
+for pair in ${HPKG_EXTRA_FILES:-}; do
+	from=${pair%%:*}; to=${pair#*:}
+	mkdir -p "$PKG/$(dirname "$to")"
+	cp "$from" "$PKG/$to"
+done
 
 # 3. .PackageInfo
 DESC=$(sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e '2,$s/^/\t/' "$DESCRIPTION_FILE")

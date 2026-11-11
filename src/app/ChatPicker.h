@@ -20,7 +20,9 @@ public:
 		BString title;
 	};
 
-	ChatPicker(BWindow* parent, const std::vector<Entry>& chats, BMessage* reply);
+	// `title` and `button` default to forwarding's.
+	ChatPicker(BWindow* parent, const std::vector<Entry>& chats, BMessage* reply,
+		const char* title = "Forward to", const char* button = "Forward");
 	~ChatPicker() override;
 
 	void MessageReceived(BMessage* message) override;

@@ -18,10 +18,11 @@ enum {
 } // namespace
 
 
-ChatPicker::ChatPicker(BWindow* parent, const std::vector<Entry>& chats, BMessage* reply)
+ChatPicker::ChatPicker(BWindow* parent, const std::vector<Entry>& chats, BMessage* reply,
+	const char* title, const char* button)
 	:
 	// Modeless, as the HIG asks: skipping it loses nothing.
-	BWindow(BRect(0, 0, 320, 400), "Forward to", B_TITLED_WINDOW_LOOK,
+	BWindow(BRect(0, 0, 320, 400), title, B_TITLED_WINDOW_LOOK,
 		B_NORMAL_WINDOW_FEEL, B_NOT_ZOOMABLE | B_NOT_MINIMIZABLE
 			| B_AUTO_UPDATE_SIZE_LIMITS | B_CLOSE_ON_ESCAPE),
 	fTarget(parent),
@@ -36,7 +37,7 @@ ChatPicker::ChatPicker(BWindow* parent, const std::vector<Entry>& chats, BMessag
 	BScrollView* scroll = new BScrollView("scroll", fList, 0, false, true);
 	float em = be_plain_font->Size();
 	scroll->SetExplicitMinSize(BSize(em * 22, em * 22));
-	fForward = new BButton("forward", "Forward", new BMessage(kMsgChoose));
+	fForward = new BButton("forward", button, new BMessage(kMsgChoose));
 	fForward->SetEnabled(false);
 
 	BLayoutBuilder::Group<>(this, B_VERTICAL)

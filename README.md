@@ -63,6 +63,9 @@ made-up data so far.
   with the count goes to your oldest unread mention
 - Emoji and sticker pickers
 - Notifications that follow each chat's mute settings
+- A Deskbar icon with the number of unread chats: click it to bring Powergram
+  forward, drop files on it to send them to a chat you pick (Settings can
+  turn it off)
 - Read receipts, typing status and online status sent the way the official
   apps send them, and every request throttled (a few at a time, and a full
   stop when Telegram asks to wait)

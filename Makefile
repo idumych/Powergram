@@ -28,7 +28,12 @@ TD_LIBS := -ltdjson_static -ltdjson_private -ltdclient -ltdcore -ltdapi \
 	-lssl -lcrypto -lz -lnetwork
 
 ifeq ($(shell uname -s),Haiku)
-all: $(NAME)
+all: $(NAME) $(BUILD)/PowergramDeskbar
+
+# The Deskbar item: an add-on of its own, so Deskbar never loads the app.
+$(BUILD)/PowergramDeskbar: src/deskbar/DeskbarItem.cpp src/app/Messages.h
+	@mkdir -p $(BUILD)
+	$(CXX) $(CXXFLAGS) -fPIC -shared -o $@ src/deskbar/DeskbarItem.cpp $(LDFLAGS) -lbe
 
 # The app at ./Powergram, resources from obj/ (packaging/build-hpkg.sh).
 $(NAME): $(CORE_OBJS) $(APP_OBJS) $(BUILD)/$(NAME).rsrc
@@ -81,6 +86,11 @@ $(BUILD)/media_probe_test: $(BUILD)/tests/media_probe_test.o $(BUILD)/src/app/Me
 		$(BUILD)/src/core/ChatHistory.o $(BUILD)/src/core/ChatList.o \
 		$(BUILD)/src/core/Format.o
 	$(CXX) -o $@ $^ -lbe -lmedia -ltranslation
+
+# The Deskbar item with a made-up count (stands in for the app).
+deskbar-demo: $(BUILD)/deskbar_demo $(BUILD)/PowergramDeskbar
+$(BUILD)/deskbar_demo: $(BUILD)/tests/deskbar_demo.o
+	$(CXX) -o $@ $^ -lbe
 
 # Layout timing for the message view; not part of the app.
 bench: $(BUILD)/bench_messageview

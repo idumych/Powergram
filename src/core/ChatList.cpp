@@ -349,6 +349,19 @@ ChatList::Sorted(const std::string& list) const
 }
 
 
+int32_t
+ChatList::UnreadChats() const
+{
+	int32_t count = 0;
+	for (const Chat& c : Sorted("main")) {
+		bool unread = c.unread > 0 || c.markedUnread;
+		if ((unread && !IsMuted(c.id)) || c.unreadMentions > 0)
+			count++;
+	}
+	return count;
+}
+
+
 bool
 ChatList::IsMuted(int64_t chatId) const
 {

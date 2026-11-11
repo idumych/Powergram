@@ -31,6 +31,7 @@ AppSettings::ToMessage(BMessage* message) const
 	message->AddBool("previews", previews);
 	message->AddBool("sound", sound);
 	message->AddInt32("text_size", textSize);
+	message->AddBool("deskbar", deskbar);
 }
 
 
@@ -42,6 +43,7 @@ AppSettings::FromMessage(const BMessage* message)
 	s.previews = message->GetBool("previews", true);
 	s.sound = message->GetBool("sound", true);
 	s.textSize = message->GetInt32("text_size", 1);
+	s.deskbar = message->GetBool("deskbar", true);
 	return s;
 }
 
@@ -58,6 +60,8 @@ SettingsWindow::SettingsWindow(BMessenger app, const AppSettings& current)
 	fPreviews = new BCheckBox("previews", "Show the message text in notifications",
 		new BMessage(kMsgChanged));
 	fSound = new BCheckBox("sound", "Play a sound for new messages",
+		new BMessage(kMsgChanged));
+	fDeskbar = new BCheckBox("deskbar", "Show Powergram in the Deskbar with the unread count",
 		new BMessage(kMsgChanged));
 	BPopUpMenu* sizes = new BPopUpMenu("sizes");
 	for (int32 i = 0; i < 3; i++)
@@ -81,6 +85,7 @@ SettingsWindow::SettingsWindow(BMessenger app, const AppSettings& current)
 			.SetInsets(B_USE_ITEM_INSETS, 0, 0, 0)
 			.Add(soundHint)
 		.End()
+		.Add(fDeskbar)
 		.Add(fTextSize)
 		.AddGroup(B_HORIZONTAL)
 			.Add(fDefaultsButton)
@@ -99,6 +104,7 @@ SettingsWindow::_Show(const AppSettings& s)
 	fPreviews->SetValue(s.previews);
 	fPreviews->SetEnabled(s.notifications);
 	fSound->SetValue(s.sound);
+	fDeskbar->SetValue(s.deskbar);
 	if (BMenuItem* item = fTextSize->Menu()->ItemAt(s.textSize))
 		item->SetMarked(true);
 	fRevertButton->SetEnabled(!(s == fRevert));
@@ -113,6 +119,7 @@ SettingsWindow::_Read() const
 	s.notifications = fNotifications->Value() == B_CONTROL_ON;
 	s.previews = fPreviews->Value() == B_CONTROL_ON;
 	s.sound = fSound->Value() == B_CONTROL_ON;
+	s.deskbar = fDeskbar->Value() == B_CONTROL_ON;
 	BMenuItem* marked = fTextSize->Menu()->FindMarked();
 	s.textSize = marked != nullptr ? fTextSize->Menu()->IndexOf(marked) : 1;
 	return s;

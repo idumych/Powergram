@@ -7,6 +7,8 @@
 
 #include <string>
 
+// The Deskbar item's view name (BDeskbar::HasItem/RemoveItem find it by it).
+#define kDeskbarItemName "Powergram"
 #define APP_SIGNATURE "application/x-vnd.powergram"
 #define APP_NAME "Powergram"
 
@@ -130,6 +132,12 @@ enum {
 	kMsgMentionChosen = 'mnch',
 	// message view → main window → app: go to the oldest unread mention
 	kMsgJumpToMention = 'jmen',
+	// Deskbar item → app: "item" (BMessenger) to send the count to
+	kMsgDeskbarHello = 'dbhi',
+	// app → Deskbar item: "unread" (int32) chats
+	kMsgDeskbarUnread = 'dbur',
+	// Deskbar item → app (→ main window): "refs" dropped on it, to send
+	kMsgDeskbarFiles = 'dbfl',
 	kMsgSaveAsk = 'svak',
 
 	// app → main window: the voice message playing, "message_id" (int64,

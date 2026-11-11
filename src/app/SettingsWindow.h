@@ -16,11 +16,12 @@ struct AppSettings {
 	bool previews = true;       // the message text in notifications
 	bool sound = true;          // the "Powergram new message" system sound
 	int32 textSize = 1;         // 0 small, 1 normal, 2 large
+	bool deskbar = true;        // the icon with the unread count in the Deskbar
 
 	bool operator==(const AppSettings& o) const
 	{
 		return notifications == o.notifications && previews == o.previews
-			&& sound == o.sound && textSize == o.textSize;
+			&& sound == o.sound && textSize == o.textSize && deskbar == o.deskbar;
 	}
 	void ToMessage(BMessage* message) const;
 	static AppSettings FromMessage(const BMessage* message);
@@ -44,6 +45,7 @@ private:
 	BCheckBox* fNotifications;
 	BCheckBox* fPreviews;
 	BCheckBox* fSound;
+	BCheckBox* fDeskbar;
 	BMenuField* fTextSize;
 	BButton* fRevertButton;
 	BButton* fDefaultsButton;

@@ -8,6 +8,8 @@
 #include <Beep.h>
 #include <Bitmap.h>
 #include <Entry.h>
+#include <PathFinder.h>
+#include <Deskbar.h>
 #include <FindDirectory.h>
 #include <Directory.h>
 #include <Path.h>
@@ -68,6 +70,7 @@ public:
 	void ReadyToRun() override;
 	void MessageReceived(BMessage* message) override;
 	bool QuitRequested() override;
+	void RefsReceived(BMessage* message) override;
 	void AboutRequested() override;
 
 private:
@@ -109,7 +112,12 @@ private:
 	// to scroll to, once it's open.
 	void _ShowChat(int64 chatId, int64 messageId = 0);
 	int64 fExtraChat = 0;
-	int64 fMyId = 0;   // the user's own id (TDLib's "my_id" option)
+	int64 fMyId = 0;
+	// The Deskbar item (an add-on of its own) and the count it shows.
+	void _UpdateDeskbar();
+	void _SendUnread();
+	BMessenger fDeskbarItem;
+	int32 fUnreadSent = -1;   // the user's own id (TDLib's "my_id" option)
 	// The open chat's pinned messages, for the bar over it.
 	pp::PinnedMessages fPinned;
 	void _SendPinned();
@@ -228,6 +236,9 @@ App::~App()
 	delete fPresenceRunner;
 	delete fVoiceRunner;
 	delete fRecordRunner;
+	BDeskbar deskbar;
+	if (deskbar.HasItem(kDeskbarItemName))
+		deskbar.RemoveItem(kDeskbarItemName);
 }
 
 
@@ -286,6 +297,7 @@ App::ReadyToRun()
 	}
 	if (!placed)
 		fMain->CenterOnScreen();
+	_UpdateDeskbar();
 
 	fAuth = std::make_unique<pp::AuthFlow>(_Params());
 	fClient = std::make_unique<TdClient>(BMessenger(this));
@@ -988,11 +1000,14 @@ App::_SaveFile(const BMessage* message)
 void
 App::_SendFiles(const BMessage* message)
 {
-	int64 chatId = message->GetInt64("chat_id", 0);
-	if (fHistory == nullptr || fHistory->ChatId() != chatId)
+	// The open chat, or one chosen for files from elsewhere (Deskbar,
+	// Tracker), which comes as "to_chat_id".
+	int64 chatId = message->GetInt64("to_chat_id", message->GetInt64("chat_id", 0));
+	if (chatId == 0)
 		return;
+	bool open = fHistory != nullptr && fHistory->ChatId() == chatId;
 	std::string caption = message->GetString("caption", "");
-	int64 replyTo = message->GetInt64("reply_to", 0);
+	int64 replyTo = open ? message->GetInt64("reply_to", 0) : 0;
 	// Photos and playable videos together go as albums; the rest as
 	// documents. The caption and the reply go with the first one only.
 	std::vector<pp::OutgoingFile> files;
@@ -1006,7 +1021,8 @@ App::_SendFiles(const BMessage* message)
 	}
 	for (const json& request : pp::request::SendFiles(chatId, files, caption, replyTo))
 		_Send(request);
-	fTyping.Reset();
+	if (open)
+		fTyping.Reset();
 }
 
 
@@ -1254,6 +1270,7 @@ App::_SendStickers(bool update)
 	}
 	fMain->PostMessage(&list);
 	_StartDownloads();
+	_SendUnread();
 }
 
 
@@ -1770,6 +1787,17 @@ App::MessageReceived(BMessage* message)
 			fPrefs.ToMessage(&fSettings.preferences);
 			fSettings.Save();
 			fMain->PostMessage(message);  // the text size
+			_UpdateDeskbar();
+			break;
+
+		case kMsgDeskbarHello:
+			message->FindMessenger("item", &fDeskbarItem);
+			fUnreadSent = -1;
+			_SendUnread();
+			break;
+
+		case kMsgDeskbarFiles:
+			RefsReceived(message);
 			break;
 
 		case kMsgSettingsClosed:
@@ -2160,6 +2188,75 @@ App::_CloseWindows()
 		fSettingsWindow->Quit();
 	fSettingsWindow = nullptr;
 	fSettings.Save();
+}
+
+
+// Files opened with Powergram, or dropped on its Deskbar item: the main
+// window asks which chat they go to.
+void
+App::RefsReceived(BMessage* message)
+{
+	if (fMain == nullptr || !message->HasRef("refs"))
+		return;
+	BMessage pick(*message);
+	pick.what = kMsgDeskbarFiles;
+	fMain->PostMessage(&pick);
+	fMain->Activate();
+}
+
+
+void
+App::_UpdateDeskbar()
+{
+	BDeskbar deskbar;
+	bool shown = deskbar.HasItem(kDeskbarItemName);
+	if (!fPrefs.deskbar) {
+		if (shown)
+			deskbar.RemoveItem(kDeskbarItemName);
+		fDeskbarItem = BMessenger();
+		return;
+	}
+	// Deskbar keeps items added from a file across restarts, so one may be
+	// there from before; replace it so that it says hello to this run.
+	if (shown) {
+		if (fDeskbarItem.IsValid())
+			return;
+		deskbar.RemoveItem(kDeskbarItemName);
+	}
+	// Next to the app when it runs from where it was built, else in the
+	// package's add-ons folder.
+	app_info info;
+	BPath path;
+	if (GetAppInfo(&info) == B_OK && BPath(&info.ref).GetParent(&path) == B_OK)
+		path.Append("obj/PowergramDeskbar");
+	if (!BEntry(path.Path()).Exists()) {
+		BPathFinder finder(&info.ref);
+		finder.FindPath(B_FIND_PATH_ADD_ONS_DIRECTORY, "Powergram/PowergramDeskbar",
+			B_FIND_PATH_EXISTING_ONLY, path);
+	}
+	entry_ref ref;
+	if (path.InitCheck() != B_OK || get_ref_for_path(path.Path(), &ref) != B_OK) {
+		fprintf(stderr, "Powergram: no Deskbar item add-on found\n");
+		return;
+	}
+	status_t status = deskbar.AddItem(&ref);
+	if (status != B_OK)
+		fprintf(stderr, "Powergram: Deskbar item: %s\n", strerror(status));
+}
+
+
+void
+App::_SendUnread()
+{
+	if (!fDeskbarItem.IsValid())
+		return;
+	int32 unread = fChats.UnreadChats();
+	if (unread == fUnreadSent)
+		return;
+	fUnreadSent = unread;
+	BMessage count(kMsgDeskbarUnread);
+	count.AddInt32("unread", unread);
+	fDeskbarItem.SendMessage(&count);
 }
 
 

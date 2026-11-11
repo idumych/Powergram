@@ -1739,6 +1739,27 @@ MainWindow::MessageReceived(BMessage* message)
 				fStickerWindow->PostMessage(message);
 			break;
 
+		case kMsgDeskbarFiles:
+		{
+			// Files from the Deskbar item or Tracker: which chat?
+			std::vector<ChatPicker::Entry> chats;
+			for (int32 i = 0; i < fList->CountItems(); i++) {
+				ChatItem* item = static_cast<ChatItem*>(fList->ItemAt(i));
+				chats.push_back({item->Id(), item->Title()});
+			}
+			BMessage* reply = new BMessage(kMsgSendFiles);
+			entry_ref ref;
+			int32 count = 0;
+			for (; message->FindRef("refs", count, &ref) == B_OK; count++)
+				reply->AddRef("refs", &ref);
+			BString title;
+			title << "Send " << count << (count == 1 ? " file to" : " files to");
+			(new ChatPicker(this, chats, reply, title.String(), "Send"))->Show();
+			break;
+		}
+		case kMsgSendFiles:
+			be_app->PostMessage(message);   // a chat chosen for them
+			break;
 		case kMsgFilesChosen:
 		case B_SIMPLE_DATA:
 			// From the file panel, or files dropped on the chat from Tracker.

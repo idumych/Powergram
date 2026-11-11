@@ -67,6 +67,9 @@ public:
 	size_t Size() const { return fChats.size(); }
 
 	bool IsMuted(int64_t chatId) const;
+	// Chats in the main list with something unread that aren't muted (a
+	// mention counts even when muted), as Telegram's badges count them.
+	int32_t UnreadChats() const;
 	bool ShowsPreview(int64_t chatId) const;
 
 	// Whether a new message deserves a desktop notification: incoming, not
