@@ -7,10 +7,10 @@ It talks to Telegram through [TDLib](https://github.com/tdlib/td), Telegram's
 own client library, and keeps Paper Plane's layout: the chat list on the left,
 the open chat on the right.
 
-**Preview.** Version 0.2.0 is a preview for Haiku and Renku OS (x86_64):
+**Preview.** Version 0.2.1 is a preview for Haiku and Renku OS (x86_64):
 download the `.hpkg` from
 [Releases](https://github.com/idumych/Powergram/releases) and install it
-with `pkgman install ./powergram-0.2.0-1-x86_64.hpkg`. The app was called
+with `pkgman install ./powergram-0.2.1-1-x86_64.hpkg`. The app was called
 Paper Plane for Haiku up to 0.1.0; Powergram replaces that package and keeps
 your login and settings.
 
@@ -21,7 +21,7 @@ your login and settings.
 Built and run on Renku OS and Haiku R1/beta6, x86_64. Used with a real
 account (0.1.0): logging in, the chat list, reading chats, photos in chats,
 sending and editing messages, emoji, stickers and notifications. Everything
-added in 0.2.0, and videos, GIFs, round video messages, sending photos and
+added in 0.2.0 and 0.2.1, and videos, GIFs, round video messages, sending photos and
 files, spoilers and self-destructing photos, has only been checked with
 made-up data so far.
 
@@ -35,7 +35,8 @@ made-up data so far.
 - Reading chats: replies, forwards, edits, read ticks, date separators,
   sender pictures in groups, older messages loading as you scroll up; bold,
   italic, code, spoilers and clickable links; opening at the first unread
-  message, with a jump-to-latest button
+  message, with a jump-to-latest button; messages of a single emoji shown large
+- Selecting text in messages (drag, double- or triple-click) and copying it
 - Typing, online and "last seen" status and group sizes in the chat header
 - Reactions (shown and added), forwarding, polls, locations, places and contacts
 - Voice messages, played in the app with a waveform
