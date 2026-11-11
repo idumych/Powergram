@@ -1,0 +1,15 @@
+# Build output
+build/
+*.o
+*.d
+
+# Never commit credentials or local state: the API key file the app
+# imports, its settings, TDLib's database, logs and crash reports.
+api_key
+*api_key*
+settings
+tdlib/
+tdlib-test/
+*.binlog
+*.log
+*.report

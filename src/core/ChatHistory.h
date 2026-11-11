@@ -1,0 +1,188 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// The open chat's messages, kept from TDLib history replies and updates,
+// and the requests a well-behaved client sends around it.
+#pragma once
+
+#include <cstdint>
+#include <map>
+#include <set>
+#include <string>
+#include <vector>
+
+#include "Json.h"
+
+namespace pp {
+
+// A photo or sticker in a message, as far as showing it goes.
+struct Media {
+	enum Kind { kNone, kPhoto, kSticker, kVideo, kAnimation, kVideoNote } kind = kNone;
+	int32_t fileId = 0;        // what to show in the bubble (0: nothing to fetch)
+	int32_t fullFileId = 0;    // the largest photo, for opening in a viewer
+	int32_t width = 0;         // size of what's shown, in pixels
+	int32_t height = 0;
+	std::string minithumbnail; // tiny inline JPEG (decoded), shown blurred first
+	bool spoiler = false;      // hidden until clicked
+	bool secret = false;       // self-destructing: hidden until opened
+	std::string emoji;         // stickers: shown when there's no image
+	int32_t duration = 0;      // videos, seconds
+};
+
+// Picks the photo size to show in a bubble about `maxSide` pixels wide:
+// the smallest that is at least that big, or else the largest.
+Media PhotoMedia(const json& photo, int maxSide = 480);
+Media StickerMedia(const json& sticker);
+// Videos, GIFs and round video messages: their still thumbnail in the
+// bubble, the file itself to open in a player.
+Media VideoMedia(const json& video, Media::Kind kind, const char* fileField);
+
+std::string DecodeBase64(const std::string& text);
+
+struct Message {
+	int64_t id = 0;
+	int64_t senderId = 0;      // user id, or chat id when senderIsChat
+	bool senderIsChat = false;
+	std::string text;          // full text, or a label such as "Photo"
+	int64_t date = 0;
+	bool outgoing = false;
+	bool edited = false;
+	bool pending = false;      // still being sent
+	bool failed = false;
+	bool service = false;      // "joined the group" and the like
+
+	// Reply: the message answered, in this chat or (with replyText filled
+	// from TDLib's copy) another one.
+	int64_t replyToId = 0;
+	int64_t replyChatId = 0;
+	std::string replyQuote;    // the quoted part, if the sender picked one
+	std::string replyText;     // TDLib's copy of a message from another chat
+
+	// Forwarded: from a user, a chat, or someone who hides their account.
+	bool forwarded = false;
+	int64_t forwardUserId = 0;
+	int64_t forwardChatId = 0;
+	std::string forwardName;
+
+	Media media;
+};
+
+// A profile picture: the small (160 px) file and its tiny inline JPEG.
+struct Photo {
+	int32_t fileId = 0;
+	std::string preview;
+};
+
+// Names and profile pictures of users and chats, for message senders.
+class Names {
+public:
+	// Takes updateUser and updateNewChat/updateChatTitle; true if it was one.
+	bool Apply(const json& object);
+	std::string User(int64_t id) const;
+	std::string Chat(int64_t id) const;
+	std::string Sender(const Message& message) const;
+	Photo SenderPhoto(const Message& message) const;
+	Photo UserPhoto(int64_t id) const;
+	Photo ChatPhoto(int64_t id) const;
+	// "Forwarded from …" name, or "" if unknown.
+	std::string ForwardOrigin(const Message& message) const;
+
+private:
+	std::map<int64_t, std::string> fUsers;
+	std::map<int64_t, std::string> fChats;
+	std::map<int64_t, Photo> fUserPhotos;
+	std::map<int64_t, Photo> fChatPhotos;
+};
+
+class ChatHistory {
+public:
+	explicit ChatHistory(int64_t chatId = 0) : fChatId(chatId) {}
+
+	int64_t ChatId() const { return fChatId; }
+
+	// Updates about this chat's messages; true if what's shown changed.
+	bool Apply(const json& object);
+	// A "messages" reply to getChatHistory; returns how many were new.
+	int AddHistory(const json& messages);
+
+	std::vector<Message> Sorted() const;
+	const Message* Find(int64_t id) const;
+
+	// Reply targets in this chat that aren't loaded: fetch each once with
+	// getMessage and hand the answer to AddReplyTarget.
+	std::vector<int64_t> TakeMissingReplies();
+	void AddReplyTarget(const json& message);
+	// A "messages" reply to getMessages for reply targets (nulls allowed).
+	void AddReplyTargets(const json& messages);
+	// The replied-to message for `message`, from the history or the
+	// fetched targets; nullptr if not known (yet).
+	const Message* ReplyTarget(const Message& message) const;
+	int64_t OldestId() const;
+	size_t Size() const { return fMessages.size(); }
+
+	// Incoming messages not yet reported with viewMessages; marks them.
+	std::vector<int64_t> TakeUnviewed();
+
+	int64_t LastReadOutbox() const { return fLastReadOutbox; }
+	void SetLastReadOutbox(int64_t id) { fLastReadOutbox = id; }
+
+private:
+	void _Add(const json& message);
+
+	int64_t fChatId;
+	std::map<int64_t, Message> fMessages;
+	std::set<int64_t> fViewed;
+	std::map<int64_t, Message> fReplyTargets;
+	std::set<int64_t> fRequestedReplies;
+	int64_t fLastReadOutbox = 0;
+};
+
+// Text for a message as shown in the chat: the whole text of a text
+// message, or MessagePreview's label for anything else.
+std::string MessageText(const json& content);
+// Parses a message's content into `message.media` (or clears it).
+void ParseMedia(const json& content, Message& message);
+
+Message ParseMessage(const json& message);
+
+namespace request {
+
+json OpenChat(int64_t chatId);
+json CloseChat(int64_t chatId);
+// The page of history before `fromMessageId` (0: the newest).
+json History(int64_t chatId, int64_t fromMessageId, int limit);
+json ViewMessages(int64_t chatId, const std::vector<int64_t>& ids);
+json SendText(int64_t chatId, const std::string& text, int64_t replyTo = 0);
+json EditText(int64_t chatId, int64_t messageId, const std::string& text);
+json Delete(int64_t chatId, const std::vector<int64_t>& ids, bool forEveryone);
+json GetMessage(int64_t chatId, int64_t messageId, const std::string& extra);
+json GetMessages(int64_t chatId, const std::vector<int64_t>& ids, const std::string& extra);
+json Properties(int64_t chatId, int64_t messageId, const std::string& extra);
+// Tells Telegram a message's content was opened: starts the timer of a
+// self-destructing photo, as the official apps do.
+json OpenContent(int64_t chatId, int64_t messageId);
+// Sends a local file: a photo (with its size) or any file as a document.
+json SendPhoto(int64_t chatId, const std::string& path, int32_t width, int32_t height,
+	const std::string& caption, int64_t replyTo = 0);
+json SendDocument(int64_t chatId, const std::string& path, const std::string& caption,
+	int64_t replyTo = 0);
+json Typing(int64_t chatId, bool typing);
+json Online(bool online);
+
+} // namespace request
+
+// Rate limit for typing notifications: true when one should be sent now.
+class TypingThrottle {
+public:
+	bool ShouldSend(double now)
+	{
+		if (now - fLast < 5.0)
+			return false;
+		fLast = now;
+		return true;
+	}
+	void Reset() { fLast = -1e9; }
+
+private:
+	double fLast = -1e9;
+};
+
+} // namespace pp

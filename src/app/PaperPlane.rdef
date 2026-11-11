@@ -1,0 +1,13 @@
+resource app_signature "application/x-vnd.paper-plane";
+
+resource app_flags B_SINGLE_LAUNCH;
+
+resource app_version {
+	major  = 0,
+	middle = 1,
+	minor  = 0,
+	variety = B_APPV_DEVELOPMENT,
+	internal = 0,
+	short_info = "Paper Plane",
+	long_info = "Paper Plane 0.1, a Telegram client (proof of concept)"
+};
