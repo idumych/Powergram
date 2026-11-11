@@ -2391,18 +2391,25 @@ App::_UpdateDeskbar()
 	// Next to the app when it runs from where it was built, else in the
 	// package's add-ons folder.
 	app_info info;
+	status_t infoStatus = GetAppInfo(&info);
+	BPath app(&info.ref);
 	BPath path;
-	if (GetAppInfo(&info) == B_OK && BPath(&info.ref).GetParent(&path) == B_OK)
+	if (infoStatus == B_OK && app.GetParent(&path) == B_OK)
 		path.Append("obj/PowergramDeskbar");
+	status_t findStatus = B_OK;
 	if (!BEntry(path.Path()).Exists()) {
 		// By reference: a pointer would pick the code-address constructor.
 		BPathFinder finder(info.ref);
-		finder.FindPath(B_FIND_PATH_ADD_ONS_DIRECTORY, "Powergram/PowergramDeskbar",
-			B_FIND_PATH_EXISTING_ONLY, path);
+		findStatus = finder.FindPath(B_FIND_PATH_ADD_ONS_DIRECTORY,
+			"Powergram/PowergramDeskbar", B_FIND_PATH_EXISTING_ONLY, path);
 	}
 	entry_ref ref;
-	if (path.InitCheck() != B_OK || get_ref_for_path(path.Path(), &ref) != B_OK) {
-		fprintf(stderr, "Powergram: no Deskbar item add-on found\n");
+	if (findStatus != B_OK || path.InitCheck() != B_OK
+		|| get_ref_for_path(path.Path(), &ref) != B_OK) {
+		fprintf(stderr, "Powergram: no Deskbar item add-on found (app %s: %s; "
+			"add-ons: %s, %s)\n", app.Path() != nullptr ? app.Path() : "?",
+			strerror(infoStatus), strerror(findStatus),
+			path.Path() != nullptr ? path.Path() : "?");
 		return;
 	}
 	status_t status = deskbar.AddItem(&ref);
