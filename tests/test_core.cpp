@@ -522,6 +522,21 @@ TestMedia()
 	CHECK(requests.size() == 1 && requests[0]["file_id"] == 6);
 	CHECK(request::Download(1, 99)["priority"] == 32);
 	CHECK(request::OpenContent(42, 1)["@type"] == "openMessageContent");
+	json info = {{"reactions", {{"reactions", json::array({
+		{{"type", {{"@type", "reactionTypeEmoji"}, {"emoji", "👍"}}}, {"total_count", 3}, {"is_chosen", true}},
+		{{"type", {{"@type", "reactionTypeCustomEmoji"}, {"custom_emoji_id", 5}}}, {"total_count", 1}},
+		{{"type", {{"@type", "reactionTypePaid"}}}, {"total_count", 9}}})}}}};
+	auto reactions = ParseReactions(info);
+	CHECK(reactions.size() == 1 && reactions[0].emoji == "👍" && reactions[0].count == 3 && reactions[0].chosen);
+	CHECK(ParseReactions(json()).empty());
+	ChatHistory rh(42);
+	rh.AddHistory({{"messages", json::array({Msg(42, 1, "hi")})}});
+	CHECK(rh.Apply({{"@type", "updateMessageInteractionInfo"}, {"chat_id", 42}, {"message_id", 1},
+		{"interaction_info", info}}));
+	CHECK(rh.Find(1)->reactions.size() == 1);
+	CHECK(request::React(42, 1, "👍", true)["@type"] == "addMessageReaction");
+	CHECK(request::React(42, 1, "👍", false)["@type"] == "removeMessageReaction");
+	CHECK(!request::React(42, 1, "👍", false).contains("is_big"));
 	json fwd = request::Forward(7, 42, {1, 2});
 	CHECK(fwd["chat_id"] == 7 && fwd["from_chat_id"] == 42 && fwd["message_ids"].size() == 2);
 }

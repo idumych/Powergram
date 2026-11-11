@@ -78,6 +78,7 @@ struct Row {
 	int64 senderKey = 0;
 	BString avatar, initials;
 	std::vector<pp::Span> spans;
+	BString reactions;
 };
 
 
@@ -112,6 +113,7 @@ Add(BMessage& list, const Row& r)
 	AddBytes(list, "avatar_mini", "");
 	list.AddString("initials", r.initials);
 	list.AddString("spans", pp::EncodeSpans(r.spans).c_str());
+	list.AddString("reactions", r.reactions);
 }
 
 
@@ -376,7 +378,9 @@ private:
 				span("release", pp::kItalic);
 			}
 			Add(list, r);
-			Add(list, _Mine(109, "Great, thanks everyone! I'll look at suspend next.", now - 600));
+			r = _Mine(109, "Great, thanks everyone! I'll look at suspend next.", now - 600);
+			r.reactions = "\xF0\x9F\x91\x8D\t3\t0\n\xE2\x9D\xA4\t1\t1\n";
+			Add(list, r);
 			r = _Mine(110, "Sending the logs in a minute", now - 120, false);
 			Add(list, r);
 		} else {

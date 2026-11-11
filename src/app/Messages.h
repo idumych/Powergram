@@ -143,6 +143,10 @@ enum {
 	// main window → app: "from_chat_id", "message_id", "to_chat_id"
 	kMsgForwardMessage = 'fwdm',
 
+	// message view or menu → main window → app: "message_id", "emoji",
+	// "add" (bool); "chat_id" added by the window
+	kMsgReact = 'reac',
+
 	kMsgLogOut = 'lout',
 	kMsgLogOutConfirmed = 'loco',
 	kMsgForceQuit = 'fqut'

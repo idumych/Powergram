@@ -537,6 +537,25 @@ MainWindow::_UpdateHistory(const BMessage* history)
 		row.avatarPreview = FindBytes(history, "avatar_mini", i);
 		row.avatarInitials = history->GetString("initials", i, "");
 		row.spans = pp::DecodeSpans(history->GetString("spans", i, ""));
+		// "emoji\tcount\tchosen" per line
+		BString reactions = history->GetString("reactions", i, "");
+		int32 start = 0;
+		while (start < reactions.Length()) {
+			int32 end = reactions.FindFirst('\n', start);
+			if (end < 0)
+				end = reactions.Length();
+			BString entry;
+			reactions.CopyInto(entry, start, end - start);
+			start = end + 1;
+			int32 t1 = entry.FindFirst('\t'), t2 = entry.FindLast('\t');
+			if (t1 < 0 || t2 <= t1)
+				continue;
+			MessageRow::Reaction r;
+			entry.CopyInto(r.emoji, 0, t1);
+			r.count = atoi(entry.String() + t1 + 1);
+			r.chosen = entry[t2 + 1] == '1';
+			row.reactions.push_back(r);
+		}
 		rows.push_back(row);
 	}
 	fMessages->SetEmptyText("No messages here yet");
@@ -592,6 +611,19 @@ MainWindow::_ShowMessageMenu(const BMessage* properties)
 	item("Reply", kMsgReply, properties->GetBool("can_reply", false));
 	item("Copy", kMsgCopy, properties->GetBool("can_copy", true) && !row->text.IsEmpty());
 	item("Forward" B_UTF8_ELLIPSIS, kMsgForward, properties->GetBool("can_forward", false));
+	// A few common reactions; the full set needs custom emoji Haiku can't draw.
+	BMenu* react = new BMenu("React");
+	for (const char* emoji : {"\xF0\x9F\x91\x8D", "\xE2\x9D\xA4\xEF\xB8\x8F",
+			"\xF0\x9F\x98\x82", "\xF0\x9F\x98\xAE", "\xF0\x9F\x98\xA2",
+			"\xF0\x9F\x99\x8F", "\xF0\x9F\x8E\x89", "\xF0\x9F\x94\xA5"}) {
+		BMessage* message = new BMessage(kMsgReact);
+		message->AddInt64("message_id", id);
+		message->AddString("emoji", emoji);
+		message->AddBool("add", true);
+		react->AddItem(new BMenuItem(emoji, message));
+	}
+	react->SetTargetForItems(this);
+	menu->AddItem(react);
 	bool canSelf = properties->GetBool("can_delete_self", false);
 	bool canAll = properties->GetBool("can_delete_all", false);
 	if (properties->GetBool("can_edit", false)) {
@@ -999,6 +1031,11 @@ MainWindow::MessageReceived(BMessage* message)
 			break;
 		}
 		case kMsgForwardMessage:
+			be_app->PostMessage(message);
+			break;
+		case kMsgReact:
+			message->RemoveName("chat_id");
+			message->AddInt64("chat_id", fOpenChat);
 			be_app->PostMessage(message);
 			break;
 		case kMsgChatLists:

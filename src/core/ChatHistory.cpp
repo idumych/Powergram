@@ -202,6 +202,23 @@ MessageText(const json& content)
 }
 
 
+std::vector<Reaction>
+ParseReactions(const json& interactionInfo)
+{
+	std::vector<Reaction> out;
+	const json& list = Field(Field(interactionInfo, "reactions"), "reactions");
+	if (!list.is_array())
+		return out;
+	for (const json& r : list) {
+		const json& type = Field(r, "type");
+		if (Type(type) != "reactionTypeEmoji")
+			continue;
+		out.push_back({Str(type, "emoji"), (int32_t)Int(r, "total_count"), Bool(r, "is_chosen")});
+	}
+	return out;
+}
+
+
 Message
 ParseMessage(const json& message)
 {
@@ -217,6 +234,7 @@ ParseMessage(const json& message)
 	m.text = MessageText(content);
 	m.spans = ContentSpans(content, m.text);
 	m.date = Int(message, "date");
+	m.reactions = ParseReactions(Field(message, "interaction_info"));
 	m.outgoing = Bool(message, "is_outgoing");
 	m.edited = Int(message, "edit_date") != 0;
 	std::string state = Type(Field(message, "sending_state"));
@@ -431,6 +449,13 @@ ChatHistory::Apply(const json& object)
 		if (it == fMessages.end())
 			return false;
 		it->second.edited = true;
+		return true;
+	}
+	if (type == "updateMessageInteractionInfo") {
+		auto it = fMessages.find(Int(object, "message_id"));
+		if (it == fMessages.end())
+			return false;
+		it->second.reactions = ParseReactions(Field(object, "interaction_info"));
 		return true;
 	}
 	if (type == "updateChatReadOutbox") {
@@ -651,6 +676,20 @@ Forward(int64_t toChatId, int64_t fromChatId, const std::vector<int64_t>& ids)
 	return {{"@type", "forwardMessages"}, {"chat_id", toChatId}, {"from_chat_id", fromChatId},
 		{"message_ids", ids}, {"send_copy", false}, {"remove_caption", false},
 		{"@extra", "forward"}};
+}
+
+
+json
+React(int64_t chatId, int64_t messageId, const std::string& emoji, bool add)
+{
+	json request = {{"@type", add ? "addMessageReaction" : "removeMessageReaction"},
+		{"chat_id", chatId}, {"message_id", messageId},
+		{"reaction_type", {{"@type", "reactionTypeEmoji"}, {"emoji", emoji}}}};
+	if (add) {
+		request["is_big"] = false;
+		request["update_recent_reactions"] = true;
+	}
+	return request;
 }
 
 

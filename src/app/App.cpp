@@ -495,6 +495,7 @@ App::_SendHistory()
 		BString avatar, initials;
 		std::string avatarMini;
 		std::vector<pp::Span> spans;
+		BString reactions;   // "emoji\tcount\tchosen" per line
 	};
 	auto add = [&](const Row& r) {
 		list.AddInt64("id", r.id);
@@ -525,6 +526,7 @@ App::_SendHistory()
 		AddBytes(list, "avatar_mini", r.avatarMini);
 		list.AddString("initials", r.initials);
 		list.AddString("spans", pp::EncodeSpans(r.spans).c_str());
+		list.AddString("reactions", r.reactions);
 	};
 	auto summary = [](const pp::Message& m) {
 		if (!m.text.empty())
@@ -595,6 +597,9 @@ App::_SendHistory()
 		lastSender = r.showAvatar ? r.senderKey : 0;
 		r.text = m.text.c_str();
 		r.spans = m.spans;
+		for (const pp::Reaction& reaction : m.reactions)
+			r.reactions << reaction.emoji.c_str() << "\t" << reaction.count << "\t"
+				<< (reaction.chosen ? "1" : "0") << "\n";
 		timeFormat.Format(r.time, (time_t)m.date, B_SHORT_TIME_FORMAT);
 		r.outgoing = m.outgoing;
 		r.read = m.outgoing && m.id <= fHistory->LastReadOutbox();
@@ -1063,6 +1068,12 @@ App::MessageReceived(BMessage* message)
 
 		case kMsgFlushChats:
 			_FlushChats();
+			break;
+
+		case kMsgReact:
+			_Send(pp::request::React(message->GetInt64("chat_id", 0),
+				message->GetInt64("message_id", 0), message->GetString("emoji", ""),
+				message->GetBool("add", true)));
 			break;
 
 		case kMsgForwardMessage:

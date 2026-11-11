@@ -660,11 +660,37 @@ MessageView::_Relayout()
 			y0 += mediaH + pad * 0.5f;
 		}
 		l.textTop = y0;
+		// Reaction pills: one row below the text (wrapping if needed).
+		BFont pillFont(be_plain_font);
+		pillFont.SetSize(std::max(11.0f, floorf(be_plain_font->Size())));
+		float pillH = roundf(line * 1.25f);
+		std::vector<float> pillW;
+		for (const MessageRow::Reaction& r : row.reactions) {
+			BString label(r.emoji);
+			label << " " << r.count;
+			pillW.push_back(pillFont.StringWidth(label.String()) + pillH);
+		}
 		if (l.lines.size() == 1 && l.lines[0].IsEmpty()) {
 			l.lines.clear();  // no caption
 			l.lineChars.clear();
 		}
-		float height = (y0 - y) + line * l.lines.size() + line + pad * 0.5f;
+		float pillRows = 0;
+		if (!pillW.empty()) {
+			float rowX = 0, maxRow = std::max(bubbleWidth - 2 * pad, maxBubble - 2 * pad);
+			pillRows = 1;
+			for (float w : pillW) {
+				if (rowX > 0 && rowX + w > maxRow) {
+					pillRows++;
+					rowX = 0;
+				}
+				rowX += w + 4;
+			}
+			bubbleWidth = std::max(bubbleWidth, std::min(maxBubble,
+				(pillRows == 1 ? rowX : maxRow) + 2 * pad));
+		}
+		float pillsTop = y0 + line * l.lines.size() + (pillRows > 0 ? pad * 0.4f : 0);
+		float height = (y0 - y) + line * l.lines.size()
+			+ pillRows * (pillH + 4) + (pillRows > 0 ? pad * 0.4f : 0) + line + pad * 0.5f;
 		if (row.service) {
 			bubbleWidth = std::min(width - 2 * pad, widest + 2 * pad);
 			height = line * l.lines.size() + pad;
@@ -677,6 +703,19 @@ MessageView::_Relayout()
 			l.textTop = y + pad * 0.5f;
 		if (row.mediaKind != 0)
 			l.media.OffsetBy(sticker ? left : left + (bubbleWidth - mediaW) / 2, 0);
+
+		// Where the reaction pills go.
+		{
+			float px = left + pad, py = pillsTop, maxRight = left + bubbleWidth - pad;
+			for (float w : pillW) {
+				if (px > left + pad && px + w > maxRight) {
+					px = left + pad;
+					py += pillH + 4;
+				}
+				l.reactions.push_back(BRect(px, py, px + w - 1, py + pillH - 1));
+				px += w + 4;
+			}
+		}
 
 		// Where the links are, for clicks.
 		for (const pp::Span& span : row.spans) {
@@ -846,6 +885,18 @@ MessageView::MouseDown(BPoint where)
 		for (size_t i = 0; i < fLayout.size(); i++) {
 			if (!fLayout[i].bubble.Contains(where))
 				continue;
+			for (size_t k = 0; k < fLayout[i].reactions.size()
+					&& k < fRows[i].reactions.size(); k++) {
+				if (fLayout[i].reactions[k].Contains(where)) {
+					// Our reaction comes off; anyone else's is added for us.
+					BMessage react(kMsgReact);
+					react.AddInt64("message_id", fRows[i].id);
+					react.AddString("emoji", fRows[i].reactions[k].emoji);
+					react.AddBool("add", !fRows[i].reactions[k].chosen);
+					Window()->PostMessage(&react);
+					return;
+				}
+			}
 			for (const Layout::Link& link : fLayout[i].links) {
 				if (link.frame.Contains(where)) {
 					BMessage open(kMsgOpenUrl);
@@ -1083,6 +1134,31 @@ MessageView::Draw(BRect updateRect)
 			_DrawText(row, l, x, line, fg, fill);
 		if (row.service)
 			continue;
+
+		// Reactions: "👍 3" pills, ours highlighted. A whole font size of at
+		// least 11 pt: Renku's app_server misses some fallback emoji at others.
+		if (!row.reactions.empty()) {
+			BFont pillFont(be_plain_font);
+			pillFont.SetSize(std::max(11.0f, floorf(be_plain_font->Size())));
+			font_height pfh;
+			pillFont.GetHeight(&pfh);
+			for (size_t k = 0; k < row.reactions.size() && k < l.reactions.size(); k++) {
+				const MessageRow::Reaction& r = row.reactions[k];
+				BRect pill = l.reactions[k];
+				rgb_color pillFill = r.chosen ? accent : mix_color(fill, fg, 30);
+				SetHighColor(pillFill);
+				FillRoundRect(pill, pill.Height() / 2, pill.Height() / 2);
+				BString label(r.emoji);
+				label << " " << r.count;
+				SetFont(&pillFont);
+				SetLowColor(pillFill);
+				SetHighColor(r.chosen ? make_color(255, 255, 255) : fg);
+				DrawString(label.String(), BPoint(pill.left + pill.Height() / 2,
+					pill.top + (pill.Height() + pfh.ascent - pfh.descent) / 2));
+				SetFont(be_plain_font);
+				SetLowColor(fill);
+			}
+		}
 
 		// Time, "edited", and the sending state, bottom right.
 		BString meta;

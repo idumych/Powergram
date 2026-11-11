@@ -53,6 +53,13 @@ struct MessageRow {
 	BString avatarInitials;     // without any picture
 
 	std::vector<pp::Span> spans; // formatting and links in `text`
+
+	struct Reaction {
+		BString emoji;
+		int32 count;
+		bool chosen;
+	};
+	std::vector<Reaction> reactions;
 };
 
 class BBitmap;
@@ -100,6 +107,7 @@ private:
 			std::string url;
 		};
 		std::vector<Link> links;       // clickable, in view coordinates
+		std::vector<BRect> reactions;  // a pill per reaction, view coordinates
 	};
 
 	// Character widths of a string, measured once with one app_server call

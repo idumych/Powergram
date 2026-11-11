@@ -38,6 +38,15 @@ Media VideoMedia(const json& video, Media::Kind kind, const char* fileField);
 
 std::string DecodeBase64(const std::string& text);
 
+struct Reaction {
+	std::string emoji;
+	int32_t count = 0;
+	bool chosen = false;   // ours
+};
+
+// The emoji reactions in an interaction_info (custom and paid ones skipped).
+std::vector<Reaction> ParseReactions(const json& interactionInfo);
+
 struct Message {
 	int64_t id = 0;
 	int64_t senderId = 0;      // user id, or chat id when senderIsChat
@@ -65,6 +74,7 @@ struct Message {
 
 	Media media;
 	std::vector<Span> spans;   // formatting and links in `text`
+	std::vector<Reaction> reactions;
 };
 
 // A profile picture: the small (160 px) file and its tiny inline JPEG.
@@ -174,6 +184,7 @@ json Properties(int64_t chatId, int64_t messageId, const std::string& extra);
 // self-destructing photo, as the official apps do.
 json OpenContent(int64_t chatId, int64_t messageId);
 json Forward(int64_t toChatId, int64_t fromChatId, const std::vector<int64_t>& ids);
+json React(int64_t chatId, int64_t messageId, const std::string& emoji, bool add);
 // Sends a local file: a photo (with its size) or any file as a document.
 json SendPhoto(int64_t chatId, const std::string& path, int32_t width, int32_t height,
 	const std::string& caption, int64_t replyTo = 0);
