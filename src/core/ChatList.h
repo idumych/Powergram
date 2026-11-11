@@ -25,6 +25,8 @@ struct Chat {
 	bool outgoing = false;
 	int64_t lastReadOutbox = 0; // our messages up to this id were read
 	std::string draft;          // unsent text kept for this chat
+	int64_t lastMessageId = 0;  // the chat's newest message
+	int64_t lastReadInbox = 0;  // incoming messages up to this id were read
 	int32_t photoFileId = 0;    // small (160 px) chat photo, 0: none
 	std::string photoPreview;   // its tiny inline JPEG
 

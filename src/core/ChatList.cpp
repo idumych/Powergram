@@ -162,6 +162,7 @@ ChatList::ApplyLastMessage(Chat& chat, const json& message)
 		chat.outgoing = false;
 		return;
 	}
+	chat.lastMessageId = Int(message, "id");
 	chat.lastText = MessagePreview(Field(message, "content"));
 	chat.lastDate = Int(message, "date");
 	chat.outgoing = Bool(message, "is_outgoing");
@@ -186,6 +187,7 @@ ChatList::Apply(const json& object)
 		ApplyPhoto(chat, Field(c, "photo"));
 		ApplyNotificationSettings(chat, Field(c, "notification_settings"));
 		chat.unread = Int(c, "unread_count");
+		chat.lastReadInbox = Int(c, "last_read_inbox_message_id");
 		chat.unreadMentions = Int(c, "unread_mention_count");
 		ApplyPositions(chat, Field(c, "positions"));
 		const json& last = Field(c, "last_message");
@@ -228,6 +230,7 @@ ChatList::Apply(const json& object)
 		ApplyPositions(chat, Field(object, "positions"));
 	} else if (type == "updateChatReadInbox") {
 		chat.unread = Int(object, "unread_count");
+		chat.lastReadInbox = Int(object, "last_read_inbox_message_id");
 	} else if (type == "updateChatReadOutbox") {
 		chat.lastReadOutbox = Int(object, "last_read_outbox_message_id");
 		chat.outgoingRead = chat.outgoing;

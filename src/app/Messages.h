@@ -124,6 +124,11 @@ enum {
 	// main window → app: "chat_id", "text": the entry when leaving a chat
 	kMsgSaveDraft = 'sdft',
 
+	// message view → main window → app: scrolled to the bottom of a partly
+	// loaded history / the jump-to-latest button was clicked
+	kMsgLoadNewer = 'lnew',
+	kMsgJumpToLatest = 'jump',
+
 	kMsgLogOut = 'lout',
 	kMsgLogOutConfirmed = 'loco',
 	kMsgForceQuit = 'fqut'

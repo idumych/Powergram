@@ -385,7 +385,7 @@ ChatHistory::Apply(const json& object)
 
 	if (type == "updateNewMessage") {
 		const json& message = Field(object, "message");
-		if (Int(message, "chat_id") != fChatId)
+		if (Int(message, "chat_id") != fChatId || !fAtLatest)
 			return false;
 		_Add(message);
 		return true;
@@ -512,6 +512,13 @@ ChatHistory::ReplyTarget(const Message& message) const
 
 
 int64_t
+ChatHistory::NewestId() const
+{
+	return fMessages.empty() ? 0 : fMessages.rbegin()->first;
+}
+
+
+int64_t
 ChatHistory::OldestId() const
 {
 	return fMessages.empty() ? 0 : fMessages.begin()->first;
@@ -554,6 +561,24 @@ History(int64_t chatId, int64_t fromMessageId, int limit)
 	return {{"@type", "getChatHistory"}, {"chat_id", chatId},
 		{"from_message_id", fromMessageId}, {"offset", 0}, {"limit", limit},
 		{"only_local", false}, {"@extra", "history:" + std::to_string(chatId)}};
+}
+
+
+json
+HistoryAround(int64_t chatId, int64_t messageId, int before, int after)
+{
+	// TDLib: a negative offset includes that many newer messages; the limit
+	// counts them too and must be larger.
+	return {{"@type", "getChatHistory"}, {"chat_id", chatId},
+		{"from_message_id", messageId}, {"offset", -after}, {"limit", before + after + 1},
+		{"only_local", false}, {"@extra", "history:" + std::to_string(chatId)}};
+}
+
+
+json
+HistoryNewer(int64_t chatId, int64_t messageId, int count)
+{
+	return HistoryAround(chatId, messageId, 0, count);
 }
 
 

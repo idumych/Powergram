@@ -344,7 +344,41 @@ MessageView::SetEmptyText(const char* text)
 
 
 void
-MessageView::SetMessages(const std::vector<MessageRow>& rows, bool scrollToEnd)
+MessageView::SetMoreBelow(bool moreBelow)
+{
+	if (fMoreBelow != moreBelow) {
+		fMoreBelow = moreBelow;
+		Invalidate(_JumpButtonFrame());
+	}
+}
+
+
+void
+MessageView::SetUnreadCount(int32 count)
+{
+	if (fUnreadCount != count) {
+		fUnreadCount = count;
+		Invalidate(_JumpButtonFrame());
+	}
+}
+
+
+BRect
+MessageView::_JumpButtonFrame() const
+{
+	// Bottom right of what's visible, in view coordinates; room for the badge.
+	font_height fh;
+	be_plain_font->GetHeight(&fh);
+	float size = roundf((fh.ascent + fh.descent) * 2.6f);
+	BRect b = Bounds();
+	return BRect(b.right - size - 14, b.bottom - size - 14 - size * 0.3f,
+		b.right - 14, b.bottom - 14);
+}
+
+
+void
+MessageView::SetMessages(const std::vector<MessageRow>& rows, bool scrollToEnd,
+	int64 scrollTo)
 {
 	// New messages at the end keep a reader at the end; older ones loading
 	// above, or an edit changing a message's height, keep what's on screen.
@@ -354,6 +388,21 @@ MessageView::SetMessages(const std::vector<MessageRow>& rows, bool scrollToEnd)
 	fRows = rows;
 	_Relayout();
 	_RestoreAnchor(anchor);
+	if (scrollTo != 0) {
+		// The first unread message near the top, its "Unread messages"
+		// separator above it.
+		for (size_t i = 0; i < fRows.size(); i++) {
+			if (fRows[i].id != scrollTo)
+				continue;
+			float top = (i > 0 ? fLayout[i - 1].bubble.top : fLayout[i].bubble.top) - 8;
+			fRelayouting = true;
+			ScrollTo(BPoint(0, std::max(0.0f, std::min(top,
+				fContentHeight - Bounds().Height()))));
+			fRelayouting = false;
+			fAtEnd = fContentHeight - Bounds().bottom < 4;
+			break;
+		}
+	}
 	Invalidate();
 }
 
@@ -726,12 +775,19 @@ MessageView::_UpdateScrollBar()
 void
 MessageView::ScrollTo(BPoint where)
 {
+	// The jump button stays at the bottom right of what's visible: redraw
+	// where it was and where it goes (scrolling moves its pixels too).
+	BRect oldButton = _JumpButtonFrame();
 	BView::ScrollTo(where);
+	Invalidate(oldButton);
+	Invalidate(_JumpButtonFrame());
 	// The scroll bar calls this while we re-layout (SetRange clamps its
 	// value): that's not the reader moving.
 	if (fRelayouting)
 		return;
 	fAtEnd = fContentHeight - Bounds().bottom < 4;
+	if (fAtEnd && fMoreBelow && Window() != nullptr)
+		Window()->PostMessage(kMsgLoadNewer);
 	// At the top of a history taller than the view: ask for older messages.
 	if (Window() != nullptr && where.y <= 0 && !fRows.empty()
 		&& fContentHeight > Bounds().Height())
@@ -783,6 +839,10 @@ MessageView::MouseDown(BPoint where)
 	if (BMessage* current = Window()->CurrentMessage())
 		current->FindInt32("buttons", (int32*)&buttons);
 	if ((buttons & B_PRIMARY_MOUSE_BUTTON) != 0) {
+		if ((!fAtEnd || fMoreBelow) && _JumpButtonFrame().Contains(where)) {
+			Window()->PostMessage(kMsgJumpToLatest);
+			return;
+		}
 		for (size_t i = 0; i < fLayout.size(); i++) {
 			if (!fLayout[i].bubble.Contains(where))
 				continue;
@@ -1035,6 +1095,41 @@ MessageView::Draw(BRect updateRect)
 		DrawString(meta.String(), BPoint(l.bubble.right - pad - StringWidth(meta.String()),
 			l.bubble.bottom - pad * 0.5f - fh.descent));
 		SetLowColor(bg);
+	}
+
+	if (!fAtEnd || fMoreBelow) {
+		// A round "down" button, with the unread count above it.
+		BRect frame = _JumpButtonFrame();
+		float size = frame.Width();
+		BRect circle(frame.left, frame.bottom - size, frame.right, frame.bottom);
+		SetDrawingMode(B_OP_ALPHA);
+		SetHighColor(ui_color(B_PANEL_BACKGROUND_COLOR));
+		FillEllipse(circle);
+		SetHighColor(mix_color(fg, bg, 160));
+		StrokeEllipse(circle);
+		SetHighColor(fg);
+		BPoint c(circle.left + size / 2, circle.top + size / 2);
+		float a = size * 0.18f;
+		SetPenSize(2);
+		StrokeLine(BPoint(c.x - a, c.y - a * 0.5f), BPoint(c.x, c.y + a * 0.5f));
+		StrokeLine(BPoint(c.x, c.y + a * 0.5f), BPoint(c.x + a, c.y - a * 0.5f));
+		SetPenSize(1);
+		if (fUnreadCount > 0) {
+			BString badge;
+			badge << fUnreadCount;
+			font_height bfh;
+			be_plain_font->GetHeight(&bfh);
+			float h = ceilf(bfh.ascent + bfh.descent) + 2;
+			float w = std::max(h, be_plain_font->StringWidth(badge.String()) + h * 0.7f);
+			BRect pill(c.x - w / 2, circle.top - h / 2, c.x + w / 2, circle.top + h / 2);
+			SetHighColor(ui_color(B_CONTROL_HIGHLIGHT_COLOR));
+			FillRoundRect(pill, h / 2, h / 2);
+			SetHighColor(255, 255, 255);
+			SetLowColor(ui_color(B_CONTROL_HIGHLIGHT_COLOR));
+			SetFont(be_plain_font);
+			DrawString(badge.String(), BPoint(c.x - be_plain_font->StringWidth(badge.String()) / 2,
+				pill.top + 1 + bfh.ascent));
+		}
 	}
 
 	if (fDropTarget) {

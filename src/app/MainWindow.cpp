@@ -111,6 +111,7 @@ public:
 
 	int64 Id() const { return fId; }
 	const char* Title() const { return fTitle.String(); }
+	int32 Unread() const { return fUnread; }
 
 	void Update(BView* owner, const BFont* font) override
 	{
@@ -387,9 +388,13 @@ MainWindow::_UpdateChats(const BMessage* list)
 		items.AddItem(new ChatItem(list, i, _Avatar(list, i)));
 	fList->AddList(&items);
 
-	for (int32 i = 0; i < count; i++)
+	for (int32 i = 0; i < count; i++) {
 		if (static_cast<ChatItem*>(fList->ItemAt(i))->Id() == selected)
 			fList->Select(i);
+		// The open chat's unread count, for the jump button's badge.
+		if (list->GetInt64("id", i, 0) == fOpenChat)
+			fMessages->SetUnreadCount(list->GetInt32("unread", i, 0));
+	}
 }
 
 
@@ -406,6 +411,9 @@ MainWindow::_SelectionChanged()
 	fTitle->SetText(id != 0 ? static_cast<ChatItem*>(
 		fList->ItemAt(fList->CurrentSelection()))->Title() : "");
 	fSubtitle->SetText("");
+	ChatItem* opened = dynamic_cast<ChatItem*>(fList->ItemAt(fList->CurrentSelection()));
+	fMessages->SetUnreadCount(opened != nullptr ? opened->Unread() : 0);
+	fMessages->SetMoreBelow(false);
 	fMessages->SetMessages({}, true);
 	fMessages->SetEmptyText(id != 0 ? "Loading messages…"
 		: "Select a chat to start messaging");
@@ -466,7 +474,9 @@ MainWindow::_UpdateHistory(const BMessage* history)
 		rows.push_back(row);
 	}
 	fMessages->SetEmptyText("No messages here yet");
-	fMessages->SetMessages(rows, history->GetBool("scroll_end", false));
+	fMessages->SetMoreBelow(history->GetBool("more_below", false));
+	fMessages->SetMessages(rows, history->GetBool("scroll_end", false),
+		history->GetInt64("scroll_to", 0));
 }
 
 
@@ -779,6 +789,8 @@ MainWindow::MessageReceived(BMessage* message)
 			break;
 		}
 		case kMsgLoadOlder:
+		case kMsgLoadNewer:
+		case kMsgJumpToLatest:
 			be_app->PostMessage(message);
 			break;
 

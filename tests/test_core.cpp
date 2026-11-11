@@ -753,6 +753,35 @@ TestDrafts()
 }
 
 
+static void
+TestUnreadAndNewer()
+{
+	ChatList list;
+	json chat = NewChat(1, "Friend", "100", Msg(1, 50, "latest"));
+	chat["chat"]["unread_count"] = 3;
+	chat["chat"]["last_read_inbox_message_id"] = 47;
+	list.Apply(chat);
+	CHECK(list.Find(1)->lastMessageId == 50 && list.Find(1)->lastReadInbox == 47);
+	list.Apply({{"@type", "updateChatReadInbox"}, {"chat_id", 1}, {"unread_count", 0},
+		{"last_read_inbox_message_id", 50}});
+	CHECK(list.Find(1)->lastReadInbox == 50);
+
+	json around = request::HistoryAround(1, 47, 20, 39);
+	CHECK(around["offset"] == -39 && around["limit"] == 60 && around["from_message_id"] == 47);
+	CHECK(request::HistoryNewer(1, 47, 40)["limit"] == 41);
+
+	// Away from the latest messages, new ones aren't added (no gaps).
+	ChatHistory h(1);
+	h.AddHistory({{"messages", json::array({Msg(1, 40, "a"), Msg(1, 41, "b")})}});
+	CHECK(h.NewestId() == 41 && h.OldestId() == 40);
+	h.SetAtLatest(false);
+	CHECK(!h.Apply({{"@type", "updateNewMessage"}, {"message", Msg(1, 60, "far")}}));
+	h.SetAtLatest(true);
+	CHECK(h.Apply({{"@type", "updateNewMessage"}, {"message", Msg(1, 61, "here")}}));
+	CHECK(h.NewestId() == 61);
+}
+
+
 int
 main()
 {
@@ -769,6 +798,7 @@ main()
 	TestFormatting();
 	TestPresence();
 	TestDrafts();
+	TestUnreadAndNewer();
 	if (sFailures) {
 		std::fprintf(stderr, "%d check(s) failed\n", sFailures);
 		return EXIT_FAILURE;

@@ -118,6 +118,13 @@ public:
 	// fetched targets; nullptr if not known (yet).
 	const Message* ReplyTarget(const Message& message) const;
 	int64_t OldestId() const;
+	int64_t NewestId() const;
+
+	// Whether the loaded history reaches the chat's newest message. While
+	// it doesn't (opened at the first unread one), new messages aren't
+	// added: they'd leave a gap; they load when scrolling down.
+	bool AtLatest() const { return fAtLatest; }
+	void SetAtLatest(bool atLatest) { fAtLatest = atLatest; }
 	size_t Size() const { return fMessages.size(); }
 
 	// Incoming messages not yet reported with viewMessages; marks them.
@@ -135,6 +142,7 @@ private:
 	std::map<int64_t, Message> fReplyTargets;
 	std::set<int64_t> fRequestedReplies;
 	int64_t fLastReadOutbox = 0;
+	bool fAtLatest = true;
 };
 
 // Text for a message as shown in the chat: the whole text of a text
@@ -151,6 +159,10 @@ json OpenChat(int64_t chatId);
 json CloseChat(int64_t chatId);
 // The page of history before `fromMessageId` (0: the newest).
 json History(int64_t chatId, int64_t fromMessageId, int limit);
+// `before` messages up to `messageId` and `after` newer ones.
+json HistoryAround(int64_t chatId, int64_t messageId, int before, int after);
+// Up to `count` messages newer than `messageId`.
+json HistoryNewer(int64_t chatId, int64_t messageId, int count);
 json ViewMessages(int64_t chatId, const std::vector<int64_t>& ids);
 json SendText(int64_t chatId, const std::string& text, int64_t replyTo = 0);
 json EditText(int64_t chatId, int64_t messageId, const std::string& text);

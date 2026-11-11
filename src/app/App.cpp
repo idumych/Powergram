@@ -63,7 +63,8 @@ private:
 	void _Send(const json& request, bool urgent = false)
 		{ fClient->Send(request, urgent); }
 	void _CloseWindows();
-	void _OpenChat(int64 id);
+	// Opens a chat at its first unread message, or with `latest` at the end.
+	void _OpenChat(int64 id, bool latest = false);
 	void _HandleHistoryReply(const json& messages);
 	// Schedules a chat view update; at most ten a second (a busy chat
 	// sends many updates, and each one is a full re-layout).
@@ -100,6 +101,8 @@ private:
 	int64 fPickerSet = -1;
 	std::unique_ptr<pp::ChatHistory> fHistory;   // the open chat, if any
 	int fHistoryPages;        // history requests for the current page
+	int64 fFirstUnread = 0;   // read up to here when the chat was opened
+	int64 fScrollTo = 0;      // message to show first, once
 	bool fLoadingHistory;
 	pp::TypingThrottle fTyping;
 	bool fActive;             // a window of ours is active
@@ -362,7 +365,7 @@ App::_HandleObject(const json& object)
 
 
 void
-App::_OpenChat(int64 id)
+App::_OpenChat(int64 id, bool latest)
 {
 	// openChat/closeChat tell Telegram which chat is on screen, as the
 	// official apps do; it affects read state and notifications.
@@ -378,8 +381,11 @@ App::_OpenChat(int64 id)
 		return;
 
 	fHistory = std::make_unique<pp::ChatHistory>(id);
-	if (const pp::Chat* chat = fChats.Find(id))
-		fHistory->SetLastReadOutbox(chat->lastReadOutbox);
+	fFirstUnread = 0;
+	fScrollTo = 0;
+	const pp::Chat* openChat = fChats.Find(id);
+	if (openChat != nullptr)
+		fHistory->SetLastReadOutbox(openChat->lastReadOutbox);
 	_Send(pp::request::OpenChat(id));
 	_SendChatStatus();
 	if (const pp::Chat* chat = fChats.Find(id)) {
@@ -388,10 +394,18 @@ App::_OpenChat(int64 id)
 		draft.AddString("text", chat->draft.c_str());
 		fMain->PostMessage(&draft);
 	}
-	// One page; TDLib may answer with fewer at first (see _HandleHistoryReply).
 	fHistoryPages = 0;
 	fLoadingHistory = true;
-	_Send(pp::request::History(id, 0, 40));
+	if (!latest && openChat != nullptr && openChat->unread > 0 && openChat->lastReadInbox > 0
+		&& openChat->lastReadInbox < openChat->lastMessageId) {
+		// Unread messages: open at the first one, with what came before it.
+		fFirstUnread = openChat->lastReadInbox;
+		fHistory->SetAtLatest(false);
+		_Send(pp::request::HistoryAround(id, openChat->lastReadInbox, 20, 39));
+	} else {
+		// One page; TDLib may answer with fewer at first (see _HandleHistoryReply).
+		_Send(pp::request::History(id, 0, 40));
+	}
 }
 
 
@@ -407,13 +421,24 @@ App::_HandleHistoryReply(const json& messages)
 	}
 	int added = fHistory->AddHistory(messages);
 	fHistoryPages++;
+	if (const pp::Chat* chat = fChats.Find(chatId))
+		if (!fHistory->AtLatest() && fHistory->NewestId() >= chat->lastMessageId)
+			fHistory->SetAtLatest(true);
+	if (fHistoryPages == 1 && fFirstUnread != 0) {
+		// Scroll to the first unread message, once.
+		for (const pp::Message& m : fHistory->Sorted())
+			if (m.id > fFirstUnread && !m.outgoing) {
+				fScrollTo = m.id;
+				break;
+			}
+	}
 	// TDLib's first answer often holds only what it has cached; ask again
 	// from the oldest message, a few times at most, through the throttle.
 	if (added > 0 && fHistory->Size() < 20 && fHistoryPages < 4) {
 		_Send(pp::request::History(chatId, fHistory->OldestId(), 40));
 	} else
 		fLoadingHistory = false;
-	_FlushHistory(fHistoryPages == 1);
+	_FlushHistory(fHistoryPages == 1 && fScrollTo == 0);
 	_ViewVisible();
 }
 
@@ -444,6 +469,11 @@ App::_SendHistory()
 	BMessage list(kMsgHistory);
 	list.AddInt64("chat_id", chatId);
 	list.AddBool("scroll_end", scrollToEnd);
+	list.AddBool("more_below", !fHistory->AtLatest());
+	if (fScrollTo != 0) {
+		list.AddInt64("scroll_to", fScrollTo);
+		fScrollTo = 0;
+	}
 
 	// Every row adds every field: the window reads them as parallel arrays.
 	struct Row {
@@ -509,6 +539,7 @@ App::_SendHistory()
 	BDateFormat dateFormat;
 	int lastDay = -1;
 	int64 lastSender = 0;  // name only on the first message of a run
+	bool unreadMarked = false;
 	std::vector<pp::Message> messages = fHistory->Sorted();
 	for (size_t i = 0; i < messages.size(); i++) {
 		const pp::Message& m = messages[i];
@@ -523,6 +554,16 @@ App::_SendHistory()
 			dateFormat.Format(separator.text, when, B_LONG_DATE_FORMAT);
 			separator.service = true;
 			add(separator);
+			lastSender = 0;
+		}
+
+		if (fFirstUnread != 0 && m.id > fFirstUnread && !m.outgoing && !unreadMarked) {
+			// Where the unread messages start, as when the chat was opened.
+			Row marker;
+			marker.text = "Unread messages";
+			marker.service = true;
+			add(marker);
+			unreadMarked = true;
 			lastSender = 0;
 		}
 
@@ -1006,6 +1047,23 @@ App::MessageReceived(BMessage* message)
 				_Send(pp::ChatList::DraftRequest(chatId, text));
 			break;
 		}
+
+		case kMsgLoadNewer:
+			if (fHistory != nullptr && !fHistory->AtLatest() && !fLoadingHistory) {
+				fLoadingHistory = true;
+				fHistoryPages = 3;  // no follow-up pages
+				_Send(pp::request::HistoryNewer(fHistory->ChatId(), fHistory->NewestId(), 40));
+			}
+			break;
+
+		case kMsgJumpToLatest:
+			if (fHistory == nullptr)
+				break;
+			if (fHistory->AtLatest())
+				_FlushHistory(true);
+			else
+				_OpenChat(fHistory->ChatId(), true);
+			break;
 
 		case kMsgPresenceTick:
 			// Typing expires and "last seen" ages without an update.

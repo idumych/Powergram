@@ -310,6 +310,13 @@ private:
 			r.mediaHeight = 1080;
 			Add(list, r);
 			Add(list, _From(kMira, 104, "Nightly build00079, fresh install", now - 5350));
+			if (sScene == "unread") {
+				Row marker = _Date("Unread messages");
+				Add(list, marker);
+				list.ReplaceBool("scroll_end", false);
+				list.AddInt64("scroll_to", 105);
+				list.AddBool("more_below", true);
+			}
 			r = _From(kJonas, 105, "Nightly build00079 boots on my ThinkPad too", now - 3000);
 			r.replySender = "Mira Okafor";
 			r.replyText = "Here's the boot screen on the T480";

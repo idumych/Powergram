@@ -61,7 +61,13 @@ class MessageView : public BView {
 public:
 	MessageView();
 
-	void SetMessages(const std::vector<MessageRow>& rows, bool scrollToEnd);
+	// scrollTo: a message to show at the top (the first unread one).
+	void SetMessages(const std::vector<MessageRow>& rows, bool scrollToEnd,
+		int64 scrollTo = 0);
+	// The jump-to-latest button: whether newer messages aren't loaded, and
+	// the chat's unread count for its badge.
+	void SetMoreBelow(bool moreBelow);
+	void SetUnreadCount(int32 count);
 	void SetEmptyText(const char* text);
 
 	void Draw(BRect updateRect) override;
@@ -147,6 +153,9 @@ private:
 	std::list<std::string> fBitmapOrder;
 	std::set<int64> fRevealed;  // spoilers clicked open
 	bool fDropTarget;           // files are being dragged over us
+	bool fMoreBelow = false;
+	int32 fUnreadCount = 0;
+	BRect _JumpButtonFrame() const;
 	bool fAtEnd;
 	bool fRelayouting;    // our own scrolling: not the reader's
 	float fLastHeight;    // height at the last layout, for FrameResized

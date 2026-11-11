@@ -48,13 +48,13 @@ $(BUILD)/pickers_demo: $(BUILD)/tests/pickers_demo.o $(BUILD)/src/app/Pickers.o 
 # Scroll position through real resizes, in a visible window.
 live-scroll: $(BUILD)/live_scroll
 $(BUILD)/live_scroll: $(BUILD)/tests/live_scroll.o $(BUILD)/src/app/MessageView.o \
-		$(BUILD)/src/app/BitmapUtils.o
+		$(BUILD)/src/app/BitmapUtils.o $(BUILD)/src/core/Format.o
 	$(CXX) -o $@ $^ -lbe -ltranslation
 
 # Layout timing for the message view; not part of the app.
 bench: $(BUILD)/bench_messageview
 $(BUILD)/bench_messageview: $(BUILD)/tests/bench_messageview.o $(BUILD)/src/app/MessageView.o \
-		$(BUILD)/src/app/BitmapUtils.o
+		$(BUILD)/src/app/BitmapUtils.o $(BUILD)/src/core/Format.o
 	$(CXX) -o $@ $^ -lbe -ltranslation
 
 $(BUILD)/$(NAME).rsrc: src/app/PaperPlane.rdef
