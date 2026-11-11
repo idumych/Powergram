@@ -249,6 +249,7 @@ private:
 			list.AddBool("pinned", c.pinned);
 			list.AddBool("read", c.read);
 			list.AddString("typing", c.id == 2004 ? "typing…" : "");
+			list.AddString("draft", c.id == 2005 ? "I'll test it tonight and" : "");
 			list.AddString("photo", c.photo != nullptr ? Media(c.photo).c_str() : "");
 			AddBytes(list, "photo_mini", "");
 		}

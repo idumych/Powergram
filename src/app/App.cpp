@@ -382,6 +382,12 @@ App::_OpenChat(int64 id)
 		fHistory->SetLastReadOutbox(chat->lastReadOutbox);
 	_Send(pp::request::OpenChat(id));
 	_SendChatStatus();
+	if (const pp::Chat* chat = fChats.Find(id)) {
+		BMessage draft(kMsgDraft);
+		draft.AddInt64("chat_id", id);
+		draft.AddString("text", chat->draft.c_str());
+		fMain->PostMessage(&draft);
+	}
 	// One page; TDLib may answer with fewer at first (see _HandleHistoryReply).
 	fHistoryPages = 0;
 	fLoadingHistory = true;
@@ -961,6 +967,7 @@ App::_FlushChats()
 		list.AddBool("pinned", c.pinned);
 		list.AddBool("read", c.outgoingRead);
 		list.AddString("typing", _TypingText(c.id).c_str());
+		list.AddString("draft", c.draft.c_str());
 		BString photo = fFiles.Path(c.photoFileId).c_str();
 		list.AddString("photo", photo);
 		AddBytes(list, "photo_mini", c.photoPreview);
@@ -988,6 +995,17 @@ App::MessageReceived(BMessage* message)
 		case kMsgFlushChats:
 			_FlushChats();
 			break;
+
+		case kMsgSaveDraft:
+		{
+			// Only when it changed: each save is a request to Telegram.
+			int64 chatId = message->GetInt64("chat_id", 0);
+			std::string text = message->GetString("text", "");
+			const pp::Chat* chat = fChats.Find(chatId);
+			if (chat != nullptr && chat->draft != text)
+				_Send(pp::ChatList::DraftRequest(chatId, text));
+			break;
+		}
 
 		case kMsgPresenceTick:
 			// Typing expires and "last seen" ages without an update.

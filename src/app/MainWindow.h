@@ -38,6 +38,7 @@ private:
 	void _CancelCompose();
 	void _AskDelete(int64 messageId, bool canSelf, bool canAll);
 	void _SelectChat(int64 chatId);
+	void _SaveDraft();
 	void _SendFiles(const BMessage* message);
 	BBitmap* _Avatar(const BMessage* list, int32 index);
 	BButton* _IconButton(const char* name, int kind, uint32 what, const char* tip);

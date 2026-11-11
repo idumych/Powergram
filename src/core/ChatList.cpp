@@ -122,6 +122,16 @@ ApplyNotificationSettings(Chat& chat, const json& settings)
 }
 
 
+static std::string
+DraftText(const json& draft)
+{
+	const json& content = Field(draft, "content");
+	if (Type(content) != "draftMessageContentText")
+		return std::string();
+	return Str(Field(content, "text"), "text");
+}
+
+
 static void
 ApplyPhoto(Chat& chat, const json& photo)
 {
@@ -172,6 +182,7 @@ ChatList::Apply(const json& object)
 			return false;
 		chat.title = Str(c, "title");
 		chat.kind = KindOf(Field(c, "type"));
+		chat.draft = DraftText(Field(c, "draft_message"));
 		ApplyPhoto(chat, Field(c, "photo"));
 		ApplyNotificationSettings(chat, Field(c, "notification_settings"));
 		chat.unread = Int(c, "unread_count");
@@ -220,6 +231,9 @@ ChatList::Apply(const json& object)
 	} else if (type == "updateChatReadOutbox") {
 		chat.lastReadOutbox = Int(object, "last_read_outbox_message_id");
 		chat.outgoingRead = chat.outgoing;
+	} else if (type == "updateChatDraftMessage") {
+		chat.draft = DraftText(Field(object, "draft_message"));
+		ApplyPositions(chat, Field(object, "positions"));
 	} else if (type == "updateChatPhoto") {
 		ApplyPhoto(chat, Field(object, "photo"));
 	} else if (type == "updateChatNotificationSettings") {
@@ -293,6 +307,18 @@ ChatList::Find(int64_t id) const
 {
 	auto it = fChats.find(id);
 	return it == fChats.end() ? nullptr : &it->second;
+}
+
+
+json
+ChatList::DraftRequest(int64_t chatId, const std::string& text)
+{
+	json request = {{"@type", "setChatDraftMessage"}, {"chat_id", chatId}};
+	if (!text.empty())
+		request["draft_message"] = {{"@type", "draftMessage"},
+			{"content", {{"@type", "draftMessageContentText"},
+				{"text", {{"@type", "formattedText"}, {"text", text}}}}}};
+	return request;
 }
 
 

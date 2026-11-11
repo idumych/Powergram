@@ -119,6 +119,11 @@ enum {
 	// app → itself: refresh statuses (typing expires, "last seen")
 	kMsgPresenceTick = 'ptck',
 
+	// app → main window: "chat_id", "text": the opened chat's draft
+	kMsgDraft = 'drft',
+	// main window → app: "chat_id", "text": the entry when leaving a chat
+	kMsgSaveDraft = 'sdft',
+
 	kMsgLogOut = 'lout',
 	kMsgLogOutConfirmed = 'loco',
 	kMsgForceQuit = 'fqut'

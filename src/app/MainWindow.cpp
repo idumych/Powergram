@@ -105,6 +105,7 @@ public:
 		fMentions = list->GetInt32("mentions", index, 0);
 		fPinned = list->GetBool("pinned", index, false);
 		fTyping = list->GetString("typing", index, "");
+		fDraft = list->GetString("draft", index, "");
 		fInitials = pp::Initials(fTitle.String()).c_str();
 	}
 
@@ -210,17 +211,27 @@ public:
 		}
 
 		BString text;
+		float draftLabel = 0;
 		if (!fTyping.IsEmpty())
 			text = fTyping;
-		else {
+		else if (!fDraft.IsEmpty()) {
+			// "Draft:" in red, then the text, as Telegram shows it.
+			const char* label = "Draft: ";
+			draftLabel = plain.StringWidth(label);
+			owner->SetFont(&plain);
+			owner->SetHighColor(ui_color(B_FAILURE_COLOR));
+			owner->DrawString(label, BPoint(left, mid + 3 + fh.ascent));
+			text = fDraft;
+			text.ReplaceAll('\n', ' ');
+		} else {
 			if (!fSender.IsEmpty())
 				text << fSender << ": ";
 			text << fText;
 		}
-		plain.TruncateString(&text, B_TRUNCATE_END, textRight - left);
+		plain.TruncateString(&text, B_TRUNCATE_END, textRight - left - draftLabel);
 		owner->SetFont(&plain);
 		owner->SetHighColor(fTyping.IsEmpty() ? dim : ui_color(B_CONTROL_HIGHLIGHT_COLOR));
-		owner->DrawString(text, BPoint(left, mid + 3 + fh.ascent));
+		owner->DrawString(text, BPoint(left + draftLabel, mid + 3 + fh.ascent));
 	}
 
 private:
@@ -229,6 +240,7 @@ private:
 	int32 fUnread, fMentions;
 	bool fPinned;
 	BString fTyping;    // "typing…" instead of the last message
+	BString fDraft;     // "Draft: …" instead of the last message
 	BBitmap* fAvatar;   // round chat photo (owned by the window), or null
 };
 
@@ -389,6 +401,7 @@ MainWindow::_SelectionChanged()
 		id = item->Id();
 	if (id == fOpenChat)
 		return;
+	_SaveDraft();
 	fOpenChat = id;
 	fTitle->SetText(id != 0 ? static_cast<ChatItem*>(
 		fList->ItemAt(fList->CurrentSelection()))->Title() : "");
@@ -686,6 +699,20 @@ MainWindow::_InsertEmoji(const char* emoji)
 
 
 void
+MainWindow::_SaveDraft()
+{
+	// What's typed but not sent stays with the chat (and syncs to the
+	// user's other devices). Text being edited isn't a draft.
+	if (fOpenChat == 0 || fEditing != 0)
+		return;
+	BMessage save(kMsgSaveDraft);
+	save.AddInt64("chat_id", fOpenChat);
+	save.AddString("text", fEntry->Text());
+	be_app->PostMessage(&save);
+}
+
+
+void
 MainWindow::_SelectChat(int64 chatId)
 {
 	for (int32 i = 0; i < fList->CountItems(); i++) {
@@ -718,6 +745,13 @@ MainWindow::MessageReceived(BMessage* message)
 			break;
 		case kMsgHistory:
 			_UpdateHistory(message);
+			break;
+		case kMsgDraft:
+			if (message->GetInt64("chat_id", 0) == fOpenChat && fEntry->Text()[0] == '\0') {
+				fEntry->SetText(message->GetString("text", ""));
+				fEntry->TextView()->Select(fEntry->TextView()->TextLength(),
+					fEntry->TextView()->TextLength());
+			}
 			break;
 		case kMsgChatStatus:
 			if (message->GetInt64("chat_id", 0) == fOpenChat) {
@@ -888,6 +922,7 @@ MainWindow::MessageReceived(BMessage* message)
 bool
 MainWindow::QuitRequested()
 {
+	_SaveDraft();
 	be_app->PostMessage(B_QUIT_REQUESTED);
 	return false;
 }

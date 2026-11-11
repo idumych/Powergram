@@ -24,6 +24,7 @@ struct Chat {
 	bool outgoingRead = false; // last message is ours and was read
 	bool outgoing = false;
 	int64_t lastReadOutbox = 0; // our messages up to this id were read
+	std::string draft;          // unsent text kept for this chat
 	int32_t photoFileId = 0;    // small (160 px) chat photo, 0: none
 	std::string photoPreview;   // its tiny inline JPEG
 
@@ -56,6 +57,8 @@ public:
 
 	// Request that makes TDLib send the first `limit` chats as updates.
 	static json LoadRequest(int limit);
+	// Saves (or with "" clears) the chat's draft on Telegram.
+	static json DraftRequest(int64_t chatId, const std::string& text);
 
 private:
 	void ApplyPositions(Chat& chat, const json& positions);

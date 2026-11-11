@@ -730,6 +730,29 @@ TestPresence()
 }
 
 
+static void
+TestDrafts()
+{
+	ChatList list;
+	json chat = NewChat(1, "Friend", "100");
+	chat["chat"]["draft_message"] = {{"content", {{"@type", "draftMessageContentText"},
+		{"text", {{"text", "half a thought"}}}}}};
+	list.Apply(chat);
+	CHECK(list.Find(1)->draft == "half a thought");
+	CHECK(list.Apply({{"@type", "updateChatDraftMessage"}, {"chat_id", 1},
+		{"positions", json::array()}}));
+	CHECK(list.Find(1)->draft.empty());
+	list.Apply({{"@type", "updateChatDraftMessage"}, {"chat_id", 1},
+		{"draft_message", {{"content", {{"@type", "draftMessageContentVoiceNote"}}}}}});
+	CHECK(list.Find(1)->draft.empty());  // voice drafts aren't text
+
+	json save = ChatList::DraftRequest(1, "later");
+	CHECK(save["draft_message"]["content"]["text"]["text"] == "later");
+	CHECK(!ChatList::DraftRequest(1, "").contains("draft_message"));
+	CHECK(request::SendText(1, "x")["input_message_content"]["clear_draft"] == true);
+}
+
+
 int
 main()
 {
@@ -745,6 +768,7 @@ main()
 	TestPhotosAndStickers();
 	TestFormatting();
 	TestPresence();
+	TestDrafts();
 	if (sFailures) {
 		std::fprintf(stderr, "%d check(s) failed\n", sFailures);
 		return EXIT_FAILURE;

@@ -568,8 +568,10 @@ ViewMessages(int64_t chatId, const std::vector<int64_t>& ids)
 static json
 TextContent(const std::string& text)
 {
+	// clear_draft: a sent message replaces the chat's draft, as in the
+	// official apps.
 	return {{"@type", "inputMessageText"},
-		{"text", {{"@type", "formattedText"}, {"text", text}}}};
+		{"text", {{"@type", "formattedText"}, {"text", text}}}, {"clear_draft", true}};
 }
 
 
