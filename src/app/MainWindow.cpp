@@ -596,6 +596,7 @@ MainWindow::_UpdateHistory(const BMessage* history)
 		row.secret = history->GetBool("secret", i, false);
 		row.emoji = history->GetString("emoji", i, "");
 		row.duration = history->GetInt32("duration", i, 0);
+		row.waveform = FindBytes(history, "waveform", i);
 		row.showAvatar = history->GetBool("show_avatar", i, false);
 		row.senderKey = history->GetInt64("sender_key", i, 0);
 		row.avatarPath = history->GetString("avatar", i, "");
@@ -999,6 +1000,10 @@ MainWindow::MessageReceived(BMessage* message)
 				fEntry->TextView()->Select(fEntry->TextView()->TextLength(),
 					fEntry->TextView()->TextLength());
 			}
+			break;
+		case kMsgVoiceProgress:
+			fMessages->SetVoiceProgress(message->GetInt64("message_id", 0),
+				message->GetFloat("progress", 0));
 			break;
 		case kMsgSettingsChanged:
 			fMessages->SetTextScale(AppSettings::Scale(message->GetInt32("text_size", 1)));

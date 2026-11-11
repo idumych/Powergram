@@ -16,7 +16,7 @@ namespace pp {
 
 // A photo or sticker in a message, as far as showing it goes.
 struct Media {
-	enum Kind { kNone, kPhoto, kSticker, kVideo, kAnimation, kVideoNote } kind = kNone;
+	enum Kind { kNone, kPhoto, kSticker, kVideo, kAnimation, kVideoNote, kVoice } kind = kNone;
 	int32_t fileId = 0;        // what to show in the bubble (0: nothing to fetch)
 	int32_t fullFileId = 0;    // the largest photo, for opening in a viewer
 	int32_t width = 0;         // size of what's shown, in pixels
@@ -25,7 +25,8 @@ struct Media {
 	bool spoiler = false;      // hidden until clicked
 	bool secret = false;       // self-destructing: hidden until opened
 	std::string emoji;         // stickers: shown when there's no image
-	int32_t duration = 0;      // videos, seconds
+	int32_t duration = 0;      // videos and voice messages, seconds
+	std::string waveform;      // voice messages: one 0..31 level per byte
 };
 
 // Picks the photo size to show in a bubble about `maxSide` pixels wide:
@@ -35,6 +36,12 @@ Media StickerMedia(const json& sticker);
 // Videos, GIFs and round video messages: their still thumbnail in the
 // bubble, the file itself to open in a player.
 Media VideoMedia(const json& video, Media::Kind kind, const char* fileField);
+
+// Voice messages: the file to play, its length and its waveform.
+Media VoiceMedia(const json& voiceNote);
+// Telegram packs a voice message's waveform as 5-bit levels, low bits
+// first; this gives one level (0..31) per byte.
+std::string UnpackWaveform(const std::string& packed);
 
 std::string DecodeBase64(const std::string& text);
 

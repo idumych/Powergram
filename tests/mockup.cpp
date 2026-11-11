@@ -9,6 +9,7 @@
 #include <TimeFormat.h>
 #include <Window.h>
 
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <ctime>
@@ -81,6 +82,7 @@ struct Row {
 	BString avatar, initials;
 	std::vector<pp::Span> spans;
 	BString reactions;
+	std::string waveform;
 };
 
 
@@ -116,6 +118,7 @@ Add(BMessage& list, const Row& r)
 	list.AddString("initials", r.initials);
 	list.AddString("spans", pp::EncodeSpans(r.spans).c_str());
 	list.AddString("reactions", r.reactions);
+	AddBytes(list, "waveform", r.waveform);
 }
 
 
@@ -188,6 +191,11 @@ public:
 					SettingsWindow* settings = new SettingsWindow(BMessenger(this), large);
 					settings->MoveTo(560, 120);
 					settings->Show();
+				} else if (sScene == "voice") {
+					BMessage progress(kMsgVoiceProgress);
+					progress.AddInt64("message_id", 111);
+					progress.AddFloat("progress", 0.4f);
+					fMain->PostMessage(&progress);
 				} else if (sScene == "reply") {
 					BMessage reply(kMsgReply);
 					reply.AddInt64("message_id", 106);
@@ -415,6 +423,27 @@ private:
 			Add(list, r);
 			r = _Mine(110, "Sending the logs in a minute", now - 120, false);
 			Add(list, r);
+			if (sScene == "voice") {
+				// Made-up waveforms: a few words' worth of rises and falls.
+				auto wave = [](int n, int seed) {
+					std::string w;
+					for (int i = 0; i < n; i++) {
+						double v = fabs(sin(i * 0.31 + seed) * sin(i * 0.07 + seed * 2));
+						w += (char)std::min(31, (int)(v * 34) + (i % 7 == 0 ? 0 : 2));
+					}
+					return w;
+				};
+				r = _From(kJonas, 111, "", now - 90);
+				r.mediaKind = 6;
+				r.duration = 14;
+				r.waveform = wave(100, 1);
+				Add(list, r);
+				r = _Mine(112, "Short one, from the bus", now - 30);
+				r.mediaKind = 6;
+				r.duration = 5;
+				r.waveform = wave(100, 4);
+				Add(list, r);
+			}
 		} else {
 			// "media": photo, video, round video; "media2" (and the sticker
 			// scene): spoiler, sticker, GIF.

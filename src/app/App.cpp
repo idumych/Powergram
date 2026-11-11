@@ -41,6 +41,7 @@
 #include "Settings.h"
 #include "SettingsWindow.h"
 #include "TdClient.h"
+#include "VoicePlayer.h"
 
 using pp::AuthStep;
 using pp::json;
@@ -100,6 +101,14 @@ private:
 	SettingsWindow* fSettingsWindow = nullptr;
 	BMessageRunner* fPresenceRunner = nullptr;
 	std::set<int32_t> fOpenWhenDownloaded;  // clicked photos on their way
+
+	// Voice messages play here rather than in MediaPlayer.
+	void _PlayVoice(const std::string& path, int64 messageId);
+	void _StopVoice();
+	VoicePlayer fVoice;
+	int64 fVoiceMessage = 0;   // playing, or 0
+	BMessageRunner* fVoiceRunner = nullptr;
+	std::map<int32_t, int64> fPlayWhenDownloaded;  // file → message
 
 	// The sticker picker: installed sets, stickers by set (0: recently
 	// used), and the set it shows.
@@ -164,6 +173,7 @@ App::~App()
 	delete fOnlineRunner;
 	delete fHistoryRunner;
 	delete fPresenceRunner;
+	delete fVoiceRunner;
 }
 
 
@@ -247,6 +257,11 @@ App::_HandleObject(const json& object)
 		for (int32_t id : completed) {
 			if (fOpenWhenDownloaded.erase(id))
 				_Launch(fFiles.Path(id));
+			auto voice = fPlayWhenDownloaded.find(id);
+			if (voice != fPlayWhenDownloaded.end()) {
+				_PlayVoice(fFiles.Path(id), voice->second);
+				fPlayWhenDownloaded.erase(voice);
+			}
 			shown = true;
 		}
 		if (shown && fHistory != nullptr)
@@ -411,6 +426,7 @@ App::_OpenChat(int64 id, bool latest)
 	fTyping.Reset();
 	fLoadingHistory = false;
 	fFiles.ForgetWanted();  // the old chat's photos that haven't started
+	fPlayWhenDownloaded.clear();
 	if (id == 0)
 		return;
 
@@ -527,6 +543,7 @@ App::_SendHistory()
 		std::string avatarMini;
 		std::vector<pp::Span> spans;
 		BString reactions;   // "emoji\tcount\tchosen" per line
+		std::string waveform;
 	};
 	auto add = [&](const Row& r) {
 		list.AddInt64("id", r.id);
@@ -558,6 +575,7 @@ App::_SendHistory()
 		list.AddString("initials", r.initials);
 		list.AddString("spans", pp::EncodeSpans(r.spans).c_str());
 		list.AddString("reactions", r.reactions);
+		AddBytes(list, "waveform", r.waveform);
 	};
 	auto summary = [](const pp::Message& m) {
 		if (!m.text.empty())
@@ -572,6 +590,8 @@ App::_SendHistory()
 			return BString("GIF");
 		if (m.media.kind == pp::Media::kVideoNote)
 			return BString("Video message");
+		if (m.media.kind == pp::Media::kVoice)
+			return BString("Voice message");
 		return BString("Message");
 	};
 
@@ -669,6 +689,7 @@ App::_SendHistory()
 			r.secret = media.secret;
 			r.emoji = media.emoji.c_str();
 			r.duration = media.duration;
+			r.waveform = media.waveform;
 			r.image = fFiles.Path(media.fileId).c_str();
 			// Fetch what's shown, newest first; a self-destructing photo
 			// only when it's opened.
@@ -712,6 +733,24 @@ App::_OpenMedia(int64 chatId, int64 messageId)
 	int32 file = m->media.fullFileId != 0 ? m->media.fullFileId : m->media.fileId;
 	if (file == 0)
 		return;
+	if (m->media.kind == pp::Media::kVoice) {
+		// A click plays it, or stops it when it's the one playing; listening
+		// marks it as listened to for the sender.
+		bool playing = fVoiceMessage == messageId;
+		_StopVoice();
+		fPlayWhenDownloaded.clear();
+		if (playing)
+			return;
+		_Send(pp::request::OpenContent(chatId, messageId));
+		if (!fFiles.Path(file).empty())
+			_PlayVoice(fFiles.Path(file), messageId);
+		else {
+			fPlayWhenDownloaded[file] = messageId;
+			fFiles.Want(file, 32);
+			_StartDownloads();
+		}
+		return;
+	}
 	if (!fFiles.Path(file).empty()) {
 		_Launch(fFiles.Path(file));
 		return;
@@ -912,6 +951,37 @@ App::_SendStickers(bool update)
 
 
 void
+App::_PlayVoice(const std::string& path, int64 messageId)
+{
+	_StopVoice();
+	if (fVoice.Play(path.c_str()) != B_OK) {
+		// No decoder for it here: the user's player may have one.
+		_Launch(path);
+		return;
+	}
+	fVoiceMessage = messageId;
+	BMessage tick(kMsgVoiceTick);
+	fVoiceRunner = new BMessageRunner(BMessenger(this), &tick, 100000);
+}
+
+
+void
+App::_StopVoice()
+{
+	fVoice.Stop();
+	delete fVoiceRunner;
+	fVoiceRunner = nullptr;
+	if (fVoiceMessage != 0) {
+		fVoiceMessage = 0;
+		BMessage progress(kMsgVoiceProgress);
+		progress.AddInt64("message_id", 0);
+		progress.AddFloat("progress", 0);
+		fMain->PostMessage(&progress);
+	}
+}
+
+
+void
 App::_Launch(const std::string& path)
 {
 	// The user's viewer for the file's type opens it (ShowImage for photos,
@@ -1034,6 +1104,8 @@ App::_HandleAuth()
 			fNames = pp::Names();
 			fFiles.Clear();
 			fOpenWhenDownloaded.clear();
+			fPlayWhenDownloaded.clear();
+			_StopVoice();
 			fHistory.reset();
 			fOnline = -1;
 			_FlushChats();
@@ -1262,6 +1334,19 @@ App::MessageReceived(BMessage* message)
 				_FlushHistory(true);
 			else
 				_OpenChat(fHistory->ChatId(), true);
+			break;
+
+		case kMsgVoiceTick:
+			if (!fVoice.IsPlaying()) {
+				_StopVoice();
+				break;
+			}
+			{
+				BMessage progress(kMsgVoiceProgress);
+				progress.AddInt64("message_id", fVoiceMessage);
+				progress.AddFloat("progress", fVoice.Progress());
+				fMain->PostMessage(&progress);
+			}
 			break;
 
 		case kMsgPresenceTick:

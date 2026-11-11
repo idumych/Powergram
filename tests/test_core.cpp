@@ -889,6 +889,25 @@ TestPollsPlaces()
 }
 
 
+static void
+TestVoice()
+{
+	// Levels 31 0 17 5 1 30 2 16, five bits each, low bits first.
+	CHECK(UnpackWaveform(DecodeBase64("H8QSvIA=")) == std::string("\x1f\x00\x11\x05\x01\x1e\x02\x10", 8));
+	CHECK(UnpackWaveform("").empty());
+
+	json message = Msg(42, 1, "");
+	message["content"] = {{"@type", "messageVoiceNote"},
+		{"voice_note", {{"duration", 7}, {"waveform", "H8QSvIA="}, {"mime_type", "audio/ogg"},
+			{"voice", File(77)}}},
+		{"caption", {{"text", "listen"}}}};
+	Message parsed = ParseMessage(message);
+	CHECK(parsed.media.kind == Media::kVoice && parsed.media.duration == 7);
+	CHECK(parsed.media.fullFileId == 77 && parsed.media.fileId == 0);
+	CHECK(parsed.media.waveform.size() == 8 && parsed.text == "listen");
+}
+
+
 int
 main()
 {
@@ -908,6 +927,7 @@ main()
 	TestUnreadAndNewer();
 	TestLists();
 	TestPollsPlaces();
+	TestVoice();
 	if (sFailures) {
 		std::fprintf(stderr, "%d check(s) failed\n", sFailures);
 		return EXIT_FAILURE;

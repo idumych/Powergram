@@ -153,6 +153,10 @@ MessageView::_DrawMedia(const MessageRow& row, const Layout& l, rgb_color fg,
 	float line)
 {
 	BRect box = l.media;
+	if (row.mediaKind == 6) {
+		_DrawVoice(row, box, fg, line);
+		return;
+	}
 	bool hidden = (row.spoiler || row.secret) && !fRevealed.count(row.id);
 	bool blurred;
 	// A hidden spoiler shows only the blurred preview, never the photo; a
@@ -262,6 +266,66 @@ MessageView::_DrawMedia(const MessageRow& row, const Layout& l, rgb_color fg,
 		DrawString(text.String(), BPoint(box.left + (box.Width() - StringWidth(text.String())) / 2,
 			box.top + (box.Height() + fh.ascent - fh.descent) / 2));
 	}
+}
+
+
+// A voice message: a round play (or stop) button, the waveform, filled
+// up to where playback has got, and the length (or the time played).
+void
+MessageView::_DrawVoice(const MessageRow& row, BRect box, rgb_color fg, float line)
+{
+	rgb_color accent = ui_color(B_CONTROL_HIGHLIGHT_COLOR);
+	bool playing = row.id == fVoiceId;
+	float progress = playing ? fVoiceProgress : 0;
+
+	float d = box.Height();
+	BRect button(box.left, box.top, box.left + d - 1, box.bottom);
+	SetHighColor(accent);
+	FillEllipse(button);
+	SetHighColor(255, 255, 255);
+	BPoint c((button.left + button.right) / 2, (button.top + button.bottom) / 2);
+	float s = roundf(d * 0.18f);
+	if (playing)
+		FillRect(BRect(c.x - s, c.y - s, c.x + s, c.y + s));
+	else
+		FillTriangle(BPoint(c.x - s * 0.8f, c.y - s * 1.2f), BPoint(c.x - s * 0.8f, c.y + s * 1.2f),
+			BPoint(c.x + s * 1.3f, c.y));
+
+	// The length below the bars, so the bars get the full width.
+	int32 seconds = playing ? (int32)(row.duration * progress) : row.duration;
+	BString time;
+	time << seconds / 60 << ":" << (seconds % 60 < 10 ? "0" : "") << seconds % 60;
+	BFont small(&fPlain);
+	small.SetSize(std::max(9.0f, floorf(fPlain.Size() * 0.85f)));
+	font_height sh;
+	small.GetHeight(&sh);
+	float left = button.right + roundf(line * 0.5f);
+	float barsBottom = box.bottom - ceilf(sh.ascent + sh.descent) - 2;
+	float barsTop = box.top + 2;
+	float barsHeight = barsBottom - barsTop;
+
+	// One bar every 3 pixels, each the loudest level in its stretch.
+	const std::string& w = row.waveform;
+	int bars = std::max(1, (int)((box.right - left) / 3));
+	rgb_color dim = mix_color(accent, LowColor(), 110);
+	for (int i = 0; i < bars; i++) {
+		int level = 0;
+		if (!w.empty()) {
+			size_t from = w.size() * i / bars;
+			size_t to = std::max(from + 1, w.size() * (i + 1) / bars);
+			for (size_t k = from; k < to && k < w.size(); k++)
+				level = std::max(level, (int)(unsigned char)w[k]);
+		}
+		float h = std::max(2.0f, roundf(barsHeight * level / 31.0f));
+		float x = left + i * 3;
+		SetHighColor((float)i / bars < progress ? accent : dim);
+		FillRect(BRect(x, barsBottom - h, x + 1, barsBottom));
+	}
+
+	SetFont(&small);
+	SetHighColor(mix_color(fg, LowColor(), 160));
+	DrawString(time.String(), BPoint(left, box.bottom - sh.descent));
+	SetFont(&fPlain);
 }
 
 
@@ -383,6 +447,19 @@ MessageView::SetHighlight(int64 id)
 	if (fHighlight != id) {
 		fHighlight = id;
 		Invalidate();
+	}
+}
+
+
+void
+MessageView::SetVoiceProgress(int64 id, float progress)
+{
+	int64 old = fVoiceId;
+	fVoiceId = id;
+	fVoiceProgress = progress;
+	for (size_t i = 0; i < fRows.size() && i < fLayout.size(); i++) {
+		if (fRows[i].id != 0 && (fRows[i].id == id || fRows[i].id == old))
+			Invalidate(fLayout[i].media);
 	}
 }
 
@@ -661,7 +738,11 @@ MessageView::_Relayout()
 		float mediaW = 0, mediaH = 0;
 		// Stickers and round video messages go without a bubble.
 		bool sticker = row.mediaKind == 2 || row.mediaKind == 5;
-		if (row.mediaKind != 0) {
+		if (row.mediaKind == 6) {
+			mediaW = std::min(maxBubble - 2 * pad, line * 14);
+			mediaH = roundf(line * 2.4f);
+			bubbleWidth = std::max(bubbleWidth, std::min(maxBubble, mediaW + 2 * pad));
+		} else if (row.mediaKind != 0) {
 			float w = row.mediaWidth > 0 ? row.mediaWidth : 4;
 			float h = row.mediaHeight > 0 ? row.mediaHeight : 3;
 			float boxW = row.mediaKind == 5 ? line * 13 : sticker ? line * 9 : maxBubble - pad;
@@ -736,7 +817,8 @@ MessageView::_Relayout()
 		if (row.service)
 			l.textTop = y + pad * 0.5f;
 		if (row.mediaKind != 0)
-			l.media.OffsetBy(sticker ? left : left + (bubbleWidth - mediaW) / 2, 0);
+			l.media.OffsetBy(sticker ? left : row.mediaKind == 6 ? left + pad
+				: left + (bubbleWidth - mediaW) / 2, 0);
 
 		// Where the reaction pills go.
 		{

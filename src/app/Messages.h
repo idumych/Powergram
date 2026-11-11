@@ -90,6 +90,12 @@ enum {
 	// "message_id" (int64), plus "chat_id" (int64) on the way to the app
 	kMsgOpenMedia = 'opmd',
 
+	// app → main window: the voice message playing, "message_id" (int64,
+	// 0 when none) and "progress" (float, 0..1)
+	kMsgVoiceProgress = 'vprg',
+	// app → itself, while a voice message plays
+	kMsgVoiceTick = 'vtik',
+
 	// main window → app: "chat_id" (int64), "refs", "caption", "reply_to"
 	kMsgSendFiles = 'sfil',
 

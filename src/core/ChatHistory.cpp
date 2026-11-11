@@ -129,6 +129,35 @@ VideoMedia(const json& video, Media::Kind kind, const char* fileField)
 }
 
 
+std::string
+UnpackWaveform(const std::string& packed)
+{
+	std::string levels;
+	size_t count = packed.size() * 8 / 5;
+	for (size_t i = 0; i < count; i++) {
+		size_t bit = i * 5;
+		unsigned value = (unsigned char)packed[bit / 8];
+		if (bit / 8 + 1 < packed.size())
+			value |= (unsigned)(unsigned char)packed[bit / 8 + 1] << 8;
+		levels += (char)((value >> (bit % 8)) & 31);
+	}
+	return levels;
+}
+
+
+Media
+VoiceMedia(const json& voiceNote)
+{
+	Media media;
+	media.kind = Media::kVoice;
+	media.duration = (int32_t)Int(voiceNote, "duration");
+	// TDLib's JSON gives bytes as base64.
+	media.waveform = UnpackWaveform(DecodeBase64(Str(voiceNote, "waveform")));
+	media.fullFileId = (int32_t)Int(Field(voiceNote, "voice"), "id");
+	return media;
+}
+
+
 // Formatting of the text MessageText returns for `content`.
 static std::vector<Span>
 ContentSpans(const json& content, const std::string& text)
@@ -137,7 +166,8 @@ ContentSpans(const json& content, const std::string& text)
 	const json* formatted = nullptr;
 	if (type == "messageText")
 		formatted = &Field(content, "text");
-	else if (type == "messagePhoto" || type == "messageVideo" || type == "messageAnimation")
+	else if (type == "messagePhoto" || type == "messageVideo" || type == "messageAnimation"
+		|| type == "messageVoiceNote")
 		formatted = &Field(content, "caption");
 	std::vector<Span> spans;
 	if (formatted != nullptr && Str(*formatted, "text") == text)
@@ -169,6 +199,8 @@ ParseMedia(const json& content, Message& m)
 		m.media = VideoMedia(Field(content, "animation"), Media::kAnimation, "animation");
 	else if (type == "messageVideoNote")
 		m.media = VideoMedia(Field(content, "video_note"), Media::kVideoNote, "video");
+	else if (type == "messageVoiceNote")
+		m.media = VoiceMedia(Field(content, "voice_note"));
 	else
 		return;
 	m.media.spoiler = Bool(content, "has_spoiler");
@@ -183,7 +215,8 @@ MessageText(const json& content)
 	if (type == "messageText")
 		return Str(Field(content, "text"), "text");
 	// Shown as images: only the caption is text.
-	if (type == "messagePhoto" || type == "messageVideo" || type == "messageAnimation")
+	if (type == "messagePhoto" || type == "messageVideo" || type == "messageAnimation"
+		|| type == "messageVoiceNote")
 		return Str(Field(content, "caption"), "text");
 	if (type == "messageVideoNote")
 		return std::string();

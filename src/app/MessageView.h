@@ -33,9 +33,10 @@ struct MessageRow {
 	BString replyText;  // empty without a reply
 
 	// pp::Media::Kind: 0 none, 1 photo, 2 sticker, 3 video, 4 GIF,
-	// 5 round video message.
+	// 5 round video message, 6 voice message.
 	int32 mediaKind;
-	int32 duration;             // videos, seconds
+	int32 duration;             // videos and voice messages, seconds
+	std::string waveform;       // voice messages: a 0..31 level per byte
 	BString imagePath;          // downloaded image, or empty for now
 	std::string minithumbnail;  // tiny JPEG, drawn blurred meanwhile
 	int32 mediaWidth;
@@ -79,6 +80,8 @@ public:
 	// Outlines a message (the search result on screen); 0 for none.
 	void SetHighlight(int64 id);
 	void SetUnreadCount(int32 count);
+	// The voice message playing (0: none) and how far it's got.
+	void SetVoiceProgress(int64 id, float progress);
 	void SetEmptyText(const char* text);
 
 	void Draw(BRect updateRect) override;
@@ -135,6 +138,7 @@ private:
 	void _RestoreAnchor(const Anchor& anchor);
 
 	BBitmap* _Bitmap(const MessageRow& row, bool* blurred, bool round = false);
+	void _DrawVoice(const MessageRow& row, BRect box, rgb_color fg, float line);
 	void _DrawMedia(const MessageRow& row, const Layout& layout, rgb_color fg,
 		float line);
 	void _DrawAvatar(const MessageRow& row, BRect circle);
@@ -167,6 +171,8 @@ private:
 	bool fDropTarget;           // files are being dragged over us
 	bool fMoreBelow = false;
 	int64 fHighlight = 0;
+	int64 fVoiceId = 0;
+	float fVoiceProgress = 0;
 	BFont fPlain;     // the system fonts at the chosen text size
 	BFont fBold;
 	BFont fFixed;

@@ -12,7 +12,7 @@ CORE_SRCS := src/core/AuthFlow.cpp src/core/ChatList.cpp src/core/ChatHistory.cp
 APP_SRCS := src/app/App.cpp src/app/TdClient.cpp src/app/Settings.cpp \
 	src/app/LoginWindow.cpp src/app/MainWindow.cpp src/app/MessageView.cpp \
 	src/app/BitmapUtils.cpp src/app/Icons.cpp src/app/Pickers.cpp src/app/ChatPicker.cpp \
-	src/app/SettingsWindow.cpp
+	src/app/SettingsWindow.cpp src/app/VoicePlayer.cpp
 
 BUILD := obj
 CORE_OBJS := $(CORE_SRCS:%.cpp=$(BUILD)/%.o)
@@ -29,7 +29,7 @@ all: $(NAME)
 
 # The app at ./PaperPlane, resources from obj/ (packaging/build-hpkg.sh).
 $(NAME): $(CORE_OBJS) $(APP_OBJS) $(BUILD)/$(NAME).rsrc
-	$(CXX) -o $@ $(CORE_OBJS) $(APP_OBJS) $(LDFLAGS) -lbe -ltracker -ltranslation -llocalestub $(TD_LIBS)
+	$(CXX) -o $@ $(CORE_OBJS) $(APP_OBJS) $(LDFLAGS) -lbe -lmedia -ltracker -ltranslation -llocalestub $(TD_LIBS)
 	xres -o $@ $(BUILD)/$(NAME).rsrc
 	mimeset -f $@
 
@@ -38,7 +38,7 @@ MOCKUP_OBJS := $(filter-out $(BUILD)/src/app/App.o $(BUILD)/src/app/TdClient.o \
 	$(BUILD)/src/app/LoginWindow.o $(BUILD)/src/app/Settings.o, $(APP_OBJS))
 mockup: $(BUILD)/PaperPlaneMockup
 $(BUILD)/PaperPlaneMockup: $(BUILD)/tests/mockup.o $(CORE_OBJS) $(MOCKUP_OBJS)
-	$(CXX) -o $@ $^ -lbe -ltracker -ltranslation -llocalestub
+	$(CXX) -o $@ $^ -lbe -lmedia -ltracker -ltranslation -llocalestub
 
 # The entry's icon buttons and a picker with made-up content.
 pickers-demo: $(BUILD)/pickers_demo
@@ -82,4 +82,8 @@ clean:
 
 -include $(CORE_OBJS:.o=.d) $(APP_OBJS:.o=.d) $(BUILD)/tests/test_core.d
 
-.PHONY: all test clean bench live-scroll pickers-demo mockup
+.PHONY: all test clean bench live-scroll pickers-demo mockup voice_play
+
+voice_play: $(BUILD)/voice_play
+$(BUILD)/voice_play: $(BUILD)/tests/voice_play.o $(BUILD)/src/app/VoicePlayer.o
+	$(CXX) -o $@ $^ -lbe -lmedia
