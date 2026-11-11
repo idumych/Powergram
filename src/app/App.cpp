@@ -52,6 +52,7 @@
 #include "FileSaving.h"
 #include "MediaProbe.h"
 #include "LoginWindow.h"
+#include "MediaWindow.h"
 #include "MainWindow.h"
 #include "Messages.h"
 #include "Settings.h"
@@ -62,6 +63,15 @@
 
 using pp::AuthStep;
 using pp::json;
+
+// A photo, video or file asked to open, while it downloads.
+struct OpenRequest {
+	int32_t file = 0;
+	pp::Media::Kind kind = pp::Media::kNone;
+	bool inViewer = false;   // Powergram's viewer, else the system's app
+	std::string title;       // "Photo from …", for the viewer
+};
+
 
 class App : public BApplication {
 public:
@@ -93,7 +103,8 @@ private:
 	void _SendHistory();
 	void _StartDownloads();
 	const pp::Message* _FindMessage(int64 chatId, int64 messageId) const;
-	void _OpenMedia(int64 chatId, int64 messageId);
+	void _OpenMedia(int64 chatId, int64 messageId, int32 where = kOpenAsSet);
+	void _ShowMedia(const OpenRequest& request, const std::string& path);
 	void _SaveFile(const BMessage* message);
 	void _Launch(const std::string& path, const std::string& mimeType = "");
 	void _SendFiles(const BMessage* message);
@@ -149,7 +160,8 @@ private:
 	AppSettings fPrefs;
 	SettingsWindow* fSettingsWindow = nullptr;
 	BMessageRunner* fPresenceRunner = nullptr;
-	std::set<int32_t> fOpenWhenDownloaded;  // clicked photos on their way
+	std::map<int32_t, OpenRequest> fOpenWhenDownloaded;  // clicked files on their way
+	BMessenger fMediaWindow;   // the viewer, while it's open
 	std::multimap<int32_t, std::string> fSaveWhenDownloaded;  // file → where
 	std::map<int32_t, std::string> fFileTypes;  // documents' MIME types
 	std::set<int32_t> fProgressFiles;  // documents downloading in the open chat
@@ -332,8 +344,11 @@ App::_HandleObject(const json& object)
 	if (!completed.empty()) {
 		bool shown = false;
 		for (int32_t id : completed) {
-			if (fOpenWhenDownloaded.erase(id))
-				_Launch(fFiles.Path(id), fFileTypes[id]);
+			auto open = fOpenWhenDownloaded.find(id);
+			if (open != fOpenWhenDownloaded.end()) {
+				_ShowMedia(open->second, fFiles.Path(id));
+				fOpenWhenDownloaded.erase(open);
+			}
 			auto saves = fSaveWhenDownloaded.equal_range(id);
 			for (auto it = saves.first; it != saves.second; ++it)
 				SaveCopy(fFiles.Path(id), it->second, fFileTypes[id]);
@@ -970,7 +985,7 @@ App::_FindMessage(int64 chatId, int64 messageId) const
 
 
 void
-App::_OpenMedia(int64 chatId, int64 messageId)
+App::_OpenMedia(int64 chatId, int64 messageId, int32 where)
 {
 	const pp::Message* m = _FindMessage(chatId, messageId);
 	if (m == nullptr || m->media.kind == pp::Media::kNone
@@ -1003,11 +1018,22 @@ App::_OpenMedia(int64 chatId, int64 messageId)
 	}
 	if (!m->media.mimeType.empty())
 		fFileTypes[file] = m->media.mimeType;
+	// Photos and videos in Powergram's viewer or the system's apps, as the
+	// settings say or the message menu picked; other files in their apps.
+	OpenRequest request;
+	request.file = file;
+	request.kind = m->media.kind;
+	request.inViewer = pp::ViewsInApp(m->media.kind)
+		&& (where == kOpenInViewer || (where == kOpenAsSet && fPrefs.mediaInApp));
+	const char* what = m->media.kind == pp::Media::kPhoto ? "Photo"
+		: m->media.kind == pp::Media::kAnimation ? "GIF"
+		: m->media.kind == pp::Media::kVideoNote ? "Video message" : "Video";
+	request.title = std::string(what) + " from " + fNames.Sender(*m);
 	if (!fFiles.Path(file).empty()) {
-		_Launch(fFiles.Path(file), m->media.mimeType);
+		_ShowMedia(request, fFiles.Path(file));
 		return;
 	}
-	fOpenWhenDownloaded.insert(file);
+	fOpenWhenDownloaded[file] = request;
 	fFiles.Want(file, 32);
 	_StartDownloads();
 	_FlushHistory();  // "Downloading…" on the card
@@ -1346,6 +1372,29 @@ App::_StopVoice()
 		progress.AddFloat("progress", 0);
 		fMain->PostMessage(&progress);
 	}
+}
+
+
+void
+App::_ShowMedia(const OpenRequest& request, const std::string& path)
+{
+	if (!request.inViewer) {
+		_Launch(path, fFileTypes[request.file]);
+		return;
+	}
+	// Typed, so the viewer can name the app that would open it instead.
+	GiveFileType(path.c_str(), fFileTypes[request.file]);
+	if (!fMediaWindow.IsValid()) {
+		MediaWindow* window = new MediaWindow();
+		fMediaWindow = BMessenger(window);
+	}
+	if (request.kind != pp::Media::kPhoto && request.kind != pp::Media::kAnimation)
+		_StopVoice();   // one thing speaking at a time
+	BMessage show(kMsgShowMedia);
+	show.AddString("path", path.c_str());
+	show.AddInt32("kind", request.kind);
+	show.AddString("title", request.title.c_str());
+	fMediaWindow.SendMessage(&show);
 }
 
 
@@ -1759,6 +1808,7 @@ App::_HandleAuth()
 			fFiles.Clear();
 			fOpenWhenDownloaded.clear();
 			fPlayWhenDownloaded.clear();
+			fMediaWindow.SendMessage(B_QUIT_REQUESTED);   // the old account's
 			_StopVoice();
 			fHistory.reset();
 			fOnline = -1;
@@ -2290,7 +2340,8 @@ App::MessageReceived(BMessage* message)
 			_SaveFile(message);
 			break;
 		case kMsgOpenMedia:
-			_OpenMedia(message->GetInt64("chat_id", 0), message->GetInt64("message_id", 0));
+			_OpenMedia(message->GetInt64("chat_id", 0), message->GetInt64("message_id", 0),
+				message->GetInt32("where", kOpenAsSet));
 			break;
 
 		case kMsgEditText:

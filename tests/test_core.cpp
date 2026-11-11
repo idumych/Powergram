@@ -1261,6 +1261,14 @@ TestSendingFiles()
 	CHECK(IsPlayableVideo("video/mp4", "/a/b") && IsPlayableVideo("", "/a/Clip.MOV"));
 	CHECK(!IsPlayableVideo("video/webm", "/a/clip.webm") && !IsPlayableVideo("", "/a/notes.txt"));
 
+	CHECK(ViewsInApp(Media::kPhoto) && ViewsInApp(Media::kVideo) && ViewsInApp(Media::kAnimation)
+		&& ViewsInApp(Media::kVideoNote));
+	CHECK(!ViewsInApp(Media::kDocument) && !ViewsInApp(Media::kVoice) && !ViewsInApp(Media::kSticker)
+		&& !ViewsInApp(Media::kIcon));
+	CHECK(LoopsInViewer(Media::kAnimation) && !LoopsInViewer(Media::kVideo));
+	CHECK(PlayerTime(0) == "0:00" && PlayerTime(7.9) == "0:07" && PlayerTime(725) == "12:05");
+	CHECK(PlayerTime(3723) == "1:02:03" && PlayerTime(-3) == "0:00");
+
 	auto file = [](OutgoingFile::Kind kind, const char* path) {
 		OutgoingFile f;
 		f.kind = kind;

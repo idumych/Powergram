@@ -432,8 +432,10 @@ public:
 				BPath path;
 				if (message->FindRef("directory", &dir) == B_OK)
 					path.SetTo(&dir);
-				printf("%s chat %lld message %lld to %s/%s\n",
+				printf("%s%s chat %lld message %lld to %s/%s\n",
 					message->what == kMsgSaveFile ? "save" : "open",
+					message->GetInt32("where", kOpenAsSet) == kOpenInViewer ? " in viewer"
+						: message->GetInt32("where", kOpenAsSet) == kOpenInSystemApp ? " in app" : "",
 					(long long)message->GetInt64("chat_id", 0),
 					(long long)message->GetInt64("message_id", 0),
 					path.Path() != nullptr ? path.Path() : "", message->GetString("name", ""));

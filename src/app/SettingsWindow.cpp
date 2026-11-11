@@ -20,6 +20,8 @@ enum {
 };
 
 const char* kSizes[] = {"Small", "Normal", "Large"};
+// The "Open photos and videos" choices, in AppSettings::mediaInApp order.
+const char* kMediaOpen[] = {"In their own apps (ShowImage, MediaPlayer)", "In Powergram"};
 
 } // namespace
 
@@ -32,6 +34,7 @@ AppSettings::ToMessage(BMessage* message) const
 	message->AddBool("sound", sound);
 	message->AddInt32("text_size", textSize);
 	message->AddBool("deskbar", deskbar);
+	message->AddBool("media_in_app", mediaInApp);
 }
 
 
@@ -44,6 +47,7 @@ AppSettings::FromMessage(const BMessage* message)
 	s.sound = message->GetBool("sound", true);
 	s.textSize = message->GetInt32("text_size", 1);
 	s.deskbar = message->GetBool("deskbar", true);
+	s.mediaInApp = message->GetBool("media_in_app", false);
 	return s;
 }
 
@@ -67,6 +71,10 @@ SettingsWindow::SettingsWindow(BMessenger app, const AppSettings& current)
 	for (int32 i = 0; i < 3; i++)
 		sizes->AddItem(new BMenuItem(kSizes[i], new BMessage(kMsgChanged)));
 	fTextSize = new BMenuField("text size", "Text size:", sizes);
+	BPopUpMenu* mediaOpen = new BPopUpMenu("media open");
+	for (int32 i = 0; i < 2; i++)
+		mediaOpen->AddItem(new BMenuItem(kMediaOpen[i], new BMessage(kMsgChanged)));
+	fMediaOpen = new BMenuField("media open", "Open photos and videos:", mediaOpen);
 	BStringView* soundHint = new BStringView("sound hint",
 		"The sound is chosen in the Sounds preferences.");
 	soundHint->SetHighUIColor(B_PANEL_TEXT_COLOR, B_DARKEN_2_TINT);
@@ -86,7 +94,10 @@ SettingsWindow::SettingsWindow(BMessenger app, const AppSettings& current)
 			.Add(soundHint)
 		.End()
 		.Add(fDeskbar)
-		.Add(fTextSize)
+		.AddGrid(B_USE_DEFAULT_SPACING, B_USE_SMALL_SPACING)
+			.AddMenuField(fTextSize, 0, 0)
+			.AddMenuField(fMediaOpen, 0, 1)
+		.End()
 		.AddGroup(B_HORIZONTAL)
 			.Add(fDefaultsButton)
 			.Add(fRevertButton)
@@ -107,6 +118,8 @@ SettingsWindow::_Show(const AppSettings& s)
 	fDeskbar->SetValue(s.deskbar);
 	if (BMenuItem* item = fTextSize->Menu()->ItemAt(s.textSize))
 		item->SetMarked(true);
+	if (BMenuItem* item = fMediaOpen->Menu()->ItemAt(s.mediaInApp ? 1 : 0))
+		item->SetMarked(true);
 	fRevertButton->SetEnabled(!(s == fRevert));
 	fDefaultsButton->SetEnabled(!(s == AppSettings()));
 }
@@ -122,6 +135,8 @@ SettingsWindow::_Read() const
 	s.deskbar = fDeskbar->Value() == B_CONTROL_ON;
 	BMenuItem* marked = fTextSize->Menu()->FindMarked();
 	s.textSize = marked != nullptr ? fTextSize->Menu()->IndexOf(marked) : 1;
+	marked = fMediaOpen->Menu()->FindMarked();
+	s.mediaInApp = marked != nullptr && fMediaOpen->Menu()->IndexOf(marked) == 1;
 	return s;
 }
 

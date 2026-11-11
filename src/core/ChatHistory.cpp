@@ -161,6 +161,28 @@ VoiceMedia(const json& voiceNote)
 
 
 bool
+ViewsInApp(Media::Kind kind)
+{
+	return kind == Media::kPhoto || kind == Media::kVideo || kind == Media::kAnimation
+		|| kind == Media::kVideoNote;
+}
+
+
+std::string
+PlayerTime(double seconds)
+{
+	long total = seconds > 0 ? (long)seconds : 0;
+	char text[32];
+	if (total >= 3600)
+		snprintf(text, sizeof(text), "%ld:%02ld:%02ld", total / 3600, total / 60 % 60,
+			total % 60);
+	else
+		snprintf(text, sizeof(text), "%ld:%02ld", total / 60, total % 60);
+	return text;
+}
+
+
+bool
 IsPlayableVideo(const std::string& mimeType, const std::string& path)
 {
 	if (mimeType == "video/mp4" || mimeType == "video/quicktime" || mimeType == "video/x-m4v")

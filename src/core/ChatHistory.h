@@ -61,6 +61,14 @@ Media AudioMedia(const json& audio);
 
 std::string DecodeBase64(const std::string& text);
 
+// Photos, videos, GIFs and round video messages can open in Powergram's
+// own viewer; other files go to the application for their type.
+bool ViewsInApp(Media::Kind kind);
+// GIFs (Telegram's "animations", silent MP4s) play over and over.
+inline bool LoopsInViewer(Media::Kind kind) { return kind == Media::kAnimation; }
+// A position or length in a player: "0:07", "12:05", "1:02:03".
+std::string PlayerTime(double seconds);
+
 struct Reaction {
 	std::string emoji;
 	int32_t count = 0;

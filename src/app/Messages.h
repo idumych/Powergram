@@ -36,6 +36,10 @@ FindBytes(const BMessage* message, const char* name, int32 index)
 }
 
 
+// Where kMsgOpenMedia opens a photo or video: as the settings say, in
+// Powergram's viewer, or in the system's app for it.
+enum { kOpenAsSet = 0, kOpenInViewer = 1, kOpenInSystemApp = 2 };
+
 enum {
 	// app → login window: "step" (int32 pp::AuthStep), "code_info",
 	// "code_length" (int32), "hint"
@@ -89,7 +93,8 @@ enum {
 	kMsgSelectChat = 'slct',
 
 	// message view → main window → app: a photo was clicked;
-	// "message_id" (int64), plus "chat_id" (int64) on the way to the app
+	// "message_id" (int64), plus "chat_id" (int64) on the way to the app;
+	// from the message menu also "where" (int32 kOpen*)
 	kMsgOpenMedia = 'opmd',
 	// message menu → save panel → main window → app: save a message's file;
 	// "message_id" (int64), the panel's "directory" (entry_ref) and "name",
@@ -245,6 +250,12 @@ enum {
 	kMsgSettingsClosed = 'stcl',
 	// main window menu → app
 	kMsgShowSettings = 'shst',
+
+	// app → media viewer: "path", "kind" (int32 pp::Media::Kind), "title"
+	kMsgShowMedia = 'shmd',
+	// video playback → media viewer: a new frame to draw; the end reached
+	kMsgPlaybackFrame = 'pbfr',
+	kMsgPlaybackEnded = 'pben',
 
 	kMsgLogOut = 'lout',
 	kMsgLogOutConfirmed = 'loco',

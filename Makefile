@@ -17,7 +17,8 @@ APP_SRCS := src/app/App.cpp src/app/TdClient.cpp src/app/Settings.cpp \
 	src/app/SettingsWindow.cpp src/app/VoicePlayer.cpp \
 	src/app/ChatInfoWindow.cpp src/app/FileSaving.cpp src/app/OpenLinkWindow.cpp \
 	src/app/VoiceRecorder.cpp src/app/MentionPopup.cpp src/app/MediaProbe.cpp \
-	src/app/AvatarView.cpp src/app/ProfileWindow.cpp
+	src/app/AvatarView.cpp src/app/ProfileWindow.cpp \
+	src/app/MediaWindow.cpp src/app/VideoPlayback.cpp
 
 BUILD := obj
 CORE_OBJS := $(CORE_SRCS:%.cpp=$(BUILD)/%.o)
@@ -89,6 +90,20 @@ $(BUILD)/media_probe_test: $(BUILD)/tests/media_probe_test.o $(BUILD)/src/app/Me
 		$(BUILD)/src/core/Format.o
 	$(CXX) -o $@ $^ -lbe -lmedia -ltranslation
 
+# The media viewer's video playback: frames, clock, pause, seek, end, loop.
+video-playback-test: $(BUILD)/video_playback_test
+	$(BUILD)/video_playback_test tests/data
+$(BUILD)/video_playback_test: $(BUILD)/tests/video_playback_test.o \
+		$(BUILD)/src/app/VideoPlayback.o
+	$(CXX) -o $@ $^ -lbe -lmedia
+
+# The media viewer window with a file, to look at.
+media-viewer-demo: $(BUILD)/media_viewer_demo
+$(BUILD)/media_viewer_demo: $(BUILD)/tests/media_viewer_demo.o $(BUILD)/src/app/MediaWindow.o \
+		$(BUILD)/src/app/VideoPlayback.o $(BUILD)/src/core/ChatHistory.o \
+		$(BUILD)/src/core/ChatList.o $(BUILD)/src/core/Format.o
+	$(CXX) -o $@ $^ -lbe -lmedia -ltranslation
+
 # The Deskbar item with a made-up count (stands in for the app).
 deskbar-demo: $(BUILD)/deskbar_demo $(BUILD)/PowergramDeskbar
 $(BUILD)/deskbar_demo: $(BUILD)/tests/deskbar_demo.o
@@ -124,7 +139,7 @@ clean:
 
 -include $(CORE_OBJS:.o=.d) $(APP_OBJS:.o=.d) $(BUILD)/tests/test_core.d
 
-.PHONY: all test clean bench live-scroll pickers-demo mockup voice_play
+.PHONY: all test clean bench live-scroll pickers-demo mockup voice_play video-playback-test media-viewer-demo
 
 voice_play: $(BUILD)/voice_play
 $(BUILD)/voice_play: $(BUILD)/tests/voice_play.o $(BUILD)/src/app/VoicePlayer.o

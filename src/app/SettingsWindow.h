@@ -17,11 +17,15 @@ struct AppSettings {
 	bool sound = true;          // the "Powergram new message" system sound
 	int32 textSize = 1;         // 0 small, 1 normal, 2 large
 	bool deskbar = true;        // the icon with the unread count in the Deskbar
+	// Photos and videos open in Powergram's viewer rather than in the
+	// system's apps (ShowImage, MediaPlayer), which many people prefer.
+	bool mediaInApp = false;
 
 	bool operator==(const AppSettings& o) const
 	{
 		return notifications == o.notifications && previews == o.previews
-			&& sound == o.sound && textSize == o.textSize && deskbar == o.deskbar;
+			&& sound == o.sound && textSize == o.textSize && deskbar == o.deskbar
+			&& mediaInApp == o.mediaInApp;
 	}
 	void ToMessage(BMessage* message) const;
 	static AppSettings FromMessage(const BMessage* message);
@@ -47,6 +51,7 @@ private:
 	BCheckBox* fSound;
 	BCheckBox* fDeskbar;
 	BMenuField* fTextSize;
+	BMenuField* fMediaOpen;
 	BButton* fRevertButton;
 	BButton* fDefaultsButton;
 };

@@ -34,6 +34,7 @@
 #include <ctime>
 #include <cstring>
 
+#include "../core/ChatHistory.h"
 #include "../core/ChatList.h"
 #include "../core/Links.h"
 #include "../core/Mentions.h"
@@ -954,7 +955,19 @@ MainWindow::_ShowMessageMenu(const BMessage* properties)
 	// Anything with a file behind it (not a sticker's bare emoji).
 	if (row->mediaKind != 0 && !(row->mediaKind == 2 && row->imagePath.IsEmpty())) {
 		menu->AddSeparatorItem();
-		item(row->mediaKind == 8 ? "Open" : "Open in viewer", kMsgOpenMedia, true);
+		// Photos and videos either way, the way the settings choose first.
+		bool viewable = row->mediaKind == pp::Media::kPhoto || row->mediaKind == pp::Media::kVideo
+			|| row->mediaKind == pp::Media::kAnimation || row->mediaKind == pp::Media::kVideoNote;
+		if (viewable) {
+			const char* inViewer = "Open in Powergram";
+			const char* inApp = row->mediaKind == pp::Media::kPhoto
+				? "Open in image viewer" : "Open in media player";
+			item(fMediaInApp ? inViewer : inApp, kMsgOpenMedia, true)
+				->AddInt32("where", fMediaInApp ? kOpenInViewer : kOpenInSystemApp);
+			item(fMediaInApp ? inApp : inViewer, kMsgOpenMedia, true)
+				->AddInt32("where", fMediaInApp ? kOpenInSystemApp : kOpenInViewer);
+		} else
+			item("Open", kMsgOpenMedia, true);
 		item("Save as" B_UTF8_ELLIPSIS, kMsgSaveAsk, true);
 	}
 	bool canSelf = properties->GetBool("can_delete_self", false);
@@ -1351,6 +1364,7 @@ MainWindow::MessageReceived(BMessage* message)
 			break;
 		case kMsgSettingsChanged:
 			fMessages->SetTextScale(AppSettings::Scale(message->GetInt32("text_size", 1)));
+			fMediaInApp = message->GetBool("media_in_app", false);
 			break;
 		case kMsgChatFilter:
 			_UpdateChats(&fLastChats);
