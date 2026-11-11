@@ -19,7 +19,7 @@ main(int argc, char** argv)
 	// --show --media DIR: end with test photos and stickers from DIR
 	// (photo.jpg, mini.jpg, sticker.webp).
 	const char* mediaDir = argc > 3 && strcmp(argv[2], "--media") == 0 ? argv[3] : nullptr;
-	BApplication app("application/x-vnd.paper-plane-bench");
+	BApplication app("application/x-vnd.powergram-bench");
 	BWindow* window = new BWindow(BRect(0, 0, 640, 600), "bench",
 		B_TITLED_WINDOW, 0);
 	MessageView* view = new MessageView();

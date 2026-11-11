@@ -23,7 +23,14 @@ Settings::Directory()
 	BPath path;
 	if (find_directory(B_USER_SETTINGS_DIRECTORY, &path, true) != B_OK)
 		path.SetTo("/tmp");
-	path.Append("PaperPlane");
+	BPath old = path;
+	path.Append("Powergram");
+	// The app was called Paper Plane: its folder (with the login and
+	// TDLib's database) moves over, once.
+	old.Append("PaperPlane");
+	BEntry oldEntry(old.Path());
+	if (!BEntry(path.Path()).Exists() && oldEntry.IsDirectory())
+		oldEntry.Rename(path.Path());
 	create_directory(path.Path(), 0700);
 	return path;
 }

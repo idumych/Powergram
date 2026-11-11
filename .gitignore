@@ -15,7 +15,7 @@ tdlib-test/
 *.report
 
 # Release pipeline (beos-app-platforms)
-/PaperPlane
+/Powergram
 obj/
 dist/
 *.hpkg

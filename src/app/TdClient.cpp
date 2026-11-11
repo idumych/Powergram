@@ -71,10 +71,10 @@ TdClient::_Run()
 {
 	// Fatal errors only: at level 1 TDLib on Haiku repeats "Error code value
 	// is altered" for every errno, which are negative there.
-	// PAPERPLANE_TD_VERBOSITY=1…5 for debugging. Level 3 and up log every
+	// POWERGRAM_TD_VERBOSITY=1…5 for debugging. Level 3 and up log every
 	// request in full, the API hash and login codes included: keep those
 	// logs private and delete them afterwards.
-	const char* level = getenv("PAPERPLANE_TD_VERBOSITY");
+	const char* level = getenv("POWERGRAM_TD_VERBOSITY");
 	pp::json verbosity = {{"@type", "setLogVerbosityLevel"},
 		{"new_verbosity_level", level != nullptr ? atoi(level) : 0}};
 	td_execute(verbosity.dump().c_str());

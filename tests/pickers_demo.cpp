@@ -34,7 +34,7 @@ main(int argc, char** argv)
 	bool stickers = argc > 1 && strcmp(argv[1], "stickers") == 0;
 	const char* stickerPath = argc > 2 ? argv[2] : "";
 
-	BApplication app("application/x-vnd.paper-plane-pickers-demo");
+	BApplication app("application/x-vnd.powergram-pickers-demo");
 	BWindow* window = new BWindow(BRect(40, 420, 680, 470), "entry",
 		B_TITLED_WINDOW, B_QUIT_ON_WINDOW_CLOSE | B_AUTO_UPDATE_SIZE_LIMITS);
 	BButton* emojiButton = IconButton(kIconEmoji, "Emoji");

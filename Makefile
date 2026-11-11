@@ -1,8 +1,8 @@
-# Paper Plane for Haiku.
+# Powergram, a Telegram client for Haiku.
 #   make          build the app (on Haiku/Renku)
 #   make test     portable core tests (anywhere with a C++17 compiler)
 
-NAME := PaperPlane
+NAME := Powergram
 CXX ?= g++
 override CXXFLAGS += -std=c++17 -Wall -Wextra -O2
 
@@ -28,7 +28,7 @@ TD_LIBS := -ltdjson_static -ltdjson_private -ltdclient -ltdcore -ltdapi \
 ifeq ($(shell uname -s),Haiku)
 all: $(NAME)
 
-# The app at ./PaperPlane, resources from obj/ (packaging/build-hpkg.sh).
+# The app at ./Powergram, resources from obj/ (packaging/build-hpkg.sh).
 $(NAME): $(CORE_OBJS) $(APP_OBJS) $(BUILD)/$(NAME).rsrc
 	$(CXX) -o $@ $(CORE_OBJS) $(APP_OBJS) $(LDFLAGS) -lbe -lmedia -ltracker -ltranslation -llocalestub $(TD_LIBS)
 	xres -o $@ $(BUILD)/$(NAME).rsrc
@@ -37,8 +37,8 @@ $(NAME): $(CORE_OBJS) $(APP_OBJS) $(BUILD)/$(NAME).rsrc
 # The real main window with made-up chats, for screenshots.
 MOCKUP_OBJS := $(filter-out $(BUILD)/src/app/App.o $(BUILD)/src/app/TdClient.o \
 	$(BUILD)/src/app/LoginWindow.o $(BUILD)/src/app/Settings.o, $(APP_OBJS))
-mockup: $(BUILD)/PaperPlaneMockup
-$(BUILD)/PaperPlaneMockup: $(BUILD)/tests/mockup.o $(CORE_OBJS) $(MOCKUP_OBJS)
+mockup: $(BUILD)/PowergramMockup
+$(BUILD)/PowergramMockup: $(BUILD)/tests/mockup.o $(CORE_OBJS) $(MOCKUP_OBJS)
 	$(CXX) -o $@ $^ -lbe -lmedia -ltracker -ltranslation -llocalestub
 
 # The entry's icon buttons and a picker with made-up content.
@@ -59,7 +59,7 @@ $(BUILD)/bench_messageview: $(BUILD)/tests/bench_messageview.o $(BUILD)/src/app/
 		$(BUILD)/src/app/BitmapUtils.o $(BUILD)/src/core/Format.o
 	$(CXX) -o $@ $^ -lbe -ltranslation
 
-$(BUILD)/$(NAME).rsrc: src/app/PaperPlane.rdef
+$(BUILD)/$(NAME).rsrc: src/app/Powergram.rdef
 	@mkdir -p $(dir $@)
 	rc -o $@ $<
 else

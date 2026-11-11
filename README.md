@@ -1,4 +1,4 @@
-# Paper Plane for Haiku
+# Powergram
 
 A Telegram client for [Haiku](https://www.haiku-os.org) and
 [Renku OS](https://github.com/RenkuOS/Source), written with the native Haiku
@@ -7,12 +7,14 @@ It talks to Telegram through [TDLib](https://github.com/tdlib/td), Telegram's
 own client library, and keeps Paper Plane's layout: the chat list on the left,
 the open chat on the right.
 
-**Preview.** Version 0.1.0 is a first preview for Haiku and Renku OS
-(x86_64): download the `.hpkg` from
-[Releases](https://github.com/idumych/paper-plane-haiku/releases) and install it
-with `pkgman install ./paperplane-0.1.0-1-x86_64.hpkg`.
+**Preview.** Version 0.1.0, a first preview for Haiku and Renku OS (x86_64),
+came out under the app's earlier name, Paper Plane for Haiku: download the
+`.hpkg` from [Releases](https://github.com/idumych/paper-plane-haiku/releases)
+and install it with `pkgman install ./paperplane-0.1.0-1-x86_64.hpkg`. The
+next release is named Powergram and replaces it, keeping your login and
+settings.
 
-![Paper Plane with a group chat open](docs/screenshots/haiku-group.png)
+![Powergram with a group chat open](docs/screenshots/haiku-group.png)
 
 ## What works
 
@@ -74,7 +76,7 @@ On Haiku or Renku OS:
 ```sh
 pkgman install tdlib openssl3_devel zlib_devel
 make
-./PaperPlane
+./Powergram
 ```
 
 `sh packaging/build-hpkg.sh` builds the package.
@@ -88,17 +90,18 @@ files, stickers) on any system with a C++17 compiler.
 ## Your API key
 
 Telegram wants every client to use an API ID of its own, and this app ships
-none. Register one at [my.telegram.org](https://my.telegram.org) under
-"API development tools", then either type it into the window Paper Plane
-shows at first start, or put it in a text file
-`~/config/settings/PaperPlane/api_key`:
+none. At first start Powergram opens [my.telegram.org](https://my.telegram.org)
+in your browser: log in, choose "API development tools", create an app, and
+copy its api_id and api_hash into Powergram's window (pasting both lines at
+once fills both fields). For scripted setups the key can instead go in a text
+file `~/config/settings/Powergram/api_key`:
 
 ```
 api_id=1234567
 api_hash=0123456789abcdef0123456789abcdef
 ```
 
-Paper Plane reads that file once, keeps the key in its own settings (readable
+Powergram reads that file once, keeps the key in its own settings (readable
 only by you) and deletes the file.
 
 `--test-dc` connects to Telegram's test servers instead. Telegram no longer

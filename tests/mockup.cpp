@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // The real main window with made-up chats, for screenshots: no TDLib, no
-// account, its own signature (so it runs next to Paper Plane).
-//   make mockup && build/PaperPlaneMockup group|media|emoji|stickers|reply MEDIA_DIR
+// account, its own signature (so it runs next to Powergram).
+//   make mockup && obj/PowergramMockup group|media|emoji|stickers|reply MEDIA_DIR
 // Prints the main window's content frame, for cropping to just it.
 #include <Application.h>
 #include <File.h>
@@ -138,7 +138,7 @@ const Person kTeo = {"Teo Marchetti", "TM", 14, "avatar3.jpg"};
 
 class MockApp : public BApplication {
 public:
-	MockApp() : BApplication("application/x-vnd.paper-plane-mockup") {}
+	MockApp() : BApplication("application/x-vnd.powergram-mockup") {}
 
 	void ReadyToRun() override
 	{
@@ -199,7 +199,7 @@ public:
 					data.AddString("title", "Renku testers");
 					data.AddString("initials", "RT");
 					data.AddString("status", "6 members");
-					data.AddString("about", "Testing Paper Plane on real hardware. Nightly "
+					data.AddString("about", "Testing Powergram on real hardware. Nightly "
 						"builds, logs and screenshots welcome; see the pinned guide.");
 					data.AddInt32("member_count", 6);
 					for (const char* name : {"Mira Okafor", "Jonas Lindqvist", "Priya Raman",
@@ -310,7 +310,7 @@ private:
 		} chats[] = {
 			{kGroup, "Renku testers", "Nightly build00079 boots on my ThinkPad", "Jonas", 120, 3, 1, true, false, "renku.png"},
 			{kPrivate, "Mira Okafor", "Photo", "", 600, 0, 0, true, true, "avatar0.jpg"},
-			{kChannel, "Paper Plane news", "Stickers and emoji have landed", "", 3600, 12, 0, false, false, "plane.jpg"},
+			{kChannel, "Powergram news", "Stickers and emoji have landed", "", 3600, 12, 0, false, false, "plane.jpg"},
 			{2004, "Teo Marchetti", "See you at BeGeistert!", "You", 3 * 3600, 0, 0, false, true, "avatar3.jpg"},
 			{2005, "Priya Raman", "The driver builds now", "", 26 * 3600, 0, 0, false, false, nullptr},
 			{2006, "Saved Messages", "notes.pdf", "", 2 * 86400, 0, 0, false, false, nullptr},
@@ -389,7 +389,7 @@ private:
 
 		if (chatId == kGroup) {
 			Add(list, _Date("Yesterday"));
-			Add(list, _From(kTeo, 101, "Has anyone tried the new Paper Plane build on real hardware?", now - 86400));
+			Add(list, _From(kTeo, 101, "Has anyone tried the new Powergram build on real hardware?", now - 86400));
 			Row r = _Mine(102, "Running it on my desktop since this morning, no crashes so far", now - 86000);
 			Add(list, r);
 			Add(list, _Date("Today"));
@@ -416,7 +416,7 @@ private:
 			r.edited = true;
 			Add(list, r);
 			r = _From(kPriya, 107, "Release notes for this week", now - 1800);
-			r.forward = "Forwarded from Paper Plane news";
+			r.forward = "Forwarded from Powergram news";
 			Add(list, r);
 			r = _From(kPriya, 108, "", now - 1700);
 			r.mediaKind = 2;

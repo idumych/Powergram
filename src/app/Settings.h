@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Settings: a flattened BMessage in ~/config/settings/PaperPlane/settings.
+// Settings: a flattened BMessage in ~/config/settings/Powergram/settings.
 #pragma once
 
 #include <Message.h>

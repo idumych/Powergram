@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Paper Plane for Haiku: the application. Owns the TDLib client, the login
+// Powergram: the application. Owns the TDLib client, the login
 // state machine and the chat list; the windows only show what it sends.
 #include <Alert.h>
 #include <Application.h>
@@ -171,8 +171,8 @@ App::App()
 	fSettings.Load();
 	fPrefs = AppSettings::FromMessage(&fSettings.preferences);
 	// The new-message sound, chosen by the user in the Sounds preferences.
-	add_system_beep_event("Paper Plane new message");
-	const char* env = getenv("PAPERPLANE_TEST_DC");
+	add_system_beep_event("Powergram new message");
+	const char* env = getenv("POWERGRAM_TEST_DC");
 	fTestDc = env != nullptr && strcmp(env, "1") == 0;
 }
 
@@ -246,7 +246,7 @@ App::ReadyToRun()
 	fAuth = std::make_unique<pp::AuthFlow>(_Params());
 	fClient = std::make_unique<TdClient>(BMessenger(this));
 	if (fClient->Start() != B_OK) {
-		(new BAlert(APP_NAME, "Paper Plane could not start its Telegram "
+		(new BAlert(APP_NAME, "Powergram could not start its Telegram "
 			"connection.", "Quit", nullptr, nullptr, B_WIDTH_AS_USUAL,
 			B_STOP_ALERT))->Go();
 		Quit();
@@ -1129,7 +1129,7 @@ App::_Notify(const json& message)
 	if (!fPrefs.notifications)
 		return;
 	if (fPrefs.sound)
-		system_beep("Paper Plane new message");
+		system_beep("Powergram new message");
 	BString content;
 	if (fPrefs.previews && fChats.ShowsPreview(chatId)) {
 		if (chat->kind == pp::Chat::kGroup) {
@@ -1706,7 +1706,7 @@ App::AboutRequested()
 	BAboutWindow* about = new BAboutWindow(APP_NAME, APP_SIGNATURE);
 	about->AddDescription("A Telegram client, after Paper Plane by the Paper "
 		"Plane developers. Proof of concept.");
-	about->AddCopyright(2026, "Paper Plane for Haiku contributors");
+	about->AddCopyright(2026, "the Powergram contributors");
 	about->AddText("Licence: GNU GPL 3.0 or later. Uses TDLib.");
 	about->Show();
 }

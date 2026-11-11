@@ -7,8 +7,8 @@
 
 #include <string>
 
-#define APP_SIGNATURE "application/x-vnd.paper-plane"
-#define APP_NAME "Paper Plane"
+#define APP_SIGNATURE "application/x-vnd.powergram"
+#define APP_NAME "Powergram"
 
 // Binary data (tiny JPEG previews) in the parallel arrays of a message.
 // BMessage::AddData refuses zero bytes, so an empty value would add no

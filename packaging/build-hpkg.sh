@@ -42,6 +42,15 @@ DESC=$(sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e '2,$s/^/\t/' "$DESCRIPTION_FILE")
 REQ=""
 for r in ${HPKG_REQUIRES_EXTRA:-}; do REQ="$REQ
 	$r"; done
+# Packages this one takes over (an earlier name of the app).
+REPLACES=""
+if [ -n "${HPKG_REPLACES:-}" ]; then
+	REPLACES="replaces		{"
+	for r in $HPKG_REPLACES; do REPLACES="$REPLACES
+	$r"; done
+	REPLACES="$REPLACES
+}"
+fi
 cat > "$PKG/.PackageInfo" <<EOF
 name			$APP_CMD
 version			$VERSION-$REVISION
@@ -67,6 +76,7 @@ provides		{
 requires		{
 	haiku >= r1~beta6$REQ
 }
+$REPLACES
 EOF
 
 # 4. Package. The licence must be one Haiku knows or one shipped in the

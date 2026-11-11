@@ -118,7 +118,7 @@ LoginWindow::LoginWindow(bool testDc)
 		fields({fFirstName, fLastName}), &fNext[kCardName], kMsgSubmitName));
 	fCards->AddView(_MakeCard("Connecting", &fMessageText, nullptr, nullptr, 0));
 
-	SetWrappedText(apiInfo, "Paper Plane needs a Telegram API key of your own. "
+	SetWrappedText(apiInfo, "Powergram needs a Telegram API key of your own. "
 		"Log in at my.telegram.org (it opens in your browser) with your phone "
 		"number: the code arrives in Telegram on your phone. Choose \"API development tools\" and create an app (any name "
 		"will do). Then copy its App api_id and App api_hash here. The key "
@@ -401,7 +401,7 @@ LoginWindow::MessageReceived(BMessage* message)
 					break;
 				case pp::AuthStep::Email:
 					SetWrappedText(fMessageText, "Telegram wants an e-mail address "
-						"for this account. Paper Plane cannot do that yet: "
+						"for this account. Powergram cannot do that yet: "
 						"log in once with another Telegram app and try again.");
 					_ShowCard(kCardMessage);
 					break;
@@ -412,7 +412,7 @@ LoginWindow::MessageReceived(BMessage* message)
 					break;
 				case pp::AuthStep::Unsupported:
 				{
-					BString text("Telegram asked for a login step Paper Plane "
+					BString text("Telegram asked for a login step Powergram "
 						"does not know: ");
 					text << message->GetString("td_type", "?");
 					SetWrappedText(fMessageText, text);

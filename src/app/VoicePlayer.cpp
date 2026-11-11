@@ -55,7 +55,7 @@ VoicePlayer::Play(const char* path)
 	fPlayed = 0;
 	fEnded = false;
 
-	fPlayer = new BSoundPlayer(&raw, "Paper Plane voice message", _Fill, nullptr, this);
+	fPlayer = new BSoundPlayer(&raw, "Powergram voice message", _Fill, nullptr, this);
 	if ((status = fPlayer->InitCheck()) != B_OK) {
 		Stop();
 		return status;

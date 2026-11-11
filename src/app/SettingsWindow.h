@@ -14,7 +14,7 @@ class BMenuField;
 struct AppSettings {
 	bool notifications = true;
 	bool previews = true;       // the message text in notifications
-	bool sound = true;          // the "Paper Plane new message" system sound
+	bool sound = true;          // the "Powergram new message" system sound
 	int32 textSize = 1;         // 0 small, 1 normal, 2 large
 
 	bool operator==(const AppSettings& o) const

@@ -125,7 +125,7 @@ def grow(points, amount):
 
 
 def build():
-    """Paper Plane: a folded paper plane in front view, lit from the top
+    """Powergram: a folded paper plane in front view, lit from the top
     left (Haiku Icon Guidelines), dark navy outline, shadow to the right."""
     styles = [
         solid(20, 40, 90, 110),                              # 0 shadow

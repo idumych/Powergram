@@ -61,7 +61,7 @@ Check(const char* what, const State& now, const State& want)
 int
 main()
 {
-	BApplication app("application/x-vnd.paper-plane-live-scroll");
+	BApplication app("application/x-vnd.powergram-live-scroll");
 	BWindow* window = new BWindow(BRect(20, 40, 700, 700), "live scroll",
 		B_DOCUMENT_WINDOW, B_AUTO_UPDATE_SIZE_LIMITS);
 	MessageView* view = new MessageView();
