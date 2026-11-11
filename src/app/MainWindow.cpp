@@ -312,7 +312,16 @@ private:
 // The chat list: a right click opens the chat's menu.
 class ChatListView : public BListView {
 public:
-	ChatListView() : BListView("chats") {}
+	ChatListView()
+		:
+		BListView("chats")
+	{
+		// Rows put the date and badge at the right edge: when the list
+		// gets wider or narrower (the divider, the window), all of each row
+		// must be redrawn, not just the strip that appears; otherwise the
+		// badges stay where the edge was.
+		SetFlags(Flags() | B_FULL_UPDATE_ON_RESIZE);
+	}
 
 	void MouseDown(BPoint where) override
 	{
@@ -923,11 +932,11 @@ MainWindow::_ShowMessageMenu(const BMessage* properties)
 	item(fMessages->SelectedText(row->id).IsEmpty() ? "Copy" : "Copy selection", kMsgCopy,
 		properties->GetBool("can_copy", true) && !row->text.IsEmpty());
 	item("Forward" B_UTF8_ELLIPSIS, kMsgForward, properties->GetBool("can_forward", false));
-	// A few common reactions; the full set needs custom emoji Haiku can't draw.
+	// The reactions Telegram allows on this message (custom emoji ones,
+	// which Haiku can't draw, are left out).
 	BMenu* react = new BMenu("React");
-	for (const char* emoji : {"\xF0\x9F\x91\x8D", "\xE2\x9D\xA4\xEF\xB8\x8F",
-			"\xF0\x9F\x98\x82", "\xF0\x9F\x98\xAE", "\xF0\x9F\x98\xA2",
-			"\xF0\x9F\x99\x8F", "\xF0\x9F\x8E\x89", "\xF0\x9F\x94\xA5"}) {
+	const char* emoji;
+	for (int32 i = 0; properties->FindString("reaction", i, &emoji) == B_OK; i++) {
 		BMessage* message = new BMessage(kMsgReact);
 		message->AddInt64("message_id", id);
 		message->AddString("emoji", emoji);
@@ -936,6 +945,8 @@ MainWindow::_ShowMessageMenu(const BMessage* properties)
 	}
 	react->SetTargetForItems(this);
 	menu->AddItem(react);
+	if (react->CountItems() == 0)
+		react->Superitem()->SetEnabled(false);   // reactions are off in this chat
 	if (properties->GetBool("can_pin", false)) {
 		bool pinned = properties->GetBool("pinned", false);
 		item(pinned ? "Unpin" : "Pin", kMsgPin, true)->AddBool("pin", !pinned);

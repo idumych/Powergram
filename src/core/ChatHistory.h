@@ -70,6 +70,12 @@ struct Reaction {
 // The emoji reactions in an interaction_info (custom and paid ones skipped).
 std::vector<Reaction> ParseReactions(const json& interactionInfo);
 
+// The emoji reactions a message allows (getMessageAvailableReactions):
+// the top ones first, then recent and popular, without premium-only and
+// custom emoji ones, each once, at most `limit`.
+std::vector<std::string> ParseAvailableReactions(const json& availableReactions,
+	size_t limit = 12);
+
 struct Message {
 	int64_t id = 0;
 	int64_t senderId = 0;      // user id, or chat id when senderIsChat
@@ -219,6 +225,7 @@ json Forward(int64_t toChatId, int64_t fromChatId, const std::vector<int64_t>& i
 // newest first.
 json SearchChat(int64_t chatId, const std::string& query, int limit);
 json React(int64_t chatId, int64_t messageId, const std::string& emoji, bool add);
+json AvailableReactions(int64_t chatId, int64_t messageId, const std::string& extra);
 // Sends a local file: a photo (with its size) or any file as a document.
 json SendPhoto(int64_t chatId, const std::string& path, int32_t width, int32_t height,
 	const std::string& caption, int64_t replyTo = 0);

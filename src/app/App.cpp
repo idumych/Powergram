@@ -115,6 +115,7 @@ private:
 	void _ShowChat(int64 chatId, int64 messageId = 0);
 	int64 fExtraChat = 0;
 	int64 fMyId = 0;
+	BMessage fPendingProps;   // a message menu waiting for its reactions
 	// The Deskbar item (an add-on of its own) and the count it shows.
 	void _UpdateDeskbar();
 	void _SendUnread();
@@ -527,7 +528,33 @@ App::_HandleObject(const json& object)
 		const pp::Message* shown = fHistory != nullptr && fHistory->ChatId() == chatId
 			? fHistory->Find(messageId) : nullptr;
 		props.AddBool("pinned", shown != nullptr && shown->pinned);
-		fMain->PostMessage(&props);
+		// The menu offers only the reactions this message allows (chats can
+		// limit them, or turn them off): ask before showing it.
+		fPendingProps = props;
+		_Send(pp::request::AvailableReactions(chatId, messageId,
+			"avail:" + std::to_string(chatId) + ":" + std::to_string(messageId)), true);
+		return;
+	}
+	if (extra.rfind("avail:", 0) == 0) {
+		std::string key = extra.substr(6);
+		std::string pending = std::to_string(fPendingProps.GetInt64("chat_id", 0)) + ":"
+			+ std::to_string(fPendingProps.GetInt64("message_id", 0));
+		if (key != pending || fPendingProps.what != kMsgMessageProperties)
+			return;   // another menu since
+		if (type == "availableReactions") {
+			for (const std::string& emoji : pp::ParseAvailableReactions(object))
+				fPendingProps.AddString("reaction", emoji.c_str());
+		}
+		fMain->PostMessage(&fPendingProps);
+		fPendingProps = BMessage();
+		return;
+	}
+	if (extra == "react") {
+		if (type == "error") {
+			BString text("Could not react to the message. ");
+			text << pp::AuthFlow::ErrorText(object).c_str();
+			_ShowError(text);
+		}
 		return;
 	}
 	if ((extra == "edit" || extra == "delete" || extra == "forward") && type == "error") {
@@ -1846,10 +1873,14 @@ App::MessageReceived(BMessage* message)
 			break;
 
 		case kMsgReact:
-			_Send(pp::request::React(message->GetInt64("chat_id", 0),
+		{
+			json react = pp::request::React(message->GetInt64("chat_id", 0),
 				message->GetInt64("message_id", 0), message->GetString("emoji", ""),
-				message->GetBool("add", true)));
+				message->GetBool("add", true));
+			react["@extra"] = "react";   // a refusal is shown, not just logged
+			_Send(react);
 			break;
+		}
 
 		case kMsgForwardMessage:
 			_Send(pp::request::Forward(message->GetInt64("to_chat_id", 0),

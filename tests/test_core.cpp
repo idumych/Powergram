@@ -1390,6 +1390,26 @@ TestProfile()
 
 
 static void
+TestAvailableReactions()
+{
+	auto emoji = [](const char* e, bool premium = false) {
+		return json{{"type", {{"@type", "reactionTypeEmoji"}, {"emoji", e}}}, {"needs_premium", premium}};
+	};
+	json available = {{"@type", "availableReactions"},
+		{"top_reactions", json::array({emoji("\xF0\x9F\x91\x8D"), emoji("\xE2\x9D\xA4"),
+			{{"type", {{"@type", "reactionTypeCustomEmoji"}, {"custom_emoji_id", "5"}}}}})},
+		{"recent_reactions", json::array({emoji("\xE2\x9D\xA4"), emoji("\xF0\x9F\x94\xA5", true)})},
+		{"popular_reactions", json::array({emoji("\xF0\x9F\x98\x82")})}};
+	std::vector<std::string> list = ParseAvailableReactions(available);
+	// Telegram's heart is the bare U+2764, as it gives it.
+	CHECK(list == std::vector<std::string>({"\xF0\x9F\x91\x8D", "\xE2\x9D\xA4", "\xF0\x9F\x98\x82"}));
+	CHECK(ParseAvailableReactions(available, 2).size() == 2);
+	CHECK(ParseAvailableReactions({{"@type", "availableReactions"}, {"top_reactions", json::array()}}).empty());
+	CHECK(request::AvailableReactions(1, 2, "x")["@type"] == "getMessageAvailableReactions");
+}
+
+
+static void
 TestHaikuIcons()
 {
 	// An HVIF file is drawn; other documents get a card.
@@ -1434,6 +1454,7 @@ main()
 	TestSendingFiles();
 	TestUnreadChats();
 	TestProfile();
+	TestAvailableReactions();
 	if (sFailures) {
 		std::fprintf(stderr, "%d check(s) failed\n", sFailures);
 		return EXIT_FAILURE;

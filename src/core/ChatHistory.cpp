@@ -410,6 +410,28 @@ ParseReactions(const json& interactionInfo)
 }
 
 
+std::vector<std::string>
+ParseAvailableReactions(const json& available, size_t limit)
+{
+	std::vector<std::string> emoji;
+	for (const char* list : {"top_reactions", "recent_reactions", "popular_reactions"}) {
+		const json& reactions = Field(available, list);
+		if (!reactions.is_array())
+			continue;
+		for (const json& r : reactions) {
+			const json& type = Field(r, "type");
+			if (Bool(r, "needs_premium") || Type(type) != "reactionTypeEmoji")
+				continue;
+			std::string e = Str(type, "emoji");
+			if (!e.empty() && emoji.size() < limit
+				&& std::find(emoji.begin(), emoji.end(), e) == emoji.end())
+				emoji.push_back(e);
+		}
+	}
+	return emoji;
+}
+
+
 Message
 ParseMessage(const json& message)
 {
@@ -913,6 +935,14 @@ React(int64_t chatId, int64_t messageId, const std::string& emoji, bool add)
 		request["update_recent_reactions"] = true;
 	}
 	return request;
+}
+
+
+json
+AvailableReactions(int64_t chatId, int64_t messageId, const std::string& extra)
+{
+	return {{"@type", "getMessageAvailableReactions"}, {"chat_id", chatId},
+		{"message_id", messageId}, {"row_size", 8}, {"@extra", extra}};
 }
 
 

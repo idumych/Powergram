@@ -353,6 +353,11 @@ public:
 				fflush(stdout);
 				_SendPinned();
 				break;
+			case kMsgReact:
+				printf("react %s %s to %lld\n", message->GetBool("add", true) ? "add" : "remove",
+					message->GetString("emoji", ""), (long long)message->GetInt64("message_id", 0));
+				fflush(stdout);
+				break;
 			case kMsgPin:
 				printf("%s message %lld\n", message->GetBool("pin", true) ? "pin" : "unpin",
 					(long long)message->GetInt64("message_id", 0));
@@ -444,6 +449,11 @@ public:
 				for (const char* name : {"can_reply", "can_edit", "can_delete_self",
 						"can_delete_all", "can_copy", "can_forward", "can_pin"})
 					props.AddBool(name, true);
+				// What getMessageAvailableReactions gives for an ordinary
+				// group (the heart is the bare U+2764).
+				for (const char* emoji : {"\xF0\x9F\x91\x8D", "\xE2\x9D\xA4", "\xF0\x9F\x94\xA5",
+						"\xF0\x9F\x98\x82", "\xF0\x9F\x98\xAE", "\xF0\x9F\x98\xA2"})
+					props.AddString("reaction", emoji);
 				fMain->PostMessage(&props);
 				break;
 			}
