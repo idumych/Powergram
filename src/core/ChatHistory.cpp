@@ -646,6 +646,15 @@ GetMessages(int64_t chatId, const std::vector<int64_t>& ids, const std::string& 
 
 
 json
+Forward(int64_t toChatId, int64_t fromChatId, const std::vector<int64_t>& ids)
+{
+	return {{"@type", "forwardMessages"}, {"chat_id", toChatId}, {"from_chat_id", fromChatId},
+		{"message_ids", ids}, {"send_copy", false}, {"remove_caption", false},
+		{"@extra", "forward"}};
+}
+
+
+json
 OpenContent(int64_t chatId, int64_t messageId)
 {
 	return {{"@type", "openMessageContent"}, {"chat_id", chatId},

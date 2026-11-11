@@ -34,6 +34,7 @@
 
 #include "../core/ChatList.h"
 #include "BitmapUtils.h"
+#include "ChatPicker.h"
 #include "Icons.h"
 #include "Pickers.h"
 #include "MessageView.h"
@@ -55,6 +56,7 @@ enum {
 	kMsgShowEmoji = 'shem',
 	kMsgChatMenu = 'cmnu',
 	kMsgListChosen = 'lcho',
+	kMsgForward = 'frwd',
 	kMsgChatMenuItem = 'cmit',
 	kMsgChatDeleteAnswer = 'cdan',
 	kMsgShowStickers = 'shst',
@@ -584,6 +586,7 @@ MainWindow::_ShowMessageMenu(const BMessage* properties)
 	};
 	item("Reply", kMsgReply, properties->GetBool("can_reply", false));
 	item("Copy", kMsgCopy, properties->GetBool("can_copy", true) && !row->text.IsEmpty());
+	item("Forward" B_UTF8_ELLIPSIS, kMsgForward, properties->GetBool("can_forward", false));
 	bool canSelf = properties->GetBool("can_delete_self", false);
 	bool canAll = properties->GetBool("can_delete_all", false);
 	if (properties->GetBool("can_edit", false)) {
@@ -975,6 +978,23 @@ MainWindow::MessageReceived(BMessage* message)
 		}
 		case kMsgCancelCompose:
 			_CancelCompose();
+			break;
+		case kMsgForward:
+		{
+			// Choose where to, from the chats in the list on screen.
+			std::vector<ChatPicker::Entry> chats;
+			for (int32 i = 0; i < fList->CountItems(); i++) {
+				ChatItem* item = static_cast<ChatItem*>(fList->ItemAt(i));
+				chats.push_back({item->Id(), item->Title()});
+			}
+			BMessage* reply = new BMessage(kMsgForwardMessage);
+			reply->AddInt64("from_chat_id", fOpenChat);
+			reply->AddInt64("message_id", message->GetInt64("message_id", 0));
+			(new ChatPicker(this, chats, reply))->Show();
+			break;
+		}
+		case kMsgForwardMessage:
+			be_app->PostMessage(message);
 			break;
 		case kMsgChatLists:
 		{

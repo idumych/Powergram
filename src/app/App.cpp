@@ -316,11 +316,13 @@ App::_HandleObject(const json& object)
 		props.AddBool("can_delete_self", pp::Bool(object, "can_be_deleted_only_for_self"));
 		props.AddBool("can_delete_all", pp::Bool(object, "can_be_deleted_for_all_users"));
 		props.AddBool("can_copy", pp::Bool(object, "can_be_copied", true));
+		props.AddBool("can_forward", pp::Bool(object, "can_be_forwarded"));
 		fMain->PostMessage(&props);
 		return;
 	}
-	if ((extra == "edit" || extra == "delete") && type == "error") {
+	if ((extra == "edit" || extra == "delete" || extra == "forward") && type == "error") {
 		BString text(extra == "edit" ? "Could not edit the message. "
+			: extra == "forward" ? "Could not forward the message. "
 			: "Could not delete the message. ");
 		text << pp::AuthFlow::ErrorText(object).c_str();
 		_ShowError(text);
@@ -1061,6 +1063,11 @@ App::MessageReceived(BMessage* message)
 
 		case kMsgFlushChats:
 			_FlushChats();
+			break;
+
+		case kMsgForwardMessage:
+			_Send(pp::request::Forward(message->GetInt64("to_chat_id", 0),
+				message->GetInt64("from_chat_id", 0), {message->GetInt64("message_id", 0)}));
 			break;
 
 		case kMsgShowList:

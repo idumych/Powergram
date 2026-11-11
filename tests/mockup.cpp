@@ -187,6 +187,18 @@ public:
 					fMain->Unlock();
 				}
 				break;
+			case kMsgMessageProperties:
+			{
+				// Everything allowed, for the message menu.
+				BMessage props(kMsgMessageProperties);
+				props.AddInt64("chat_id", message->GetInt64("chat_id", 0));
+				props.AddInt64("message_id", message->GetInt64("message_id", 0));
+				for (const char* name : {"can_reply", "can_edit", "can_delete_self",
+						"can_delete_all", "can_copy", "can_forward"})
+					props.AddBool(name, true);
+				fMain->PostMessage(&props);
+				break;
+			}
 			case kMsgStickerSetsWanted:
 			{
 				BMessage sets(kMsgStickerSets);

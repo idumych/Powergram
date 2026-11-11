@@ -11,7 +11,7 @@ CORE_SRCS := src/core/AuthFlow.cpp src/core/ChatList.cpp src/core/ChatHistory.cp
 	src/core/Format.cpp src/core/Presence.cpp
 APP_SRCS := src/app/App.cpp src/app/TdClient.cpp src/app/Settings.cpp \
 	src/app/LoginWindow.cpp src/app/MainWindow.cpp src/app/MessageView.cpp \
-	src/app/BitmapUtils.cpp src/app/Icons.cpp src/app/Pickers.cpp
+	src/app/BitmapUtils.cpp src/app/Icons.cpp src/app/Pickers.cpp src/app/ChatPicker.cpp
 
 BUILD := obj
 CORE_OBJS := $(CORE_SRCS:%.cpp=$(BUILD)/%.o)

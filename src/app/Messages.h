@@ -140,6 +140,9 @@ enum {
 	// main window → app: "key", the list to show
 	kMsgShowList = 'shls',
 
+	// main window → app: "from_chat_id", "message_id", "to_chat_id"
+	kMsgForwardMessage = 'fwdm',
+
 	kMsgLogOut = 'lout',
 	kMsgLogOutConfirmed = 'loco',
 	kMsgForceQuit = 'fqut'

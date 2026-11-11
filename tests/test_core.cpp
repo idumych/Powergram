@@ -522,6 +522,8 @@ TestMedia()
 	CHECK(requests.size() == 1 && requests[0]["file_id"] == 6);
 	CHECK(request::Download(1, 99)["priority"] == 32);
 	CHECK(request::OpenContent(42, 1)["@type"] == "openMessageContent");
+	json fwd = request::Forward(7, 42, {1, 2});
+	CHECK(fwd["chat_id"] == 7 && fwd["from_chat_id"] == 42 && fwd["message_ids"].size() == 2);
 }
 
 
