@@ -36,6 +36,7 @@
 
 #include "../core/ChatList.h"
 #include "../core/Links.h"
+#include "../core/Mentions.h"
 #include "BitmapUtils.h"
 #include "ChatPicker.h"
 #include "SettingsWindow.h"
@@ -43,6 +44,7 @@
 #include "Pickers.h"
 #include "MessageView.h"
 #include "OpenLinkWindow.h"
+#include "MentionPopup.h"
 #include "Messages.h"
 
 namespace {
@@ -158,6 +160,7 @@ public:
 	int64 Id() const { return fId; }
 	const char* Title() const { return fTitle.String(); }
 	int32 Unread() const { return fUnread; }
+	int32 Mentions() const { return fMentions; }
 
 	void Update(BView* owner, const BFont* font) override
 	{
@@ -414,6 +417,25 @@ public:
 	}
 };
 
+// On the entry: Up, Down, Enter and Tab go to the mention suggestions
+// while they show.
+class MentionKeyFilter : public BMessageFilter {
+public:
+	explicit MentionKeyFilter(MainWindow* window)
+		: BMessageFilter(B_ANY_DELIVERY, B_ANY_SOURCE, B_KEY_DOWN), fWindow(window) {}
+
+	filter_result Filter(BMessage* message, BHandler**) override
+	{
+		const char* bytes;
+		if (message->FindString("bytes", &bytes) == B_OK && fWindow->MentionKey(bytes))
+			return B_SKIP_MESSAGE;
+		return B_DISPATCH_MESSAGE;
+	}
+
+private:
+	MainWindow* fWindow;
+};
+
 } // namespace
 
 
@@ -530,6 +552,7 @@ MainWindow::MainWindow(BRect frame, bool testDc,
 	fPinnedBar->Hide();
 	// Escape cancels a reply or an edit (window shortcuts always need Command).
 	AddCommonFilter(new EscapeFilter());
+	fEntry->TextView()->AddFilter(new MentionKeyFilter(this));
 
 	// Paper Plane: a 365 px sidebar next to the chat, for 14.6 px text.
 	float em = be_plain_font->Size();
@@ -637,8 +660,10 @@ MainWindow::_UpdateChats(const BMessage* incoming)
 		if (static_cast<ChatItem*>(fList->ItemAt(i))->Id() == selected)
 			fList->Select(i);
 		// The open chat's unread count, for the jump button's badge.
-		if (list->GetInt64("id", i, 0) == fOpenChat)
+		if (list->GetInt64("id", i, 0) == fOpenChat) {
 			fMessages->SetUnreadCount(list->GetInt32("unread", i, 0));
+			fMessages->SetUnreadMentions(list->GetInt32("mentions", i, 0));
+		}
 	}
 }
 
@@ -661,6 +686,7 @@ MainWindow::_SelectionChanged()
 	fSubtitle->SetText("");
 	ChatItem* opened = dynamic_cast<ChatItem*>(fList->ItemAt(fList->CurrentSelection()));
 	fMessages->SetUnreadCount(opened != nullptr ? opened->Unread() : 0);
+	fMessages->SetUnreadMentions(opened != nullptr ? opened->Mentions() : 0);
 	fMessages->SetMoreBelow(false);
 	fMessages->SetMessages({}, true);
 	fMessages->SetEmptyText(id != 0 ? "Loading messages…"
@@ -670,6 +696,8 @@ MainWindow::_SelectionChanged()
 		fFindBar->Hide();
 	fFindText->SetText("");
 	fFindResult->SetText("");
+	fMentioned.clear();
+	_CloseMentions();
 	fEntry->SetText("");
 	if (!fPinnedBar->IsHidden())
 		fPinnedBar->Hide();
@@ -782,10 +810,92 @@ MainWindow::_Send()
 		send.AddInt64("chat_id", fOpenChat);
 		send.AddString("text", fEntry->Text());
 		send.AddInt64("reply_to", fReplyTo);
+		for (const auto& mention : fMentioned) {
+			send.AddString("mention_name", mention.first.c_str());
+			send.AddInt64("mention_user", mention.second);
+		}
 		be_app->PostMessage(&send);
 	}
+	fMentioned.clear();
+	_CloseMentions();
 	_CancelCompose();
 	fEntry->SetText("");
+}
+
+
+void
+MainWindow::_UpdateMentionQuery()
+{
+	// Groups only (TDLib's chat ids for them are negative).
+	std::string query;
+	int32 start = 0, end = 0;
+	fEntry->TextView()->GetSelection(&start, &end);
+	if (fOpenChat >= 0 || start != end
+		|| !pp::MentionQuery(fEntry->Text(), (size_t)end, &query, &fMentionAt)) {
+		_CloseMentions();
+		return;
+	}
+	if (fMentions == nullptr)
+		fMentions = new MentionPopup(this);
+	BMessage search(kMsgMentionSearch);
+	search.AddInt64("chat_id", fOpenChat);
+	search.AddString("query", query.c_str());
+	search.AddInt32("seq", ++fMentionSeq);
+	be_app->PostMessage(&search);
+}
+
+
+void
+MainWindow::_CloseMentions()
+{
+	fMentionSeq++;   // answers still on their way are stale
+	if (fMentions != nullptr)
+		fMentions->Close();
+}
+
+
+bool
+MainWindow::MentionKey(const char* bytes)
+{
+	if (fMentions == nullptr || !fMentions->IsShowing())
+		return false;
+	switch (bytes[0]) {
+		case B_UP_ARROW:
+			fMentions->MoveSelection(-1);
+			return true;
+		case B_DOWN_ARROW:
+			fMentions->MoveSelection(1);
+			return true;
+		case B_ENTER:
+		case B_TAB:
+			_ChooseMention(-1);
+			return true;
+	}
+	return false;
+}
+
+
+void
+MainWindow::_ChooseMention(int32 index)
+{
+	MentionPopup::Item item;
+	if (fMentions == nullptr || !(index < 0 ? fMentions->Selected(&item)
+			: fMentions->ItemAt(index, &item))) {
+		_CloseMentions();
+		return;
+	}
+	int32 start = 0, end = 0;
+	fEntry->TextView()->GetSelection(&start, &end);
+	std::string name = pp::FirstName(item.name.String());
+	size_t cursor = 0;
+	std::string text = pp::InsertMention(fEntry->Text(), fMentionAt, (size_t)end, name,
+		item.username.String(), &cursor);
+	if (item.username.IsEmpty())
+		fMentioned.push_back({name, item.userId});
+	_CloseMentions();
+	fEntry->SetText(text.c_str());   // posts kMsgEntryModified: no "@" left before the cursor
+	fEntry->TextView()->Select((int32)cursor, (int32)cursor);
+	fEntry->MakeFocus(true);
 }
 
 
@@ -1198,6 +1308,8 @@ void
 MainWindow::WindowActivated(bool active)
 {
 	BWindow::WindowActivated(active);
+	if (!active)
+		_CloseMentions();
 	BMessage message(kMsgWindowActive);
 	message.AddBool("active", active);
 	be_app->PostMessage(&message);
@@ -1300,6 +1412,7 @@ MainWindow::MessageReceived(BMessage* message)
 		{
 			if (fOpenChat == 0)
 				break;
+			_UpdateMentionQuery();
 			BMessage changed(kMsgEntryChanged);
 			changed.AddInt64("chat_id", fOpenChat);
 			changed.AddBool("empty", fEntry->Text()[0] == '\0');
@@ -1420,7 +1533,9 @@ MainWindow::MessageReceived(BMessage* message)
 		}
 		case kMsgCancelCompose:
 			// Escape: a selection goes first, then a reply or edit.
-			if (fRecording)
+			if (fMentions != nullptr && fMentions->IsShowing())
+				_CloseMentions();
+			else if (fRecording)
 				_Record("cancel");
 			else if (!fMessages->SelectedText().IsEmpty())
 				fMessages->ClearSelection();
@@ -1430,6 +1545,31 @@ MainWindow::MessageReceived(BMessage* message)
 		case kMsgVoiceRecord:
 			_Record(fRecording ? "send" : "start");
 			break;
+		case kMsgMentionResults:
+		{
+			if (message->GetInt32("seq", -1) != fMentionSeq || fMentions == nullptr)
+				break;
+			std::vector<MentionPopup::Item> items;
+			int64 user;
+			for (int32 i = 0; message->FindInt64("user_id", i, &user) == B_OK; i++)
+				items.push_back({user, message->GetString("name", i, ""),
+					message->GetString("username", i, "")});
+			// Over the entry, as wide as it.
+			BRect entry = fEntry->ConvertToScreen(fEntry->Bounds());
+			fMentions->SetItems(items, BPoint(entry.left, entry.top - 2),
+				std::min(entry.Width(), be_plain_font->Size() * 26));
+			break;
+		}
+		case kMsgMentionChosen:
+			_ChooseMention(message->GetInt32("index", -1));
+			break;
+		case kMsgJumpToMention:
+		{
+			BMessage jump(kMsgJumpToMention);
+			jump.AddInt64("chat_id", fOpenChat);
+			be_app->PostMessage(&jump);
+			break;
+		}
 		case kMsgVoiceRecordState:
 			_SetRecording(message->GetBool("recording", false),
 				message->GetInt32("seconds", 0), message->GetFloat("level", 0));

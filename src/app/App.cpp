@@ -41,6 +41,7 @@
 #include "../core/Links.h"
 #include "../core/Pinned.h"
 #include "../core/VoiceNote.h"
+#include "../core/Mentions.h"
 #include "../core/Presence.h"
 #include "../core/Stickers.h"
 #include "ChatInfoWindow.h"
@@ -107,6 +108,7 @@ private:
 	// to scroll to, once it's open.
 	void _ShowChat(int64 chatId, int64 messageId = 0);
 	int64 fExtraChat = 0;
+	int64 fMyId = 0;   // the user's own id (TDLib's "my_id" option)
 	// The open chat's pinned messages, for the bar over it.
 	pp::PinnedMessages fPinned;
 	void _SendPinned();
@@ -350,6 +352,8 @@ App::_HandleObject(const json& object)
 	}
 
 	fNames.Apply(object);
+	if (type == "updateOption" && pp::Str(object, "name") == "my_id")
+		fMyId = pp::Int(pp::Field(object, "value"), "value");
 	if (fPinned.Affects(object))
 		_Send(pp::request::Pinned(fPinned.ChatId()));
 	if (fPresence.Apply(object, time(nullptr))) {
@@ -408,6 +412,40 @@ App::_HandleObject(const json& object)
 		if (type == "foundChatMessages" && atoll(extra.c_str() + 7) == fPinned.ChatId()) {
 			fPinned.SetFound(object);
 			_SendPinned();
+		}
+		return;
+	}
+	if (extra.rfind("mention:", 0) == 0) {
+		// Suggestions for an "@name" being typed: names and usernames.
+		BMessage results(kMsgMentionResults);
+		results.AddInt32("seq", atoi(extra.c_str() + 8));
+		if (type == "chatMembers") {
+			for (int64_t user : pp::MemberUserIds(object)) {
+				if (user == fMyId)
+					continue;
+				results.AddInt64("user_id", user);
+				results.AddString("name", fNames.User(user).c_str());
+				results.AddString("username", fNames.Username(user).c_str());
+			}
+		}
+		fMain->PostMessage(&results);
+		return;
+	}
+	if (extra.rfind("mentions:", 0) == 0) {
+		// The oldest unread mention: the search gives them newest first.
+		if (type == "foundChatMessages" && fHistory != nullptr
+			&& fHistory->ChatId() == atoll(extra.c_str() + 9)) {
+			int64 oldest = 0;
+			const json& messages = pp::Field(object, "messages");
+			if (messages.is_array()) {
+				for (const json& m : messages) {
+					int64 id = pp::Int(m, "id");
+					if (id != 0 && (oldest == 0 || id < oldest))
+						oldest = id;
+				}
+			}
+			if (oldest != 0)
+				_ShowMessage(oldest);
 		}
 		return;
 	}
@@ -1915,6 +1953,19 @@ App::MessageReceived(BMessage* message)
 			_Record(message);
 			break;
 
+		case kMsgMentionSearch:
+			_Send(pp::request::SearchMembers(message->GetInt64("chat_id", 0),
+				message->GetString("query", ""),
+				"mention:" + std::to_string(message->GetInt32("seq", 0))));
+			break;
+
+		case kMsgJumpToMention:
+		{
+			int64 chatId = message->GetInt64("chat_id", 0);
+			_Send(pp::request::UnreadMentions(chatId, "mentions:" + std::to_string(chatId)));
+			break;
+		}
+
 		case kMsgVoiceRecordTick:
 			if (!fRecorder.IsRecording())
 				break;
@@ -2039,8 +2090,14 @@ App::MessageReceived(BMessage* message)
 			int64 chatId = message->GetInt64("chat_id", 0);
 			if (fHistory == nullptr || fHistory->ChatId() != chatId)
 				break;
-			_Send(pp::request::SendText(chatId, message->GetString("text", ""),
-				message->GetInt64("reply_to", 0)));
+			// People without a username picked from the suggestions.
+			std::vector<std::pair<std::string, int64_t>> mentioned;
+			const char* name;
+			for (int32 i = 0; message->FindString("mention_name", i, &name) == B_OK; i++)
+				mentioned.push_back({name, message->GetInt64("mention_user", i, 0)});
+			std::string text = message->GetString("text", "");
+			_Send(pp::request::SendText(chatId, text, message->GetInt64("reply_to", 0),
+				pp::MentionEntities(text, mentioned)));
 			fTyping.Reset();  // sending ends "typing" on Telegram's side
 			break;
 		}

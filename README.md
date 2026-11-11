@@ -56,6 +56,9 @@ made-up data so far.
   stickers show their emoji); spoilers and self-destructing photos
 - Sending text, photos, files (file panel or drag and drop from Tracker) and
   stickers; replying, editing, deleting, copying
+- Mentions: typing @ in a group suggests its members (Up, Down, Enter or Tab,
+  or a click); people without a username are mentioned by name. An "@" button
+  with the count goes to your oldest unread mention
 - Emoji and sticker pickers
 - Notifications that follow each chat's mute settings
 - Read receipts, typing status and online status sent the way the official
@@ -128,7 +131,7 @@ needs only OpenSSL and zlib at run time. Install `noto_emoji` for emoji.
 
 `make test` runs the core tests (login flow, chat list, history, throttling,
 files and download progress, stickers, formatting, presence, voice, chat info,
-links and usernames, pinned messages) on any system with a C++17 compiler.
+links and usernames, pinned messages, voice recording, mentions) on any system with a C++17 compiler.
 On Haiku, `make file-saving-test` checks saving received files and
 `make voice-record-test` checks the voice message files it records.
 

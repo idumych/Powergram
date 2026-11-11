@@ -13,6 +13,7 @@
 #include "../src/core/Links.h"
 #include "../src/core/Pinned.h"
 #include "../src/core/VoiceNote.h"
+#include "../src/core/Mentions.h"
 #include "../src/core/Presence.h"
 #include "../src/core/SendQueue.h"
 #include "../src/core/Stickers.h"
@@ -1204,6 +1205,56 @@ TestVoiceRecording()
 
 
 static void
+TestMentions()
+{
+	std::string q;
+	size_t at = 0;
+	CHECK(MentionQuery("hi @mi", 6, &q, &at) && q == "mi" && at == 3);
+	CHECK(MentionQuery("@", 1, &q, &at) && q.empty() && at == 0);
+	CHECK(MentionQuery("ask @J\xC3\xB6", 8, &q, &at) && q == "J\xC3\xB6");  // Jö
+	CHECK(MentionQuery("hi @mira and", 8, &q, &at) && q == "mira");  // cursor mid-text
+	CHECK(!MentionQuery("hi @mira and", 12, &q, &at));   // past the word
+	CHECK(!MentionQuery("mail me@home", 12, &q, &at));   // an address
+	CHECK(!MentionQuery("plain", 5, &q, &at));
+	CHECK(!MentionQuery("a@", 2, &q, &at));
+
+	size_t cursor = 0;
+	CHECK(InsertMention("hi @mi", 3, 6, "Mira Okafor", "mira_o", &cursor) == "hi @mira_o "
+		&& cursor == 11);
+	CHECK(InsertMention("hi @an, ok", 3, 6, "Ann", "", &cursor) == "hi Ann , ok" && cursor == 7);
+	CHECK(InsertMention("@j later", 0, 2, "Jonas", "", &cursor) == "Jonas later" && cursor == 6);
+	CHECK(FirstName("Ann Smith") == "Ann" && FirstName("Bo") == "Bo");
+
+	// Offsets count UTF-16 units: the emoji before "Ann" is two.
+	std::string text = "\xF0\x9F\x98\x80 Ann and Bo";
+	CHECK(Utf8ToUtf16(text, 4) == 2 && Utf8ToUtf16(text, text.size()) == 13);
+	json entities = MentionEntities(text, {{"Ann", 5}, {"Cy", 6}, {"Bo", 7}});
+	CHECK(entities.size() == 2);
+	CHECK(entities[0]["offset"] == 3 && entities[0]["length"] == 3
+		&& entities[0]["type"]["user_id"] == 5);
+	CHECK(entities[1]["offset"] == 11 && entities[1]["type"]["@type"] == "textEntityTypeMentionName");
+	json send = request::SendText(42, text, 0, entities);
+	CHECK(send["input_message_content"]["text"]["entities"].size() == 2);
+	CHECK(!request::SendText(42, "plain")["input_message_content"]["text"].contains("entities"));
+
+	json members = {{"@type", "chatMembers"}, {"total_count", 3}, {"members", json::array({
+		{{"member_id", {{"@type", "messageSenderUser"}, {"user_id", 5}}}},
+		{{"member_id", {{"@type", "messageSenderChat"}, {"chat_id", -9}}}},
+		{{"member_id", {{"@type", "messageSenderUser"}, {"user_id", 7}}}}})}};
+	CHECK(MemberUserIds(members) == std::vector<int64_t>({5, 7}));
+	CHECK(request::SearchMembers(-1, "mi", "m:1")["query"] == "mi");
+	CHECK(request::UnreadMentions(-1, "x")["filter"]["@type"] == "searchMessagesFilterUnreadMention");
+
+	// Usernames come with users.
+	Names names;
+	names.Apply({{"@type", "updateUser"}, {"user", {{"id", 5}, {"first_name", "Mira"},
+		{"usernames", {{"active_usernames", {"mira_o", "mira2"}}}}}}});
+	names.Apply({{"@type", "updateUser"}, {"user", {{"id", 6}, {"first_name", "Cy"}}}});
+	CHECK(names.Username(5) == "mira_o" && names.Username(6).empty() && names.Username(8).empty());
+}
+
+
+static void
 TestHaikuIcons()
 {
 	// An HVIF file is drawn; other documents get a card.
@@ -1244,6 +1295,7 @@ main()
 	TestLinks();
 	TestPinned();
 	TestVoiceRecording();
+	TestMentions();
 	if (sFailures) {
 		std::fprintf(stderr, "%d check(s) failed\n", sFailures);
 		return EXIT_FAILURE;

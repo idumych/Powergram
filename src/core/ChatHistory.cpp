@@ -459,6 +459,9 @@ Names::Apply(const json& object)
 		if (name.empty())
 			name = "Deleted account";
 		fUsers[Int(user, "id")] = name;
+		const json& active = Field(Field(user, "usernames"), "active_usernames");
+		fUsernames[Int(user, "id")] = active.is_array() && !active.empty()
+			&& active[0].is_string() ? active[0].get<std::string>() : std::string();
 		const json& photo = Field(user, "profile_photo");
 		fUserPhotos[Int(user, "id")] = {(int32_t)Int(Field(photo, "small"), "id"),
 			DecodeBase64(Str(Field(photo, "minithumbnail"), "data"))};
@@ -527,6 +530,14 @@ Names::User(int64_t id) const
 {
 	auto it = fUsers.find(id);
 	return it == fUsers.end() ? std::string() : it->second;
+}
+
+
+std::string
+Names::Username(int64_t id) const
+{
+	auto it = fUsernames.find(id);
+	return it == fUsernames.end() ? std::string() : it->second;
 }
 
 
@@ -797,20 +808,23 @@ ViewMessages(int64_t chatId, const std::vector<int64_t>& ids)
 
 
 static json
-TextContent(const std::string& text)
+TextContent(const std::string& text, const json& entities = json())
 {
 	// clear_draft: a sent message replaces the chat's draft, as in the
-	// official apps.
-	return {{"@type", "inputMessageText"},
-		{"text", {{"@type", "formattedText"}, {"text", text}}}, {"clear_draft", true}};
+	// official apps. TDLib finds @usernames, links and hashtags itself;
+	// `entities` adds mentions of people without a username.
+	json formatted = {{"@type", "formattedText"}, {"text", text}};
+	if (entities.is_array() && !entities.empty())
+		formatted["entities"] = entities;
+	return {{"@type", "inputMessageText"}, {"text", formatted}, {"clear_draft", true}};
 }
 
 
 json
-SendText(int64_t chatId, const std::string& text, int64_t replyTo)
+SendText(int64_t chatId, const std::string& text, int64_t replyTo, const json& entities)
 {
 	json request = {{"@type", "sendMessage"}, {"chat_id", chatId},
-		{"input_message_content", TextContent(text)}};
+		{"input_message_content", TextContent(text, entities)}};
 	if (replyTo != 0)
 		request["reply_to"] = {{"@type", "inputMessageReplyToMessage"},
 			{"message_id", replyTo}};

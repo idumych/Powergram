@@ -13,6 +13,7 @@ class BBitmap;
 class BButton;
 class BFilePanel;
 class PinnedBar;
+class MentionPopup;
 class EmojiWindow;
 class StickerWindow;
 class BListView;
@@ -71,6 +72,19 @@ private:
 	// Recording a voice message: the bar over the entry says so, Send sends
 	// it and Cancel or Escape drops it.
 	bool fRecording = false;
+	// "@name" suggestions while typing in a group, and the people without
+	// a username picked from them (sent as mentions by name).
+	MentionPopup* fMentions = nullptr;
+	int32 fMentionSeq = 0;
+	size_t fMentionAt = 0;
+	std::vector<std::pair<std::string, int64>> fMentioned;
+	void _UpdateMentionQuery();
+	void _ChooseMention(int32 index);
+	void _CloseMentions();
+public:
+	// The entry's key filter: true if the suggestions took the key.
+	bool MentionKey(const char* bytes);
+private:
 	void _Record(const char* action);
 	void _SetRecording(bool recording, int32 seconds, float level);
 	EmojiWindow* fEmojiWindow;

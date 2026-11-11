@@ -267,6 +267,44 @@ public:
 					(long long)message->GetInt64("message_id", 0));
 				fflush(stdout);
 				break;
+			case kMsgMentionSearch:
+			{
+				// Made-up members; matches on the start of a name or username.
+				struct { int64 id; const char* name; const char* username; } members[] = {
+					{11, "Mira Okafor", "mira_o"}, {12, "Jonas Lindqvist", "jonas"},
+					{13, "Priya Raman", ""}, {14, "Teo Marchetti", "teo_m"},
+					{15, "Ana Ruiz", ""}};
+				BString query = message->GetString("query", "");
+				BMessage results(kMsgMentionResults);
+				results.AddInt32("seq", message->GetInt32("seq", 0));
+				for (const auto& m : members) {
+					BString name(m.name), username(m.username);
+					bool match = query.IsEmpty() || name.IFindFirst(query) == 0
+						|| username.IFindFirst(query) == 0
+						|| name.IFindFirst(BString(" ") << query) > 0;
+					if (!match)
+						continue;
+					results.AddInt64("user_id", m.id);
+					results.AddString("name", m.name);
+					results.AddString("username", m.username);
+				}
+				fMain->PostMessage(&results);
+				break;
+			}
+			case kMsgSendText:
+			{
+				printf("send \"%s\"", message->GetString("text", ""));
+				const char* name;
+				for (int32 i = 0; message->FindString("mention_name", i, &name) == B_OK; i++)
+					printf(" mention %s=%lld", name, (long long)message->GetInt64("mention_user", i, 0));
+				printf("\n");
+				fflush(stdout);
+				break;
+			}
+			case kMsgJumpToMention:
+				printf("jump to mention in %lld\n", (long long)message->GetInt64("chat_id", 0));
+				fflush(stdout);
+				break;
 			case kMsgVoiceRecord:
 			{
 				// As App answers, frozen at 0:07 with a middling level.

@@ -706,6 +706,28 @@ MessageView::SetUnreadCount(int32 count)
 }
 
 
+void
+MessageView::SetUnreadMentions(int32 count)
+{
+	if (count == fUnreadMentions)
+		return;
+	Invalidate(_MentionButtonFrame());
+	fUnreadMentions = count;
+	Invalidate(_MentionButtonFrame());
+}
+
+
+// Over the jump button when that shows, else in its place.
+BRect
+MessageView::_MentionButtonFrame() const
+{
+	BRect jump = _JumpButtonFrame();
+	if (!fAtEnd || fMoreBelow)
+		jump.OffsetBy(0, -jump.Height() - 6);
+	return jump;
+}
+
+
 BRect
 MessageView::_JumpButtonFrame() const
 {
@@ -1189,15 +1211,21 @@ MessageView::ScrollTo(BPoint where)
 {
 	// The jump button stays at the bottom right of what's visible: redraw
 	// where it was and where it goes (scrolling moves its pixels too).
-	BRect oldButton = _JumpButtonFrame();
+	BRect oldButton = _JumpButtonFrame() | _MentionButtonFrame();
 	BView::ScrollTo(where);
 	Invalidate(oldButton);
-	Invalidate(_JumpButtonFrame());
+	Invalidate(_JumpButtonFrame() | _MentionButtonFrame());
 	// The scroll bar calls this while we re-layout (SetRange clamps its
 	// value): that's not the reader moving.
 	if (fRelayouting)
 		return;
+	bool wasAtEnd = fAtEnd;
 	fAtEnd = fContentHeight - Bounds().bottom < 4;
+	if (wasAtEnd != fAtEnd && fUnreadMentions > 0) {
+		// The "@" button moves up or down with the jump button.
+		BRect jump = _JumpButtonFrame();
+		Invalidate(jump | jump.OffsetByCopy(0, -jump.Height() - 6));
+	}
 	if (fAtEnd && fMoreBelow && Window() != nullptr)
 		Window()->PostMessage(kMsgLoadNewer);
 	// At the top of a history taller than the view: ask for older messages.
@@ -1253,6 +1281,10 @@ MessageView::MouseDown(BPoint where)
 	if ((buttons & B_PRIMARY_MOUSE_BUTTON) != 0) {
 		if ((!fAtEnd || fMoreBelow) && _JumpButtonFrame().Contains(where)) {
 			Window()->PostMessage(kMsgJumpToLatest);
+			return;
+		}
+		if (fUnreadMentions > 0 && _MentionButtonFrame().Contains(where)) {
+			Window()->PostMessage(kMsgJumpToMention);
 			return;
 		}
 		for (size_t i = 0; i < fLayout.size(); i++) {
@@ -1771,6 +1803,41 @@ MessageView::Draw(BRect updateRect)
 			DrawString(badge.String(), BPoint(c.x - (&fPlain)->StringWidth(badge.String()) / 2,
 				pill.top + 1 + bfh.ascent));
 		}
+	}
+
+	if (fUnreadMentions > 0) {
+		// A round "@" button with the count, like the jump button.
+		BRect frame = _MentionButtonFrame();
+		float size = frame.Width();
+		BRect circle(frame.left, frame.bottom - size, frame.right, frame.bottom);
+		SetDrawingMode(B_OP_ALPHA);
+		SetHighColor(ui_color(B_PANEL_BACKGROUND_COLOR));
+		FillEllipse(circle);
+		SetHighColor(mix_color(fg, bg, 160));
+		StrokeEllipse(circle);
+		BFont at(&fBold);
+		at.SetSize(fBold.Size() * 1.4f);
+		font_height afh;
+		at.GetHeight(&afh);
+		SetFont(&at);
+		SetHighColor(fg);
+		SetLowColor(ui_color(B_PANEL_BACKGROUND_COLOR));
+		BPoint c(circle.left + size / 2, circle.top + size / 2);
+		DrawString("@", BPoint(c.x - at.StringWidth("@") / 2, c.y + (afh.ascent - afh.descent) / 2));
+		BString badge;
+		badge << fUnreadMentions;
+		font_height bfh;
+		fPlain.GetHeight(&bfh);
+		float h = ceilf(bfh.ascent + bfh.descent) + 2;
+		float w = std::max(h, fPlain.StringWidth(badge.String()) + h * 0.7f);
+		BRect pill(c.x - w / 2, circle.top - h / 2, c.x + w / 2, circle.top + h / 2);
+		SetHighColor(ui_color(B_CONTROL_HIGHLIGHT_COLOR));
+		FillRoundRect(pill, h / 2, h / 2);
+		SetHighColor(255, 255, 255);
+		SetLowColor(ui_color(B_CONTROL_HIGHLIGHT_COLOR));
+		SetFont(&fPlain);
+		DrawString(badge.String(), BPoint(c.x - fPlain.StringWidth(badge.String()) / 2,
+			pill.top + 1 + bfh.ascent));
 	}
 
 	if (fDropTarget) {

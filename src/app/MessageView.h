@@ -86,6 +86,8 @@ public:
 	// Outlines a message (the search result on screen); 0 for none.
 	void SetHighlight(int64 id);
 	void SetUnreadCount(int32 count);
+	// Unread mentions of the user: an "@" button over the jump button.
+	void SetUnreadMentions(int32 count);
 	// The voice message playing (0: none) and how far it's got.
 	void SetVoiceProgress(int64 id, float progress);
 	void SetEmptyText(const char* text);
@@ -208,6 +210,8 @@ private:
 	BFont fFixed;
 	int32 fUnreadCount = 0;
 	BRect _JumpButtonFrame() const;
+	BRect _MentionButtonFrame() const;
+	int32 fUnreadMentions = 0;
 	bool fAtEnd;
 	bool fRelayouting;    // our own scrolling: not the reader's
 	float fLastHeight;    // height at the last layout, for FrameResized

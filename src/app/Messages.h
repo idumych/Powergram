@@ -120,6 +120,16 @@ enum {
 	kMsgVoiceRecordState = 'vrst',
 	// app → itself, while recording
 	kMsgVoiceRecordTick = 'vrtk',
+	// main window → app: members matching "query" (string) in "chat_id"
+	// (int64), answer tagged "seq" (int32)
+	kMsgMentionSearch = 'mnsr',
+	// app → main window: "seq" (int32), and per member "user_id" (int64),
+	// "name" and "username" (string)
+	kMsgMentionResults = 'mnrs',
+	// mention popup → main window: "index" (int32) clicked
+	kMsgMentionChosen = 'mnch',
+	// message view → main window → app: go to the oldest unread mention
+	kMsgJumpToMention = 'jmen',
 	kMsgSaveAsk = 'svak',
 
 	// app → main window: the voice message playing, "message_id" (int64,

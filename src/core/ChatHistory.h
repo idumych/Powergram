@@ -113,6 +113,8 @@ public:
 	// Takes updateUser and updateNewChat/updateChatTitle; true if it was one.
 	bool Apply(const json& object);
 	std::string User(int64_t id) const;
+	// The user's first active username, without the @; "" if none.
+	std::string Username(int64_t id) const;
 	std::string Chat(int64_t id) const;
 	std::string Sender(const Message& message) const;
 	Photo SenderPhoto(const Message& message) const;
@@ -123,6 +125,7 @@ public:
 
 private:
 	std::map<int64_t, std::string> fUsers;
+	std::map<int64_t, std::string> fUsernames;
 	std::map<int64_t, std::string> fChats;
 	std::map<int64_t, Photo> fUserPhotos;
 	std::map<int64_t, Photo> fChatPhotos;
@@ -201,7 +204,8 @@ json HistoryAround(int64_t chatId, int64_t messageId, int before, int after);
 // Up to `count` messages newer than `messageId`.
 json HistoryNewer(int64_t chatId, int64_t messageId, int count);
 json ViewMessages(int64_t chatId, const std::vector<int64_t>& ids);
-json SendText(int64_t chatId, const std::string& text, int64_t replyTo = 0);
+json SendText(int64_t chatId, const std::string& text, int64_t replyTo = 0,
+	const json& entities = json());
 json EditText(int64_t chatId, int64_t messageId, const std::string& text);
 json Delete(int64_t chatId, const std::vector<int64_t>& ids, bool forEveryone);
 json GetMessage(int64_t chatId, int64_t messageId, const std::string& extra);
