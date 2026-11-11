@@ -138,6 +138,14 @@ public:
 			{"\xF0\x9F\x91\x8D", "\xF0\x9F\x8E\x89", "\xE2\x9D\xA4", "\xF0\x9F\x98\x82"});
 		fMain->Show();
 		_SendChats();
+		BMessage lists(kMsgChatLists);
+		const char* keys[] = {"main", "folder:3", "folder:5", "archive"};
+		const char* names[] = {"All chats", "Work", "Family", "Archive"};
+		for (int i = 0; i < 4; i++) {
+			lists.AddString("key", keys[i]);
+			lists.AddString("name", names[i]);
+		}
+		fMain->PostMessage(&lists);
 		snooze(300000);
 		BMessage select(kMsgSelectChat);
 		select.AddInt64("id", sScene == "media" || sScene == "media2" || sScene == "stickers"

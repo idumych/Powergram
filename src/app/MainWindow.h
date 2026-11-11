@@ -15,6 +15,8 @@ class BFilePanel;
 class EmojiWindow;
 class StickerWindow;
 class BListView;
+class BMenuField;
+class BPopUpMenu;
 class BStringView;
 class BTextControl;
 class MessageView;
@@ -47,6 +49,8 @@ private:
 	void _InsertEmoji(const char* emoji);
 
 	BListView* fList;
+	BPopUpMenu* fListMenu;      // All chats, folders, Archive
+	BMenuField* fListField;
 	BStringView* fTitle;
 	BStringView* fSubtitle;     // "online", "Ann is typing…", "128 members"
 	MessageView* fMessages;

@@ -805,6 +805,13 @@ TestLists()
 		{"is_marked_as_unread", true}}));
 	CHECK(list.Find(1)->markedUnread);
 
+	CHECK(list.Apply({{"@type", "updateChatFolders"}, {"chat_folders", json::array({
+		{{"id", 3}, {"name", {{"text", {{"text", "Work"}}}}}},
+		{{"id", 5}, {"name", {{"text", {{"text", "Family"}}}}}}})}}));
+	CHECK(list.Folders().size() == 2 && list.Folders()[1].name == "Family");
+	CHECK(ChatList::LoadRequest(50, "archive")["chat_list"]["@type"] == "chatListArchive");
+	CHECK(ChatList::LoadRequest(50)["chat_list"]["@type"] == "chatListMain");
+
 	Chat c = *list.Find(1);
 	c.lastMessageId = 9;
 	auto read = ChatList::MarkReadRequests(c);

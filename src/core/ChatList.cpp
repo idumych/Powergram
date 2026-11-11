@@ -235,6 +235,16 @@ ChatList::Apply(const json& object)
 		return false;
 	}
 
+	if (type == "updateChatFolders") {
+		fFolders.clear();
+		const json& folders = Field(object, "chat_folders");
+		if (folders.is_array())
+			for (const json& f : folders)
+				fFolders.push_back({(int32_t)Int(f, "id"),
+					Str(Field(Field(f, "name"), "text"), "text")});
+		return true;
+	}
+
 	auto it = fChats.find(Int(object, "chat_id"));
 	if (it == fChats.end())
 		return false;
@@ -441,9 +451,9 @@ ChatList::DraftRequest(int64_t chatId, const std::string& text)
 
 
 json
-ChatList::LoadRequest(int limit)
+ChatList::LoadRequest(int limit, const std::string& list)
 {
-	return {{"@type", "loadChats"}, {"chat_list", {{"@type", "chatListMain"}}},
+	return {{"@type", "loadChats"}, {"chat_list", ListObject(list)},
 		{"limit", limit}, {"@extra", "loadChats"}};
 }
 

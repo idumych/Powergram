@@ -74,8 +74,15 @@ public:
 	// at start-up), and at most one per chat every few seconds.
 	bool ShouldNotify(const json& message, int64_t visibleChat, int64_t now);
 
-	// Request that makes TDLib send the first `limit` chats as updates.
-	static json LoadRequest(int limit);
+	// Request that makes TDLib send the first `limit` chats of a list as updates.
+	static json LoadRequest(int limit, const std::string& list = "main");
+
+	// The user's chat folders (updateChatFolders), in their order.
+	struct Folder {
+		int32_t id;
+		std::string name;
+	};
+	const std::vector<Folder>& Folders() const { return fFolders; }
 	// The chat list's right-click menu.
 	static std::vector<json> MarkReadRequests(const Chat& chat);
 	static json MarkUnreadRequest(int64_t chatId);
@@ -96,6 +103,7 @@ private:
 	void ApplyLastMessage(Chat& chat, const json& message);
 
 	std::map<int64_t, Chat> fChats;
+	std::vector<Folder> fFolders;
 	struct Scope { int32_t muteFor = 0; bool showPreview = true; };
 	Scope fScopes[3];
 	std::map<int64_t, int64_t> fLastNotified;

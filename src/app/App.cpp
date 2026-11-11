@@ -89,6 +89,8 @@ private:
 	std::unique_ptr<pp::AuthFlow> fAuth;
 	pp::ChatList fChats;
 	std::string fShownList = "main";   // the chat list on screen
+	std::set<std::string> fLoadedLists;
+	void _SendChatLists();
 	pp::Names fNames;
 	pp::FileStore fFiles;
 	pp::Presence fPresence;
@@ -355,6 +357,8 @@ App::_HandleObject(const json& object)
 
 	if (fChats.Apply(object))
 		_ScheduleChatFlush();
+	if (type == "updateChatFolders")
+		_SendChatLists();
 	if (fHistory != nullptr && fHistory->Apply(object)) {
 		bool newMessage = type == "updateNewMessage";
 		_FlushHistory(newMessage
@@ -781,6 +785,22 @@ App::_SendChatStatus()
 
 
 void
+App::_SendChatLists()
+{
+	BMessage lists(kMsgChatLists);
+	lists.AddString("key", "main");
+	lists.AddString("name", "All chats");
+	for (const pp::ChatList::Folder& f : fChats.Folders()) {
+		lists.AddString("key", ("folder:" + std::to_string(f.id)).c_str());
+		lists.AddString("name", f.name.c_str());
+	}
+	lists.AddString("key", "archive");
+	lists.AddString("name", "Archive");
+	fMain->PostMessage(&lists);
+}
+
+
+void
 App::_SendStickerSets()
 {
 	BMessage sets(kMsgStickerSets);
@@ -916,6 +936,8 @@ App::_HandleAuth()
 				fMain->Unlock();
 			}
 			_Send(pp::ChatList::LoadRequest(100));
+			fLoadedLists = {"main"};
+			_SendChatLists();
 			if (fPresenceRunner == nullptr) {
 				BMessage tick(kMsgPresenceTick);
 				fPresenceRunner = new BMessageRunner(BMessenger(this), &tick, 3000000);
@@ -1040,6 +1062,16 @@ App::MessageReceived(BMessage* message)
 		case kMsgFlushChats:
 			_FlushChats();
 			break;
+
+		case kMsgShowList:
+		{
+			fShownList = message->GetString("key", "main");
+			// Each list is loaded the first time it's shown.
+			if (fLoadedLists.insert(fShownList).second)
+				_Send(pp::ChatList::LoadRequest(100, fShownList));
+			_FlushChats();
+			break;
+		}
 
 		case kMsgChatAction:
 		{

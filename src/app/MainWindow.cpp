@@ -11,6 +11,7 @@
 #include <Clipboard.h>
 #include <GroupView.h>
 #include <Invoker.h>
+#include <MenuField.h>
 #include <MessageFilter.h>
 #include <PopUpMenu.h>
 #include <Button.h>
@@ -53,6 +54,7 @@ enum {
 	kMsgAttach = 'atch',
 	kMsgShowEmoji = 'shem',
 	kMsgChatMenu = 'cmnu',
+	kMsgListChosen = 'lcho',
 	kMsgChatMenuItem = 'cmit',
 	kMsgChatDeleteAnswer = 'cdan',
 	kMsgShowStickers = 'shst',
@@ -338,6 +340,12 @@ MainWindow::MainWindow(BRect frame, bool testDc,
 	fList->SetSelectionMessage(new BMessage(kMsgSelectionChanged));
 	BScrollView* listScroll = new BScrollView("chat scroll", fList, 0, false,
 		true, B_NO_BORDER);
+	fListMenu = new BPopUpMenu("lists");
+	BMessage* all = new BMessage(kMsgListChosen);
+	all->AddString("key", "main");
+	fListMenu->AddItem(new BMenuItem("All chats", all));
+	fListMenu->ItemAt(0)->SetMarked(true);
+	fListField = new BMenuField("list field", nullptr, fListMenu);
 
 	fTitle = new BStringView("title", "");
 	fTitle->SetFont(be_bold_font);
@@ -391,7 +399,13 @@ MainWindow::MainWindow(BRect frame, bool testDc,
 	BLayoutBuilder::Group<>(this, B_VERTICAL, 0)
 		.Add(bar)
 		.AddSplit(B_HORIZONTAL, 0, 1.0f)
-			.Add(listScroll, 0.4f)
+			.AddGroup(B_VERTICAL, 0, 0.4f)
+				.AddGroup(B_HORIZONTAL)
+					.SetInsets(B_USE_SMALL_SPACING)
+					.Add(fListField)
+				.End()
+				.Add(listScroll, 1.0f)
+			.End()
 			.AddGroup(B_VERTICAL, 0, 0.6f)
 				.AddGroup(B_VERTICAL, 0)
 					.SetInsets(B_USE_SMALL_SPACING, B_USE_SMALL_SPACING,
@@ -962,6 +976,32 @@ MainWindow::MessageReceived(BMessage* message)
 		case kMsgCancelCompose:
 			_CancelCompose();
 			break;
+		case kMsgChatLists:
+		{
+			// Rebuild the menu, keeping the shown list marked.
+			while (BMenuItem* item = fListMenu->RemoveItem((int32)0))
+				delete item;
+			const char* key;
+			for (int32 i = 0; message->FindString("key", i, &key) == B_OK; i++) {
+				BMessage* choose = new BMessage(kMsgListChosen);
+				choose->AddString("key", key);
+				BMenuItem* item = new BMenuItem(message->GetString("name", i, key), choose);
+				item->SetTarget(this);
+				item->SetMarked(fShownList == key);
+				fListMenu->AddItem(item);
+			}
+			if (fListMenu->FindMarked() == nullptr && fListMenu->CountItems() > 0)
+				fListMenu->ItemAt(0)->SetMarked(true);
+			break;
+		}
+		case kMsgListChosen:
+		{
+			fShownList = message->GetString("key", "main");
+			BMessage show(kMsgShowList);
+			show.AddString("key", fShownList);
+			be_app->PostMessage(&show);
+			break;
+		}
 		case kMsgChatMenu:
 			_ShowChatMenu(message->GetInt32("index", -1), message->GetPoint("where", BPoint()));
 			break;

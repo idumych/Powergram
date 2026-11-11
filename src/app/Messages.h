@@ -134,6 +134,12 @@ enum {
 	// "archive", "unarchive", "delete")
 	kMsgChatAction = 'chac',
 
+	// app → main window: the lists to choose from; "key" and "name" arrays
+	// ("main"/"All chats", "folder:<id>"/name, "archive"/"Archive")
+	kMsgChatLists = 'clst',
+	// main window → app: "key", the list to show
+	kMsgShowList = 'shls',
+
 	kMsgLogOut = 'lout',
 	kMsgLogOutConfirmed = 'loco',
 	kMsgForceQuit = 'fqut'
