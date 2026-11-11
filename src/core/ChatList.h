@@ -36,15 +36,32 @@ struct Chat {
 	int32_t muteFor = 0;
 	bool useDefaultPreview = true;
 	bool showPreview = true;
+
+	bool markedUnread = false;  // "Mark as unread" from any device
+	// Position in every list it's in: "main", "archive", "folder:<id>".
+	struct Position {
+		int64_t order = 0;
+		bool pinned = false;
+	};
+	std::map<std::string, Position> lists;
+	bool InList(const std::string& list) const
+	{
+		auto it = lists.find(list);
+		return it != lists.end() && it->second.order != 0;
+	}
 };
+
+// "main", "archive" or "folder:<id>" for a TDLib ChatList object.
+std::string ListKey(const json& chatList);
 
 class ChatList {
 public:
 	// Applies a TDLib update; returns true if anything shown changed.
 	bool Apply(const json& object);
 
-	// Chats in the main list, in display order (pinned first, then newest).
-	std::vector<Chat> Sorted() const;
+	// Chats in a list ("main", "archive", "folder:<id>"), in display order
+	// (pinned first, then newest).
+	std::vector<Chat> Sorted(const std::string& list = "main") const;
 
 	const Chat* Find(int64_t id) const;
 	size_t Size() const { return fChats.size(); }
@@ -59,6 +76,18 @@ public:
 
 	// Request that makes TDLib send the first `limit` chats as updates.
 	static json LoadRequest(int limit);
+	// The chat list's right-click menu.
+	static std::vector<json> MarkReadRequests(const Chat& chat);
+	static json MarkUnreadRequest(int64_t chatId);
+	// Mutes for good (or unmutes); other notification settings go back to
+	// the defaults, as TDLib takes the whole settings object.
+	static json MuteRequest(int64_t chatId, bool mute);
+	static json PinRequest(int64_t chatId, const std::string& list, bool pin);
+	static json MoveRequest(int64_t chatId, const std::string& toList);
+	// Private chats: delete the history for us; groups and channels: leave.
+	static std::vector<json> DeleteRequests(const Chat& chat);
+	static json ListObject(const std::string& list);
+
 	// Saves (or with "" clears) the chat's draft on Telegram.
 	static json DraftRequest(int64_t chatId, const std::string& text);
 

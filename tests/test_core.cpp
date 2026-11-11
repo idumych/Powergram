@@ -142,8 +142,10 @@ TestChatList()
 	CHECK(sorted[0].lastText == "Photo, Look");
 
 	// Order 0 removes a chat; other lists are ignored.
-	CHECK(!list.Apply({{"@type", "updateChatPosition"}, {"chat_id", 2},
+	// Other lists are tracked separately; the main list is unchanged.
+	CHECK(list.Apply({{"@type", "updateChatPosition"}, {"chat_id", 2},
 		{"position", {{"list", {{"@type", "chatListArchive"}}}, {"order", "0"}}}}));
+	CHECK(list.Sorted().size() == 3);
 	CHECK(list.Apply({{"@type", "updateChatPosition"}, {"chat_id", 2},
 		{"position", {{"list", {{"@type", "chatListMain"}}}, {"order", "0"}, {"is_pinned", false}}}}));
 	CHECK(list.Sorted().size() == 2);
@@ -782,6 +784,45 @@ TestUnreadAndNewer()
 }
 
 
+static void
+TestLists()
+{
+	ChatList list;
+	list.Apply(NewChat(1, "Main chat", "100"));
+	list.Apply(NewChat(2, "Archived", nullptr));
+	CHECK(list.Apply({{"@type", "updateChatPosition"}, {"chat_id", 2}, {"position",
+		{{"list", {{"@type", "chatListArchive"}}}, {"order", "50"}, {"is_pinned", true}}}}));
+	list.Apply({{"@type", "updateChatPosition"}, {"chat_id", 1}, {"position",
+		{{"list", {{"@type", "chatListFolder"}, {"chat_folder_id", 3}}}, {"order", "10"}}}});
+	CHECK(list.Sorted("main").size() == 1 && list.Sorted("main")[0].id == 1);
+	CHECK(list.Sorted("archive").size() == 1 && list.Sorted("archive")[0].pinned);
+	CHECK(list.Sorted("folder:3").size() == 1);
+	CHECK(list.Find(2)->InList("archive") && !list.Find(2)->InList("main"));
+	CHECK(ListKey({{"@type", "chatListFolder"}, {"chat_folder_id", 7}}) == "folder:7");
+	CHECK(ListKey(json()).empty());
+
+	CHECK(list.Apply({{"@type", "updateChatIsMarkedAsUnread"}, {"chat_id", 1},
+		{"is_marked_as_unread", true}}));
+	CHECK(list.Find(1)->markedUnread);
+
+	Chat c = *list.Find(1);
+	c.lastMessageId = 9;
+	auto read = ChatList::MarkReadRequests(c);
+	CHECK(read.size() == 2 && read[0]["force_read"] == true && read[1]["is_marked_as_unread"] == false);
+	json mute = ChatList::MuteRequest(1, true);
+	CHECK(mute["notification_settings"]["mute_for"] == 366 * 86400);
+	CHECK(mute["notification_settings"]["use_default_sound"] == true);
+	CHECK(ChatList::MuteRequest(1, false)["notification_settings"]["use_default_mute_for"] == true);
+	CHECK(ChatList::PinRequest(1, "archive", true)["chat_list"]["@type"] == "chatListArchive");
+	CHECK(ChatList::MoveRequest(1, "folder:3")["chat_list"]["chat_folder_id"] == 3);
+	c.kind = Chat::kPrivate;
+	CHECK(ChatList::DeleteRequests(c).size() == 1);
+	c.kind = Chat::kGroup;
+	auto leave = ChatList::DeleteRequests(c);
+	CHECK(leave.size() == 2 && leave[0]["@type"] == "leaveChat");
+}
+
+
 int
 main()
 {
@@ -799,6 +840,7 @@ main()
 	TestPresence();
 	TestDrafts();
 	TestUnreadAndNewer();
+	TestLists();
 	if (sFailures) {
 		std::fprintf(stderr, "%d check(s) failed\n", sFailures);
 		return EXIT_FAILURE;

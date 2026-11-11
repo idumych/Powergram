@@ -129,6 +129,11 @@ enum {
 	kMsgLoadNewer = 'lnew',
 	kMsgJumpToLatest = 'jump',
 
+	// main window → app: the chat list's right-click menu; "chat_id",
+	// "action" ("read", "unread", "mute", "unmute", "pin", "unpin",
+	// "archive", "unarchive", "delete")
+	kMsgChatAction = 'chac',
+
 	kMsgLogOut = 'lout',
 	kMsgLogOutConfirmed = 'loco',
 	kMsgForceQuit = 'fqut'

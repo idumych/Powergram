@@ -250,6 +250,9 @@ private:
 			list.AddBool("read", c.read);
 			list.AddString("typing", c.id == 2004 ? "typing…" : "");
 			list.AddString("draft", c.id == 2005 ? "I'll test it tonight and" : "");
+			list.AddBool("muted", c.id == kChannel);
+			list.AddBool("marked_unread", c.id == 2009);
+			list.AddInt32("kind", c.id < 0 ? (c.id == kChannel ? 2 : 1) : 0);
 			list.AddString("photo", c.photo != nullptr ? Media(c.photo).c_str() : "");
 			AddBytes(list, "photo_mini", "");
 		}

@@ -39,6 +39,8 @@ private:
 	void _AskDelete(int64 messageId, bool canSelf, bool canAll);
 	void _SelectChat(int64 chatId);
 	void _SaveDraft();
+	void _ShowChatMenu(int32 index, BPoint where);
+	void _AskDeleteChat(int64 chatId, const char* title, int32 kind);
 	void _SendFiles(const BMessage* message);
 	BBitmap* _Avatar(const BMessage* list, int32 index);
 	BButton* _IconButton(const char* name, int kind, uint32 what, const char* tip);
@@ -61,6 +63,7 @@ private:
 	BView* fComposeBar;         // "Reply to …" / "Edit message", over the entry
 	BStringView* fComposeLabel;
 	int64 fOpenChat;
+	BString fShownList = "main";   // "main", "archive", "folder:<id>"
 	int64 fReplyTo;
 	int64 fEditing;
 	BPoint fMenuWhere;

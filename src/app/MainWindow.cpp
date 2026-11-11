@@ -52,6 +52,9 @@ enum {
 	kMsgCancelCompose = 'ccmp',
 	kMsgAttach = 'atch',
 	kMsgShowEmoji = 'shem',
+	kMsgChatMenu = 'cmnu',
+	kMsgChatMenuItem = 'cmit',
+	kMsgChatDeleteAnswer = 'cdan',
 	kMsgShowStickers = 'shst',
 	kMsgFilesChosen = 'fchs'
 };
@@ -106,6 +109,9 @@ public:
 		fPinned = list->GetBool("pinned", index, false);
 		fTyping = list->GetString("typing", index, "");
 		fDraft = list->GetString("draft", index, "");
+		fMuted = list->GetBool("muted", index, false);
+		fMarkedUnread = list->GetBool("marked_unread", index, false);
+		fKind = list->GetInt32("kind", index, 0);
 		fInitials = pp::Initials(fTitle.String()).c_str();
 	}
 
@@ -187,12 +193,17 @@ public:
 			badge << fUnread;
 		if (fMentions > 0)
 			badge = "@";
+		if (badge.IsEmpty() && fMarkedUnread)
+			badge = " ";  // marked as unread: a dot
 		float textRight = right;
 		if (!badge.IsEmpty()) {
 			float h = line + 2;
 			float w = std::max(h, plain.StringWidth(badge) + line * 0.7f);
 			BRect pill(badgeRight - w, mid + 3, badgeRight, mid + 3 + h);
-			rgb_color accent = ui_color(B_CONTROL_HIGHLIGHT_COLOR);
+			// Muted chats count in grey, as in Telegram.
+			rgb_color accent = fMuted ? mix_color(fg, bg, 110) : ui_color(B_CONTROL_HIGHLIGHT_COLOR);
+			if (badge == " ")
+				pill.left = pill.right - h;
 			owner->SetHighColor(accent);
 			owner->FillRoundRect(pill, h / 2, h / 2);
 			owner->SetHighColor(255, 255, 255);
@@ -242,8 +253,42 @@ private:
 	bool fPinned;
 	BString fTyping;    // "typing…" instead of the last message
 	BString fDraft;     // "Draft: …" instead of the last message
+	bool fMuted = false;
+	bool fMarkedUnread = false;
+	int32 fKind = 0;    // pp::Chat::Kind: 0 private, 1 group, 2 channel
+public:
+	bool Muted() const { return fMuted; }
+	bool Pinned() const { return fPinned; }
+	bool HasUnread() const { return fUnread > 0 || fMarkedUnread; }
+	int32 Kind() const { return fKind; }
+private:
 	BBitmap* fAvatar;   // round chat photo (owned by the window), or null
 };
+
+// The chat list: a right click opens the chat's menu.
+class ChatListView : public BListView {
+public:
+	ChatListView() : BListView("chats") {}
+
+	void MouseDown(BPoint where) override
+	{
+		uint32 buttons = 0;
+		if (BMessage* current = Window()->CurrentMessage())
+			current->FindInt32("buttons", (int32*)&buttons);
+		if ((buttons & B_SECONDARY_MOUSE_BUTTON) == 0) {
+			BListView::MouseDown(where);
+			return;
+		}
+		int32 index = IndexOf(where);
+		if (index < 0)
+			return;
+		BMessage menu(kMsgChatMenu);
+		menu.AddInt32("index", index);
+		menu.AddPoint("where", ConvertToScreen(where));
+		Window()->PostMessage(&menu);
+	}
+};
+
 
 class EscapeFilter : public BMessageFilter {
 public:
@@ -289,7 +334,7 @@ MainWindow::MainWindow(BRect frame, bool testDc,
 	app->SetTargetForItems(be_app);
 	bar->AddItem(app);
 
-	fList = new BListView("chats");
+	fList = new ChatListView();
 	fList->SetSelectionMessage(new BMessage(kMsgSelectionChanged));
 	BScrollView* listScroll = new BScrollView("chat scroll", fList, 0, false,
 		true, B_NO_BORDER);
@@ -723,6 +768,57 @@ MainWindow::_SaveDraft()
 
 
 void
+MainWindow::_ShowChatMenu(int32 index, BPoint where)
+{
+	ChatItem* item = dynamic_cast<ChatItem*>(fList->ItemAt(index));
+	if (item == nullptr)
+		return;
+	BPopUpMenu* menu = new BPopUpMenu("chat", false, false);
+	auto add = [&](const char* label, const char* action) {
+		BMessage* message = new BMessage(kMsgChatMenuItem);
+		message->AddInt64("chat_id", item->Id());
+		message->AddString("action", action);
+		message->AddString("title", item->Title());
+		message->AddInt32("kind", item->Kind());
+		menu->AddItem(new BMenuItem(label, message));
+	};
+	if (item->HasUnread())
+		add("Mark as read", "read");
+	else
+		add("Mark as unread", "unread");
+	add(item->Muted() ? "Unmute" : "Mute", item->Muted() ? "unmute" : "mute");
+	add(item->Pinned() ? "Unpin" : "Pin", item->Pinned() ? "unpin" : "pin");
+	add(fShownList == "archive" ? "Unarchive" : "Archive",
+		fShownList == "archive" ? "unarchive" : "archive");
+	menu->AddSeparatorItem();
+	add(item->Kind() == 0 ? "Delete chat" B_UTF8_ELLIPSIS
+		: item->Kind() == 2 ? "Leave channel" B_UTF8_ELLIPSIS : "Leave group" B_UTF8_ELLIPSIS,
+		"delete");
+	menu->SetTargetForItems(this);
+	menu->SetAsyncAutoDestruct(true);
+	menu->Go(where, true, false, true);
+}
+
+
+void
+MainWindow::_AskDeleteChat(int64 chatId, const char* title, int32 kind)
+{
+	BString text;
+	if (kind == 0)
+		text << "Delete the chat with " << title << "? Its messages are deleted for you; "
+			"this cannot be undone.";
+	else
+		text << "Leave " << title << " and remove it from your chats?";
+	BAlert* alert = new BAlert("Delete", text, kind == 0 ? "Delete" : "Leave", "Cancel",
+		nullptr, B_WIDTH_AS_USUAL, B_WARNING_ALERT);
+	alert->SetShortcut(1, B_ESCAPE);
+	BMessage* answer = new BMessage(kMsgChatDeleteAnswer);
+	answer->AddInt64("chat_id", chatId);
+	alert->Go(new BInvoker(answer, this));
+}
+
+
+void
 MainWindow::_SelectChat(int64 chatId)
 {
 	for (int32 i = 0; i < fList->CountItems(); i++) {
@@ -865,6 +961,31 @@ MainWindow::MessageReceived(BMessage* message)
 		}
 		case kMsgCancelCompose:
 			_CancelCompose();
+			break;
+		case kMsgChatMenu:
+			_ShowChatMenu(message->GetInt32("index", -1), message->GetPoint("where", BPoint()));
+			break;
+		case kMsgChatMenuItem:
+		{
+			BString action = message->GetString("action", "");
+			if (action == "delete") {
+				_AskDeleteChat(message->GetInt64("chat_id", 0), message->GetString("title", ""),
+					message->GetInt32("kind", 0));
+				break;
+			}
+			BMessage act(kMsgChatAction);
+			act.AddInt64("chat_id", message->GetInt64("chat_id", 0));
+			act.AddString("action", action);
+			be_app->PostMessage(&act);
+			break;
+		}
+		case kMsgChatDeleteAnswer:
+			if (message->GetInt32("which", 1) == 0) {
+				BMessage act(kMsgChatAction);
+				act.AddInt64("chat_id", message->GetInt64("chat_id", 0));
+				act.AddString("action", "delete");
+				be_app->PostMessage(&act);
+			}
 			break;
 		case kMsgAttach:
 		{

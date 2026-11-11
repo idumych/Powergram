@@ -88,6 +88,7 @@ private:
 	std::unique_ptr<TdClient> fClient;
 	std::unique_ptr<pp::AuthFlow> fAuth;
 	pp::ChatList fChats;
+	std::string fShownList = "main";   // the chat list on screen
 	pp::Names fNames;
 	pp::FileStore fFiles;
 	pp::Presence fPresence;
@@ -997,7 +998,7 @@ App::_FlushChats()
 	fFlushRunner = nullptr;
 
 	BMessage list(kMsgChatList);
-	for (const pp::Chat& c : fChats.Sorted()) {
+	for (const pp::Chat& c : fChats.Sorted(fShownList)) {
 		list.AddInt64("id", c.id);
 		list.AddString("title", c.title.c_str());
 		list.AddString("text", c.lastText.c_str());
@@ -1009,6 +1010,9 @@ App::_FlushChats()
 		list.AddBool("read", c.outgoingRead);
 		list.AddString("typing", _TypingText(c.id).c_str());
 		list.AddString("draft", c.draft.c_str());
+		list.AddBool("muted", fChats.IsMuted(c.id));
+		list.AddBool("marked_unread", c.markedUnread);
+		list.AddInt32("kind", (int32)c.kind);
 		BString photo = fFiles.Path(c.photoFileId).c_str();
 		list.AddString("photo", photo);
 		AddBytes(list, "photo_mini", c.photoPreview);
@@ -1036,6 +1040,36 @@ App::MessageReceived(BMessage* message)
 		case kMsgFlushChats:
 			_FlushChats();
 			break;
+
+		case kMsgChatAction:
+		{
+			int64 chatId = message->GetInt64("chat_id", 0);
+			const pp::Chat* chat = fChats.Find(chatId);
+			if (chat == nullptr)
+				break;
+			std::string action = message->GetString("action", "");
+			std::vector<json> requests;
+			if (action == "read")
+				requests = pp::ChatList::MarkReadRequests(*chat);
+			else if (action == "unread")
+				requests.push_back(pp::ChatList::MarkUnreadRequest(chatId));
+			else if (action == "mute" || action == "unmute")
+				requests.push_back(pp::ChatList::MuteRequest(chatId, action == "mute"));
+			else if (action == "pin" || action == "unpin")
+				requests.push_back(pp::ChatList::PinRequest(chatId, fShownList, action == "pin"));
+			else if (action == "archive")
+				requests.push_back(pp::ChatList::MoveRequest(chatId, "archive"));
+			else if (action == "unarchive")
+				requests.push_back(pp::ChatList::MoveRequest(chatId, "main"));
+			else if (action == "delete") {
+				if (fHistory != nullptr && fHistory->ChatId() == chatId)
+					_OpenChat(0);
+				requests = pp::ChatList::DeleteRequests(*chat);
+			}
+			for (const json& r : requests)
+				_Send(r);
+			break;
+		}
 
 		case kMsgSaveDraft:
 		{
