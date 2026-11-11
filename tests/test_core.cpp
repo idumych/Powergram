@@ -10,6 +10,7 @@
 #include "../src/core/Files.h"
 #include "../src/core/Format.h"
 #include "../src/core/Links.h"
+#include "../src/core/Pinned.h"
 #include "../src/core/Presence.h"
 #include "../src/core/SendQueue.h"
 #include "../src/core/Stickers.h"
@@ -1093,6 +1094,58 @@ TestLinks()
 
 
 static void
+TestPinned()
+{
+	// The newest first, the bar's place kept across refreshes, and which
+	// updates mean fetching the list again.
+	PinnedMessages pinned(42);
+	CHECK(pinned.Shown() == nullptr);
+	json found = {{"@type", "foundChatMessages"}, {"messages", json::array({
+		Msg(42, 5, "Rules"), Msg(42, 9, "Meetup on Friday"), Msg(42, 7, "Wiki")})}};
+	for (json& m : found["messages"])
+		m["is_pinned"] = true;
+	pinned.SetFound(found);
+	CHECK(pinned.List().size() == 3 && pinned.Shown()->id == 9 && pinned.Shown()->pinned);
+	pinned.Next();
+	CHECK(pinned.Shown()->id == 7 && pinned.ShownIndex() == 1);
+	pinned.SetFound(found);
+	CHECK(pinned.Shown()->id == 7);  // still the same one
+	pinned.Next();
+	pinned.Next();
+	CHECK(pinned.Shown()->id == 9);  // round again
+	found["messages"].erase(0);      // 5 unpinned
+	pinned.SetFound(found);
+	CHECK(pinned.List().size() == 2 && pinned.Shown()->id == 9);
+
+	CHECK(pinned.Affects({{"@type", "updateMessageIsPinned"}, {"chat_id", 42},
+		{"message_id", 3}, {"is_pinned", true}}));
+	CHECK(!pinned.Affects({{"@type", "updateMessageIsPinned"}, {"chat_id", 43},
+		{"message_id", 3}, {"is_pinned", true}}));
+	CHECK(pinned.Affects({{"@type", "updateMessageContent"}, {"chat_id", 42}, {"message_id", 9}}));
+	CHECK(!pinned.Affects({{"@type", "updateMessageContent"}, {"chat_id", 42}, {"message_id", 8}}));
+	CHECK(pinned.Affects({{"@type", "updateDeleteMessages"}, {"chat_id", 42},
+		{"message_ids", {3, 7}}, {"is_permanent", true}}));
+	CHECK(!pinned.Affects({{"@type", "updateDeleteMessages"}, {"chat_id", 42},
+		{"message_ids", {7}}, {"is_permanent", false}, {"from_cache", true}}));
+
+	json pin = request::Pin(42, 9, true);
+	CHECK(pin["@type"] == "pinChatMessage" && pin["message_id"] == 9);
+	CHECK(request::Pin(42, 9, false)["@type"] == "unpinChatMessage");
+	CHECK(request::Pinned(42)["filter"]["@type"] == "searchMessagesFilterPinned");
+	CHECK(request::Pinned(42)["@extra"] == "pinned:42");
+
+	// Messages keep their pinned state.
+	ChatHistory history(42);
+	json m = Msg(42, 9, "Meetup");
+	history.AddHistory({{"messages", json::array({m})}});
+	CHECK(!history.Find(9)->pinned);
+	history.Apply({{"@type", "updateMessageIsPinned"}, {"chat_id", 42}, {"message_id", 9},
+		{"is_pinned", true}});
+	CHECK(history.Find(9)->pinned);
+}
+
+
+static void
 TestHaikuIcons()
 {
 	// An HVIF file is drawn; other documents get a card.
@@ -1131,6 +1184,7 @@ main()
 	TestEmojiMessages();
 	TestHaikuIcons();
 	TestLinks();
+	TestPinned();
 	if (sFailures) {
 		std::fprintf(stderr, "%d check(s) failed\n", sFailures);
 		return EXIT_FAILURE;

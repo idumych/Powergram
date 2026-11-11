@@ -12,6 +12,7 @@
 class BBitmap;
 class BButton;
 class BFilePanel;
+class PinnedBar;
 class EmojiWindow;
 class StickerWindow;
 class BListView;
@@ -77,6 +78,7 @@ private:
 	std::map<std::string, BBitmap*> fAvatars;   // round chat photos by path
 	BView* fComposeBar;         // "Reply to …" / "Edit message", over the entry
 	BStringView* fComposeLabel;
+	PinnedBar* fPinnedBar;     // the pinned message, under the header
 	int64 fOpenChat;
 	BMenuItem* fInfoItem;
 	BString fShownList = "main";   // "main", "archive", "folder:<id>"

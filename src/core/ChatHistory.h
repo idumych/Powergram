@@ -81,6 +81,7 @@ struct Message {
 	bool pending = false;      // still being sent
 	bool failed = false;
 	bool service = false;      // "joined the group" and the like
+	bool pinned = false;
 
 	// Reply: the message answered, in this chat or (with replyText filled
 	// from TDLib's copy) another one.

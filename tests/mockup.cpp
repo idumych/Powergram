@@ -185,6 +185,8 @@ public:
 				// "links": looking at a group we aren't in.
 				status.AddBool("can_join", sScene == "links" && id == kGroup);
 				fMain->PostMessage(&status);
+				if (sScene == "pinned" && id == kGroup)
+					_SendPinned();
 				break;
 			}
 			case kMsgNextStep:
@@ -254,6 +256,17 @@ public:
 			case kMsgSettingsChanged:
 				fMain->PostMessage(message);
 				break;
+			case kMsgPinnedClicked:
+				fPinnedIndex = (fPinnedIndex + 1) % 2;
+				printf("pinned clicked, now %d\n", fPinnedIndex);
+				fflush(stdout);
+				_SendPinned();
+				break;
+			case kMsgPin:
+				printf("%s message %lld\n", message->GetBool("pin", true) ? "pin" : "unpin",
+					(long long)message->GetInt64("message_id", 0));
+				fflush(stdout);
+				break;
 			case kMsgOpenLink:
 				printf("link %s\n", message->GetString("url", ""));
 				fflush(stdout);
@@ -285,7 +298,7 @@ public:
 				props.AddInt64("chat_id", message->GetInt64("chat_id", 0));
 				props.AddInt64("message_id", message->GetInt64("message_id", 0));
 				for (const char* name : {"can_reply", "can_edit", "can_delete_self",
-						"can_delete_all", "can_copy", "can_forward"})
+						"can_delete_all", "can_copy", "can_forward", "can_pin"})
 					props.AddBool(name, true);
 				fMain->PostMessage(&props);
 				break;
@@ -387,6 +400,21 @@ private:
 			AddBytes(list, "photo_mini", "");
 		}
 		fMain->PostMessage(&list);
+	}
+
+	// "pinned": two pinned messages, the bar showing one at a time.
+	int fPinnedIndex = 0;
+	void _SendPinned()
+	{
+		BMessage pinned(kMsgPinned);
+		pinned.AddInt64("chat_id", kGroup);
+		pinned.AddInt64("message_id", fPinnedIndex == 0 ? 108 : 101);
+		pinned.AddString("text", fPinnedIndex == 0
+			? "Release notes for this week: the guide at https://www.haiku-os.org/guides\nand more"
+			: "Has anyone tried the new Powergram build on real hardware?");
+		pinned.AddInt32("index", fPinnedIndex);
+		pinned.AddInt32("count", 2);
+		fMain->PostMessage(&pinned);
 	}
 
 	Row _From(const Person& p, int64 id, const char* text, time_t when)

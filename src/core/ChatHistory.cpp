@@ -410,6 +410,7 @@ ParseMessage(const json& message)
 	m.reactions = ParseReactions(Field(message, "interaction_info"));
 	m.outgoing = Bool(message, "is_outgoing");
 	m.edited = Int(message, "edit_date") != 0;
+	m.pinned = Bool(message, "is_pinned");
 	std::string state = Type(Field(message, "sending_state"));
 	m.pending = state == "messageSendingStatePending";
 	m.failed = state == "messageSendingStateFailed";
@@ -623,6 +624,13 @@ ChatHistory::Apply(const json& object)
 			return false;
 		it->second.edited = true;
 		return true;
+	}
+	if (type == "updateMessageIsPinned") {
+		auto it = fMessages.find(Int(object, "message_id"));
+		if (it == fMessages.end())
+			return false;
+		it->second.pinned = Bool(object, "is_pinned");
+		return false;  // nothing drawn changes
 	}
 	if (type == "updateMessageInteractionInfo") {
 		auto it = fMessages.find(Int(object, "message_id"));

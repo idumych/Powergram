@@ -37,6 +37,7 @@
 #include "../core/ChatList.h"
 #include "../core/Files.h"
 #include "../core/Links.h"
+#include "../core/Pinned.h"
 #include "../core/Presence.h"
 #include "../core/Stickers.h"
 #include "ChatInfoWindow.h"
@@ -102,6 +103,9 @@ private:
 	// to scroll to, once it's open.
 	void _ShowChat(int64 chatId, int64 messageId = 0);
 	int64 fExtraChat = 0;
+	// The open chat's pinned messages, for the bar over it.
+	pp::PinnedMessages fPinned;
+	void _SendPinned();
 	int64 fPendingChat = 0;
 	int64 fPendingMessage = 0;
 
@@ -330,6 +334,8 @@ App::_HandleObject(const json& object)
 	}
 
 	fNames.Apply(object);
+	if (fPinned.Affects(object))
+		_Send(pp::request::Pinned(fPinned.ChatId()));
 	if (fPresence.Apply(object, time(nullptr))) {
 		int64 open = fHistory != nullptr ? fHistory->ChatId() : 0;
 		bool relevant = open != 0 && (pp::Int(object, "chat_id") == open
@@ -382,6 +388,21 @@ App::_HandleObject(const json& object)
 	}
 	if (_HandleLinkReply(object, extra))
 		return;
+	if (extra.rfind("pinned:", 0) == 0) {
+		if (type == "foundChatMessages" && atoll(extra.c_str() + 7) == fPinned.ChatId()) {
+			fPinned.SetFound(object);
+			_SendPinned();
+		}
+		return;
+	}
+	if (extra == "pin") {
+		if (type == "error") {
+			BString text("Could not change the pinned messages. ");
+			text << pp::AuthFlow::ErrorText(object).c_str();
+			_ShowError(text);
+		}
+		return;
+	}
 	if (extra.rfind("info:", 0) == 0) {
 		if (fInfoWindow != nullptr && atoll(extra.c_str() + 5) == fInfo.chatId
 			&& fInfo.Apply(object))
@@ -418,6 +439,10 @@ App::_HandleObject(const json& object)
 		props.AddBool("can_delete_all", pp::Bool(object, "can_be_deleted_for_all_users"));
 		props.AddBool("can_copy", pp::Bool(object, "can_be_copied", true));
 		props.AddBool("can_forward", pp::Bool(object, "can_be_forwarded"));
+		props.AddBool("can_pin", pp::Bool(object, "can_be_pinned"));
+		const pp::Message* shown = fHistory != nullptr && fHistory->ChatId() == chatId
+			? fHistory->Find(messageId) : nullptr;
+		props.AddBool("pinned", shown != nullptr && shown->pinned);
 		fMain->PostMessage(&props);
 		return;
 	}
@@ -482,6 +507,7 @@ App::_OpenChat(int64 id, bool latest)
 		_Send(pp::request::CloseChat(fHistory->ChatId()));
 	}
 	fHistory.reset();
+	fPinned = pp::PinnedMessages();
 	fTyping.Reset();
 	fLoadingHistory = false;
 	fFiles.ForgetWanted();  // the old chat's photos that haven't started
@@ -490,6 +516,9 @@ App::_OpenChat(int64 id, bool latest)
 		return;
 
 	fHistory = std::make_unique<pp::ChatHistory>(id);
+	fPinned = pp::PinnedMessages(id);
+	_SendPinned();   // none until they come
+	_Send(pp::request::Pinned(id));
 	fFirstUnread = 0;
 	fScrollTo = 0;
 	fFound.clear();
@@ -563,6 +592,32 @@ App::_FlushHistory(bool scrollToEnd)
 		return;
 	BMessage flush(kMsgFlushHistory);
 	fHistoryRunner = new BMessageRunner(BMessenger(this), &flush, 100000, 1);
+}
+
+
+// A message in a few words: its text, or what it is (replies, the pinned bar).
+static BString
+Summary(const pp::Message& m)
+{
+	if (!m.text.empty())
+		return BString(m.text.c_str());
+	if (m.media.kind == pp::Media::kPhoto)
+		return BString("Photo");
+	if (m.media.kind == pp::Media::kSticker)
+		return BString((m.media.bigEmoji ? m.media.emoji : m.media.emoji + " Sticker").c_str());
+	if (m.media.kind == pp::Media::kVideo)
+		return BString("Video");
+	if (m.media.kind == pp::Media::kAnimation)
+		return BString("GIF");
+	if (m.media.kind == pp::Media::kVideoNote)
+		return BString("Video message");
+	if (m.media.kind == pp::Media::kVoice)
+		return BString("Voice message");
+	if (m.media.kind == pp::Media::kIcon)
+		return BString("Icon");
+	if (m.media.kind == pp::Media::kDocument)
+		return BString((m.media.title.empty() ? m.media.fileName : m.media.title).c_str());
+	return BString("Message");
 }
 
 
@@ -643,27 +698,6 @@ App::_SendHistory()
 		list.AddInt64("file_size", r.fileSize);
 		list.AddInt64("file_done", r.fileDone);
 	};
-	auto summary = [](const pp::Message& m) {
-		if (!m.text.empty())
-			return BString(m.text.c_str());
-		if (m.media.kind == pp::Media::kPhoto)
-			return BString("Photo");
-		if (m.media.kind == pp::Media::kSticker)
-			return BString((m.media.bigEmoji ? m.media.emoji : m.media.emoji + " Sticker").c_str());
-		if (m.media.kind == pp::Media::kVideo)
-			return BString("Video");
-		if (m.media.kind == pp::Media::kAnimation)
-			return BString("GIF");
-		if (m.media.kind == pp::Media::kVideoNote)
-			return BString("Video message");
-		if (m.media.kind == pp::Media::kVoice)
-			return BString("Voice message");
-		if (m.media.kind == pp::Media::kIcon)
-			return BString("Icon");
-		if (m.media.kind == pp::Media::kDocument)
-			return BString((m.media.title.empty() ? m.media.fileName : m.media.title).c_str());
-		return BString("Message");
-	};
 
 	BTimeFormat timeFormat;
 	BDateFormat dateFormat;
@@ -741,7 +775,7 @@ App::_SendHistory()
 				r.replySender = target->outgoing ? "You" : fNames.Sender(*target).c_str();
 				if (r.replySender.IsEmpty())
 					r.replySender = fChats.Find(chatId) ? fChats.Find(chatId)->title.c_str() : "";
-				r.replyText = summary(*target);
+				r.replyText = Summary(*target);
 			} else {
 				r.replySender = "Reply";
 				r.replyText = m.replyText.c_str();
@@ -1363,6 +1397,20 @@ App::_HandleLinkReply(const json& object, const std::string& extra)
 
 
 void
+App::_SendPinned()
+{
+	BMessage pinned(kMsgPinned);
+	pinned.AddInt64("chat_id", fPinned.ChatId());
+	const pp::Message* shown = fPinned.Shown();
+	pinned.AddInt64("message_id", shown != nullptr ? shown->id : 0);
+	pinned.AddString("text", shown != nullptr ? Summary(*shown) : BString());
+	pinned.AddInt32("index", fPinned.ShownIndex());
+	pinned.AddInt32("count", (int32)fPinned.List().size());
+	fMain->PostMessage(&pinned);
+}
+
+
+void
 App::_ShowChat(int64 chatId, int64 messageId)
 {
 	if (chatId == 0)
@@ -1764,6 +1812,20 @@ App::MessageReceived(BMessage* message)
 		case kMsgJoinInvite:
 			if (message->GetInt32("which", 1) == 0)
 				_Send(pp::request::JoinByInvite(message->GetString("link", ""), "openchat"));
+			break;
+
+		case kMsgPinnedClicked:
+			if (const pp::Message* shown = fPinned.Shown()) {
+				if (fHistory != nullptr && fHistory->ChatId() == fPinned.ChatId())
+					_ShowMessage(shown->id);
+				fPinned.Next();
+				_SendPinned();
+			}
+			break;
+
+		case kMsgPin:
+			_Send(pp::request::Pin(message->GetInt64("chat_id", 0),
+				message->GetInt64("message_id", 0), message->GetBool("pin", true)));
 			break;
 
 		case kMsgJoinChat:

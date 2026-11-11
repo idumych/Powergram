@@ -42,6 +42,8 @@ made-up data so far.
 - Selecting text in messages (drag, double- or triple-click) and copying it
 - Haiku vector icons (HVIF files) sent in chats, drawn in the message
 - Typing, online and "last seen" status and group sizes in the chat header
+- Pinned messages: a bar under the chat's name (click to jump, and again for
+  the next one); pin and unpin from the message's menu
 - Reactions (shown and added), forwarding, polls, locations, places and contacts
 - Voice messages, played in the app with a waveform
 - Files and music sent to you, shown with their type's icon, name and size:

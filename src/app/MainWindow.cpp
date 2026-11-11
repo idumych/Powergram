@@ -330,6 +330,72 @@ public:
 };
 
 
+} // namespace
+
+
+// The chat's pinned message under its header, as in Telegram: an accent
+// stripe, "Pinned message" (with its number when there are several) and the
+// message's first line. A click jumps to it and shows the next one.
+class PinnedBar : public BView {
+public:
+	PinnedBar()
+		:
+		BView("pinned bar", B_WILL_DRAW | B_FULL_UPDATE_ON_RESIZE)
+	{
+		SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
+		font_height fh;
+		be_plain_font->GetHeight(&fh);
+		float line = ceilf(fh.ascent + fh.descent + fh.leading);
+		SetExplicitMinSize(BSize(be_plain_font->StringWidth("m") * 6, line * 2 + 8));
+		SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, line * 2 + 8));
+	}
+
+	void Set(int32 index, int32 count, const BString& text)
+	{
+		fTitle = "Pinned message";
+		if (count > 1)
+			fTitle << " " << count - index << " of " << count;
+		fText = text;
+		fText.ReplaceAll('\n', ' ');
+		Invalidate();
+	}
+
+	void Draw(BRect) override
+	{
+		BRect r = Bounds();
+		rgb_color accent = ui_color(B_CONTROL_HIGHLIGHT_COLOR);
+		SetHighUIColor(B_PANEL_BACKGROUND_COLOR, B_DARKEN_1_TINT);
+		StrokeLine(BPoint(r.left, r.bottom), BPoint(r.right, r.bottom));
+		float x = be_control_look->DefaultItemSpacing() / 2;
+		SetHighColor(accent);
+		FillRect(BRect(x, 4, x + 2, r.bottom - 4));
+		x += 3 + be_control_look->DefaultItemSpacing() / 2;
+		font_height fh;
+		be_plain_font->GetHeight(&fh);
+		float line = ceilf(fh.ascent + fh.descent + fh.leading);
+		BString title(fTitle), text(fText);
+		be_bold_font->TruncateString(&title, B_TRUNCATE_END, r.right - x - 4);
+		be_plain_font->TruncateString(&text, B_TRUNCATE_END, r.right - x - 4);
+		SetFont(be_bold_font);
+		DrawString(title.String(), BPoint(x, 4 + fh.ascent));
+		SetFont(be_plain_font);
+		SetHighUIColor(B_PANEL_TEXT_COLOR);
+		DrawString(text.String(), BPoint(x, 4 + line + fh.ascent));
+	}
+
+	void MouseDown(BPoint) override
+	{
+		Window()->PostMessage(kMsgPinnedClicked);
+	}
+
+private:
+	BString fTitle;
+	BString fText;
+};
+
+
+namespace {
+
 class EscapeFilter : public BMessageFilter {
 public:
 	EscapeFilter() : BMessageFilter(B_ANY_DELIVERY, B_ANY_SOURCE, B_KEY_DOWN) {}
@@ -456,6 +522,9 @@ MainWindow::MainWindow(BRect frame, bool testDc,
 		.Add(fComposeLabel, 1.0f)
 		.Add(new BButton("cancel compose", "Cancel", new BMessage(kMsgCancelCompose)));
 	fComposeBar->Hide();
+	fPinnedBar = new PinnedBar();
+	fPinnedBar->SetToolTip("Go to the pinned message");
+	fPinnedBar->Hide();
 	// Escape cancels a reply or an edit (window shortcuts always need Command).
 	AddCommonFilter(new EscapeFilter());
 
@@ -485,6 +554,7 @@ MainWindow::MainWindow(BRect frame, bool testDc,
 					.Add(fTitle)
 					.Add(fSubtitle)
 				.End()
+				.Add(fPinnedBar)
 				.Add(fFindBar)
 				.Add(messageScroll, 1.0f)
 				.Add(fComposeBar)
@@ -597,6 +667,8 @@ MainWindow::_SelectionChanged()
 	fFindText->SetText("");
 	fFindResult->SetText("");
 	fEntry->SetText("");
+	if (!fPinnedBar->IsHidden())
+		fPinnedBar->Hide();
 	fCanJoin = false;
 	fSendButton->SetLabel("Send");
 	fEntry->SetEnabled(id != 0);
@@ -746,6 +818,10 @@ MainWindow::_ShowMessageMenu(const BMessage* properties)
 	}
 	react->SetTargetForItems(this);
 	menu->AddItem(react);
+	if (properties->GetBool("can_pin", false)) {
+		bool pinned = properties->GetBool("pinned", false);
+		item(pinned ? "Unpin" : "Pin", kMsgPin, true)->AddBool("pin", !pinned);
+	}
 	// Anything with a file behind it (not a sticker's bare emoji).
 	if (row->mediaKind != 0 && !(row->mediaKind == 2 && row->imagePath.IsEmpty())) {
 		menu->AddSeparatorItem();
@@ -1180,6 +1256,27 @@ MainWindow::MessageReceived(BMessage* message)
 		}
 		case kMsgMessageProperties:
 			_ShowMessageMenu(message);
+			break;
+		case kMsgPinned:
+			if (message->GetInt64("chat_id", 0) != fOpenChat)
+				break;
+			if (message->GetInt64("message_id", 0) == 0) {
+				if (!fPinnedBar->IsHidden())
+					fPinnedBar->Hide();
+				break;
+			}
+			fPinnedBar->Set(message->GetInt32("index", 0), message->GetInt32("count", 1),
+				message->GetString("text", ""));
+			if (fPinnedBar->IsHidden())
+				fPinnedBar->Show();
+			break;
+		case kMsgPinnedClicked:
+			be_app->PostMessage(message);
+			break;
+		case kMsgPin:
+			message->RemoveName("chat_id");
+			message->AddInt64("chat_id", fOpenChat);
+			be_app->PostMessage(message);
 			break;
 		case kMsgOpenLinkAsk:
 			(new OpenLinkWindow(this))->Show();

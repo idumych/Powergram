@@ -103,6 +103,15 @@ enum {
 	kMsgJoinInvite = 'jnin',
 	// main window → app: join the public chat "chat_id" (int64) on screen
 	kMsgJoinChat = 'jnch',
+	// app → main window: the pinned message the bar shows: "chat_id",
+	// "message_id" (int64, 0 hides the bar), "text" (string), "index" and
+	// "count" (int32)
+	kMsgPinned = 'pind',
+	// pinned bar → main window → app: jump to it and show the next one
+	kMsgPinnedClicked = 'pinc',
+	// message menu → main window → app: "message_id" (int64), "pin" (bool),
+	// plus "chat_id" (int64) on the way to the app
+	kMsgPin = 'pin ',
 	kMsgSaveAsk = 'svak',
 
 	// app → main window: the voice message playing, "message_id" (int64,
