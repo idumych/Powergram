@@ -9,6 +9,7 @@
 #include <TranslationUtils.h>
 #include <Url.h>
 #include <Clipboard.h>
+#include <ControlLook.h>
 #include <GroupView.h>
 #include <Invoker.h>
 #include <MenuField.h>
@@ -417,8 +418,12 @@ MainWindow::MainWindow(BRect frame, bool testDc,
 				.End()
 				.Add(messageScroll, 1.0f)
 				.Add(fComposeBar)
+				// The right inset keeps Send clear of the document window's
+				// resize knob in the bottom right corner (it covered Send).
 				.AddGroup(B_HORIZONTAL, B_USE_SMALL_SPACING)
-					.SetInsets(B_USE_SMALL_SPACING)
+					.SetInsets(B_USE_SMALL_SPACING, B_USE_SMALL_SPACING,
+						B_V_SCROLL_BAR_WIDTH + be_control_look->DefaultItemSpacing() / 2,
+						B_USE_SMALL_SPACING)
 					.Add(fAttachButton)
 					.Add(fEntry, 1.0f)
 					.Add(fEmojiButton)
