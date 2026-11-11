@@ -354,6 +354,16 @@ MessageView::SetMoreBelow(bool moreBelow)
 
 
 void
+MessageView::SetHighlight(int64 id)
+{
+	if (fHighlight != id) {
+		fHighlight = id;
+		Invalidate();
+	}
+}
+
+
+void
 MessageView::SetUnreadCount(int32 count)
 {
 	if (fUnreadCount != count) {
@@ -1071,6 +1081,12 @@ MessageView::Draw(BRect updateRect)
 		SetHighColor(fill);
 		if (!bareSticker)
 			FillRoundRect(l.bubble, pad * 1.4f, pad * 1.4f);
+		if (row.id != 0 && row.id == fHighlight) {
+			SetHighColor(ui_color(B_CONTROL_HIGHLIGHT_COLOR));
+			SetPenSize(2);
+			StrokeRoundRect(l.bubble.InsetByCopy(1, 1), pad * 1.4f, pad * 1.4f);
+			SetPenSize(1);
+		}
 		SetLowColor(fill);
 
 		if (row.mediaKind != 0)

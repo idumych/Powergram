@@ -537,6 +537,12 @@ TestMedia()
 	CHECK(request::React(42, 1, "👍", true)["@type"] == "addMessageReaction");
 	CHECK(request::React(42, 1, "👍", false)["@type"] == "removeMessageReaction");
 	CHECK(!request::React(42, 1, "👍", false).contains("is_big"));
+	json search = request::SearchChat(42, "Suspend", 50);
+	CHECK(search["query"] == "Suspend" && search["@extra"] == "search:42");
+	CHECK(search["filter"]["@type"] == "searchMessagesFilterEmpty");
+	CHECK((FoundIds({{"@type", "foundChatMessages"}, {"messages",
+		json::array({Msg(42, 9, "a"), nullptr, Msg(42, 3, "b")})}}) == std::vector<int64_t>{9, 3}));
+	CHECK(FoundIds(json()).empty());
 	json fwd = request::Forward(7, 42, {1, 2});
 	CHECK(fwd["chat_id"] == 7 && fwd["from_chat_id"] == 42 && fwd["message_ids"].size() == 2);
 }

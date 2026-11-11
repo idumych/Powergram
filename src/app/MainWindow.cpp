@@ -57,6 +57,12 @@ enum {
 	kMsgShowEmoji = 'shem',
 	kMsgChatMenu = 'cmnu',
 	kMsgListChosen = 'lcho',
+	kMsgChatFilter = 'cflt',
+	kMsgShowFind = 'shfd',
+	kMsgHideFind = 'hdfd',
+	kMsgFindGo = 'fdgo',
+	kMsgFindNext = 'fdnx',
+	kMsgFindPrevious = 'fdpv',
 	kMsgForward = 'frwd',
 	kMsgChatMenuItem = 'cmit',
 	kMsgChatDeleteAnswer = 'cdan',
@@ -338,6 +344,14 @@ MainWindow::MainWindow(BRect frame, bool testDc,
 	app->AddItem(new BMenuItem("Quit", new BMessage(B_QUIT_REQUESTED), 'Q'));
 	app->SetTargetForItems(be_app);
 	bar->AddItem(app);
+	// HIG: Find, Find again (Cmd+G), here Find previous too.
+	BMenu* search = new BMenu("Search");
+	search->AddItem(new BMenuItem("Find" B_UTF8_ELLIPSIS, new BMessage(kMsgShowFind), 'F'));
+	BMessage* next = new BMessage(kMsgFindNext);
+	search->AddItem(new BMenuItem("Find again", next, 'G'));
+	search->AddItem(new BMenuItem("Find previous", new BMessage(kMsgFindPrevious), 'G',
+		B_SHIFT_KEY));
+	bar->AddItem(search);
 
 	fList = new ChatListView();
 	fList->SetSelectionMessage(new BMessage(kMsgSelectionChanged));
@@ -349,6 +363,22 @@ MainWindow::MainWindow(BRect frame, bool testDc,
 	fListMenu->AddItem(new BMenuItem("All chats", all));
 	fListMenu->ItemAt(0)->SetMarked(true);
 	fListField = new BMenuField("list field", nullptr, fListMenu);
+	fChatSearch = new BTextControl("chat search", nullptr, "", nullptr);
+	fChatSearch->SetModificationMessage(new BMessage(kMsgChatFilter));
+	fChatSearch->TextView()->SetExplicitMinSize(BSize(be_plain_font->Size() * 6, B_SIZE_UNSET));
+	fChatSearch->SetToolTip("Search chats");
+
+	fFindText = new BTextControl("find", "Find:", "", new BMessage(kMsgFindGo));
+	fFindResult = new BStringView("find result", "");
+	fFindBar = new BGroupView(B_HORIZONTAL, B_USE_SMALL_SPACING);
+	BLayoutBuilder::Group<>(static_cast<BGroupView*>(fFindBar))
+		.SetInsets(B_USE_SMALL_SPACING, 0, B_USE_SMALL_SPACING, B_USE_SMALL_SPACING)
+		.Add(fFindText, 1.0f)
+		.Add(fFindResult)
+		.Add(new BButton("previous", "Previous", new BMessage(kMsgFindPrevious)))
+		.Add(new BButton("next", "Next", new BMessage(kMsgFindNext)))
+		.Add(new BButton("close find", "Close", new BMessage(kMsgHideFind)));
+	fFindBar->Hide();
 
 	fTitle = new BStringView("title", "");
 	fTitle->SetFont(be_bold_font);
@@ -403,9 +433,10 @@ MainWindow::MainWindow(BRect frame, bool testDc,
 		.Add(bar)
 		.AddSplit(B_HORIZONTAL, 0, 1.0f)
 			.AddGroup(B_VERTICAL, 0, 0.4f)
-				.AddGroup(B_HORIZONTAL)
+				.AddGroup(B_HORIZONTAL, B_USE_SMALL_SPACING)
 					.SetInsets(B_USE_SMALL_SPACING)
 					.Add(fListField)
+					.Add(fChatSearch, 1.0f)
 				.End()
 				.Add(listScroll, 1.0f)
 			.End()
@@ -416,6 +447,7 @@ MainWindow::MainWindow(BRect frame, bool testDc,
 					.Add(fTitle)
 					.Add(fSubtitle)
 				.End()
+				.Add(fFindBar)
 				.Add(messageScroll, 1.0f)
 				.Add(fComposeBar)
 				// The right inset keeps Send clear of the document window's
@@ -438,8 +470,33 @@ MainWindow::MainWindow(BRect frame, bool testDc,
 
 
 void
-MainWindow::_UpdateChats(const BMessage* list)
+MainWindow::_UpdateChats(const BMessage* incoming)
 {
+	// Keep the whole list; show the chats whose names match the search.
+	if (incoming != &fLastChats)
+		fLastChats = *incoming;
+	BMessage filtered(kMsgChatList);
+	BString query(fChatSearch->Text());
+	query.Trim();
+	const BMessage* list = &fLastChats;
+	if (!query.IsEmpty()) {
+		int32 total = 0;
+		fLastChats.GetInfo("id", nullptr, &total);
+		char* name;
+		type_code type;
+		int32 entries;
+		for (int32 i = 0; i < total; i++) {
+			if (BString(fLastChats.GetString("title", i, "")).IFindFirst(query) < 0)
+				continue;
+			for (int32 f = 0; fLastChats.GetInfo(B_ANY_TYPE, f, &name, &type, &entries) == B_OK; f++) {
+				const void* data;
+				ssize_t size;
+				if (entries == total && fLastChats.FindData(name, type, i, &data, &size) == B_OK)
+					filtered.AddData(name, type, data, size, false);
+			}
+		}
+		list = &filtered;
+	}
 	int64 selected = -1;
 	if (ChatItem* item = dynamic_cast<ChatItem*>(fList->ItemAt(fList->CurrentSelection())))
 		selected = item->Id();
@@ -470,7 +527,9 @@ MainWindow::_SelectionChanged()
 	int64 id = 0;
 	if (ChatItem* item = dynamic_cast<ChatItem*>(fList->ItemAt(fList->CurrentSelection())))
 		id = item->Id();
-	if (id == fOpenChat)
+	// A row that went away (filtered out, moved to another list) doesn't
+	// close the chat being read.
+	if (id == fOpenChat || id == 0)
 		return;
 	_SaveDraft();
 	fOpenChat = id;
@@ -484,6 +543,10 @@ MainWindow::_SelectionChanged()
 	fMessages->SetEmptyText(id != 0 ? "Loading messages…"
 		: "Select a chat to start messaging");
 	_CancelCompose();
+	if (!fFindBar->IsHidden())
+		fFindBar->Hide();
+	fFindText->SetText("");
+	fFindResult->SetText("");
 	fEntry->SetText("");
 	fEntry->SetEnabled(id != 0);
 	fSendButton->SetEnabled(id != 0);
@@ -560,6 +623,7 @@ MainWindow::_UpdateHistory(const BMessage* history)
 	}
 	fMessages->SetEmptyText("No messages here yet");
 	fMessages->SetMoreBelow(history->GetBool("more_below", false));
+	fMessages->SetHighlight(history->GetInt64("highlight", 0));
 	fMessages->SetMessages(rows, history->GetBool("scroll_end", false),
 		history->GetInt64("scroll_to", 0));
 }
@@ -808,6 +872,27 @@ MainWindow::_InsertEmoji(const char* emoji)
 
 
 void
+MainWindow::_ShowFindBar(bool show)
+{
+	if (show) {
+		if (fFindBar->IsHidden())
+			fFindBar->Show();
+		fFindText->MakeFocus(true);
+		fFindText->TextView()->SelectAll();
+	} else {
+		if (!fFindBar->IsHidden())
+			fFindBar->Hide();
+		fFindText->SetText("");
+		fFindResult->SetText("");
+		BMessage clear(kMsgFind);
+		clear.AddString("query", "");
+		be_app->PostMessage(&clear);
+		fEntry->MakeFocus(true);
+	}
+}
+
+
+void
 MainWindow::_SaveDraft()
 {
 	// What's typed but not sent stays with the chat (and syncs to the
@@ -913,6 +998,48 @@ MainWindow::MessageReceived(BMessage* message)
 					fEntry->TextView()->TextLength());
 			}
 			break;
+		case kMsgChatFilter:
+			_UpdateChats(&fLastChats);
+			break;
+		case kMsgShowFind:
+			if (fOpenChat != 0)
+				_ShowFindBar(true);
+			break;
+		case kMsgHideFind:
+			_ShowFindBar(false);
+			break;
+		case kMsgFindGo:
+		{
+			BMessage find(kMsgFind);
+			find.AddString("query", fFindText->Text());
+			be_app->PostMessage(&find);
+			fFindResult->SetText("Searching" B_UTF8_ELLIPSIS);
+			break;
+		}
+		case kMsgFindNext:
+		case kMsgFindPrevious:
+		{
+			if (fFindBar->IsHidden()) {
+				_ShowFindBar(true);
+				break;
+			}
+			// Results are newest first: "next" goes back in time.
+			BMessage step(kMsgFindStep);
+			step.AddInt32("delta", message->what == kMsgFindNext ? 1 : -1);
+			be_app->PostMessage(&step);
+			break;
+		}
+		case kMsgFindResult:
+		{
+			int32 index = message->GetInt32("index", -1), count = message->GetInt32("count", 0);
+			BString text;
+			if (count == 0)
+				text = "No results";
+			else
+				text << index + 1 << " of " << count;
+			fFindResult->SetText(text);
+			break;
+		}
 		case kMsgChatStatus:
 			if (message->GetInt64("chat_id", 0) == fOpenChat) {
 				fSubtitle->SetText(message->GetString("status", ""));

@@ -106,6 +106,11 @@ private:
 	int fHistoryPages;        // history requests for the current page
 	int64 fFirstUnread = 0;   // read up to here when the chat was opened
 	int64 fScrollTo = 0;      // message to show first, once
+	std::vector<int64_t> fFound;  // search results in the open chat, newest first
+	int32 fFoundIndex = -1;
+	int64 fHighlight = 0;     // the search result on screen
+	void _ShowMessage(int64 messageId);
+	void _SendFindResult();
 	bool fLoadingHistory;
 	pp::TypingThrottle fTyping;
 	bool fActive;             // a window of ours is active
@@ -297,6 +302,16 @@ App::_HandleObject(const json& object)
 		_HandleHistoryReply(object);
 		return;
 	}
+	if (extra.rfind("search:", 0) == 0) {
+		if (fHistory != nullptr && atoll(extra.c_str() + 7) == fHistory->ChatId()) {
+			fFound = type == "error" ? std::vector<int64_t>() : pp::FoundIds(object);
+			fFoundIndex = fFound.empty() ? -1 : 0;
+			_SendFindResult();
+			if (!fFound.empty())
+				_ShowMessage(fFound[0]);
+		}
+		return;
+	}
 	if (extra.rfind("reply:", 0) == 0) {
 		if (fHistory != nullptr && type == "messages") {
 			fHistory->AddReplyTargets(object);
@@ -390,6 +405,9 @@ App::_OpenChat(int64 id, bool latest)
 	fHistory = std::make_unique<pp::ChatHistory>(id);
 	fFirstUnread = 0;
 	fScrollTo = 0;
+	fFound.clear();
+	fFoundIndex = -1;
+	fHighlight = 0;
 	const pp::Chat* openChat = fChats.Find(id);
 	if (openChat != nullptr)
 		fHistory->SetLastReadOutbox(openChat->lastReadOutbox);
@@ -477,6 +495,7 @@ App::_SendHistory()
 	list.AddInt64("chat_id", chatId);
 	list.AddBool("scroll_end", scrollToEnd);
 	list.AddBool("more_below", !fHistory->AtLatest());
+	list.AddInt64("highlight", fHighlight);
 	if (fScrollTo != 0) {
 		list.AddInt64("scroll_to", fScrollTo);
 		fScrollTo = 0;
@@ -788,6 +807,41 @@ App::_SendChatStatus()
 	message.AddString("status", status);
 	message.AddBool("active", active);
 	fMain->PostMessage(&message);
+}
+
+
+void
+App::_SendFindResult()
+{
+	BMessage result(kMsgFindResult);
+	result.AddInt32("index", fFoundIndex);
+	result.AddInt32("count", (int32)fFound.size());
+	fMain->PostMessage(&result);
+}
+
+
+void
+App::_ShowMessage(int64 messageId)
+{
+	// A search result: on screen if it's loaded, else the history around it
+	// (a fresh one, so there's no gap; older and newer load by scrolling).
+	if (fHistory == nullptr)
+		return;
+	fHighlight = messageId;
+	fScrollTo = messageId;
+	if (fHistory->Find(messageId) != nullptr) {
+		_FlushHistory();
+		return;
+	}
+	int64 chatId = fHistory->ChatId();
+	fHistory = std::make_unique<pp::ChatHistory>(chatId);
+	if (const pp::Chat* chat = fChats.Find(chatId))
+		fHistory->SetLastReadOutbox(chat->lastReadOutbox);
+	fHistory->SetAtLatest(false);
+	fFirstUnread = 0;
+	fHistoryPages = 3;  // no follow-up pages
+	fLoadingHistory = true;
+	_Send(pp::request::HistoryAround(chatId, messageId, 20, 20));
 }
 
 
@@ -1131,6 +1185,29 @@ App::MessageReceived(BMessage* message)
 				_Send(pp::ChatList::DraftRequest(chatId, text));
 			break;
 		}
+
+		case kMsgFind:
+			if (fHistory != nullptr) {
+				std::string query = message->GetString("query", "");
+				fFound.clear();
+				fFoundIndex = -1;
+				fHighlight = 0;
+				if (query.empty()) {
+					_SendFindResult();
+					_FlushHistory();
+				} else
+					_Send(pp::request::SearchChat(fHistory->ChatId(), query, 100));
+			}
+			break;
+
+		case kMsgFindStep:
+			if (!fFound.empty()) {
+				int32 count = (int32)fFound.size();
+				fFoundIndex = (fFoundIndex + message->GetInt32("delta", 1) + count) % count;
+				_SendFindResult();
+				_ShowMessage(fFound[fFoundIndex]);
+			}
+			break;
 
 		case kMsgLoadNewer:
 			if (fHistory != nullptr && !fHistory->AtLatest() && !fLoadingHistory) {

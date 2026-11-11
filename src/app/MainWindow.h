@@ -31,6 +31,7 @@ public:
 
 private:
 	void _UpdateChats(const BMessage* list);
+	void _ShowFindBar(bool show);
 	void _UpdateHistory(const BMessage* history);
 	void _SelectionChanged();
 	void _Send();
@@ -51,6 +52,11 @@ private:
 	BListView* fList;
 	BPopUpMenu* fListMenu;      // All chats, folders, Archive
 	BMenuField* fListField;
+	BTextControl* fChatSearch;   // filters the chat list by name
+	BMessage fLastChats;         // the last list the app sent, unfiltered
+	BView* fFindBar;             // find in chat
+	BTextControl* fFindText;
+	BStringView* fFindResult;
 	BStringView* fTitle;
 	BStringView* fSubtitle;     // "online", "Ann is typing…", "128 members"
 	MessageView* fMessages;

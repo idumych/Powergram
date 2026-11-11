@@ -147,6 +147,13 @@ enum {
 	// "add" (bool); "chat_id" added by the window
 	kMsgReact = 'reac',
 
+	// main window → app: search the open chat, "query"; step through the
+	// results, "delta" (int32, +1 older / -1 newer)
+	kMsgFind = 'find',
+	kMsgFindStep = 'fstp',
+	// app → main window: "index", "count" (int32; index -1 for none)
+	kMsgFindResult = 'fres',
+
 	kMsgLogOut = 'lout',
 	kMsgLogOutConfirmed = 'loco',
 	kMsgForceQuit = 'fqut'

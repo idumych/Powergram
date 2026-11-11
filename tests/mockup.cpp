@@ -202,6 +202,19 @@ public:
 				fMain->PostMessage(&props);
 				break;
 			}
+			case kMsgFind:
+			{
+				if (BString(message->GetString("query", "")).IsEmpty())
+					break;
+				BMessage result(kMsgFindResult);
+				result.AddInt32("index", 0);
+				result.AddInt32("count", 3);
+				fMain->PostMessage(&result);
+				fHighlight = 106;
+				_SendHistory(kGroup);
+				fHighlight = 0;
+				break;
+			}
 			case kMsgStickerSetsWanted:
 			{
 				BMessage sets(kMsgStickerSets);
@@ -321,7 +334,11 @@ private:
 		time_t now = time(nullptr);
 		BMessage list(kMsgHistory);
 		list.AddInt64("chat_id", chatId);
-		list.AddBool("scroll_end", true);
+		list.AddBool("scroll_end", fHighlight == 0);
+		if (fHighlight != 0) {
+			list.AddInt64("highlight", fHighlight);
+			list.AddInt64("scroll_to", fHighlight);
+		}
 
 		if (chatId == kGroup) {
 			Add(list, _Date("Yesterday"));
@@ -440,6 +457,7 @@ private:
 	}
 
 	MainWindow* fMain = nullptr;
+	int64 fHighlight = 0;
 };
 
 } // namespace

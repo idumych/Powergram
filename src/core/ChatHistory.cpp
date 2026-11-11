@@ -250,6 +250,19 @@ MessageText(const json& content)
 }
 
 
+std::vector<int64_t>
+FoundIds(const json& found)
+{
+	std::vector<int64_t> ids;
+	const json& list = Field(found, "messages");
+	if (list.is_array())
+		for (const json& m : list)
+			if (Int(m, "id") != 0)
+				ids.push_back(Int(m, "id"));
+	return ids;
+}
+
+
 std::vector<Reaction>
 ParseReactions(const json& interactionInfo)
 {
@@ -724,6 +737,16 @@ Forward(int64_t toChatId, int64_t fromChatId, const std::vector<int64_t>& ids)
 	return {{"@type", "forwardMessages"}, {"chat_id", toChatId}, {"from_chat_id", fromChatId},
 		{"message_ids", ids}, {"send_copy", false}, {"remove_caption", false},
 		{"@extra", "forward"}};
+}
+
+
+json
+SearchChat(int64_t chatId, const std::string& query, int limit)
+{
+	return {{"@type", "searchChatMessages"}, {"chat_id", chatId}, {"query", query},
+		{"from_message_id", 0}, {"offset", 0}, {"limit", limit},
+		{"filter", {{"@type", "searchMessagesFilterEmpty"}}},
+		{"@extra", "search:" + std::to_string(chatId)}};
 }
 
 

@@ -163,6 +163,9 @@ void ParseMedia(const json& content, Message& message);
 
 Message ParseMessage(const json& message);
 
+// The message ids in a foundChatMessages (or messages) reply, in its order.
+std::vector<int64_t> FoundIds(const json& found);
+
 namespace request {
 
 json OpenChat(int64_t chatId);
@@ -184,6 +187,9 @@ json Properties(int64_t chatId, int64_t messageId, const std::string& extra);
 // self-destructing photo, as the official apps do.
 json OpenContent(int64_t chatId, int64_t messageId);
 json Forward(int64_t toChatId, int64_t fromChatId, const std::vector<int64_t>& ids);
+// Messages in a chat matching `query` (Telegram searches, case-insensitively),
+// newest first.
+json SearchChat(int64_t chatId, const std::string& query, int limit);
 json React(int64_t chatId, int64_t messageId, const std::string& emoji, bool add);
 // Sends a local file: a photo (with its size) or any file as a document.
 json SendPhoto(int64_t chatId, const std::string& path, int32_t width, int32_t height,

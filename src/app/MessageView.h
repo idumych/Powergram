@@ -74,6 +74,8 @@ public:
 	// The jump-to-latest button: whether newer messages aren't loaded, and
 	// the chat's unread count for its badge.
 	void SetMoreBelow(bool moreBelow);
+	// Outlines a message (the search result on screen); 0 for none.
+	void SetHighlight(int64 id);
 	void SetUnreadCount(int32 count);
 	void SetEmptyText(const char* text);
 
@@ -162,6 +164,7 @@ private:
 	std::set<int64> fRevealed;  // spoilers clicked open
 	bool fDropTarget;           // files are being dragged over us
 	bool fMoreBelow = false;
+	int64 fHighlight = 0;
 	int32 fUnreadCount = 0;
 	BRect _JumpButtonFrame() const;
 	bool fAtEnd;
