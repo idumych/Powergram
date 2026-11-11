@@ -90,6 +90,12 @@ Voice messages play in the app; the waveform fills as they play.
 ![Files in a chat](docs/screenshots/haiku-files.png)
 Files show their type's icon from Haiku's file types, and their progress while downloading.
 
+![Opening a username, with a Join button](docs/screenshots/haiku-links.png)
+Mentions and t.me links open in the app; Cmd+O opens a typed username or link. In a group you're not in, Send becomes Join.
+
+![A pinned message](docs/screenshots/haiku-pinned.png)
+The pinned bar: click to jump to the message, and again for the next one.
+
 ![The chat info window](docs/screenshots/haiku-info.png)
 Chat info: the description, members and shared photos.
 
@@ -101,7 +107,7 @@ Settings apply at once; here the text size is Large.
 | Platform | State |
 |---|---|
 | Renku OS / Haiku R1/beta6, x86_64 | Builds and runs |
-| Haiku arm64 | Not yet: TDLib comes from HaikuPorts, which has no arm64 repository |
+| Haiku / Renku OS arm64 | Not yet: Renku's arm64 package repository has OpenSSL and zlib but no TDLib or noto_emoji yet, and HaikuPorts has no arm64 repository |
 | Linux (Cosmoe) | Not yet |
 
 ## Building
@@ -120,8 +126,9 @@ HaikuPorts' TDLib is static only, so it's linked into the app; the result
 needs only OpenSSL and zlib at run time. Install `noto_emoji` for emoji.
 
 `make test` runs the core tests (login flow, chat list, history, throttling,
-files, stickers, formatting, presence, voice, chat info) on any system with a
-C++17 compiler.
+files and download progress, stickers, formatting, presence, voice, chat info,
+links and usernames, pinned messages) on any system with a C++17 compiler.
+On Haiku, `make file-saving-test` checks saving received files.
 
 ## Your API key
 
