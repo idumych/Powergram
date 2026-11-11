@@ -23,7 +23,9 @@ private:
 		kCardName, kCardMessage };
 
 	BView* _MakeCard(const char* title, BTextView** description,
-		BView* fields, BButton** next, uint32 what);
+		BView* fields, BButton** next, uint32 what, BButton* extra = nullptr);
+	void _OpenApiSite();
+	void _PasteApiKey();
 	void _ShowCard(Card card);
 	void _SetBusy(bool busy);
 	void _Submit(uint32 what);
@@ -45,5 +47,6 @@ private:
 	BTextView* fMessageText;
 
 	BButton* fNext[kCardMessage];
+	bool fApiSiteOpened = false;   // once by itself, then by the button
 	BTextView* fError;
 };
