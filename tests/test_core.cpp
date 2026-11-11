@@ -840,6 +840,15 @@ TestLists()
 	c.lastMessageId = 9;
 	auto read = ChatList::MarkReadRequests(c);
 	CHECK(read.size() == 2 && read[0]["force_read"] == true && read[1]["is_marked_as_unread"] == false);
+	// Mentions: cleared by Mark as read, and counted down as they're read.
+	c.unreadMentions = 2;
+	read = ChatList::MarkReadRequests(c);
+	CHECK(read.size() == 3 && read[2]["@type"] == "readAllChatMentions");
+	CHECK(list.Apply({{"@type", "updateChatUnreadMentionCount"}, {"chat_id", 1}, {"unread_mention_count", 2}}));
+	CHECK(list.Find(1)->unreadMentions == 2);
+	list.Apply({{"@type", "updateMessageMentionRead"}, {"chat_id", 1}, {"message_id", 5},
+		{"unread_mention_count", 0}});
+	CHECK(list.Find(1)->unreadMentions == 0);
 	json mute = ChatList::MuteRequest(1, true);
 	CHECK(mute["notification_settings"]["mute_for"] == 366 * 86400);
 	CHECK(mute["notification_settings"]["use_default_sound"] == true);

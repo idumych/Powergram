@@ -314,7 +314,10 @@ ChatList::Apply(const json& object)
 	} else if (type == "updateChatNotificationSettings") {
 		ApplyNotificationSettings(chat, Field(object, "notification_settings"));
 		return false;
-	} else if (type == "updateChatUnreadMentionCount") {
+	} else if (type == "updateChatUnreadMentionCount"
+		|| type == "updateMessageMentionRead") {
+		// The second comes when a message mentioning us was read, with
+		// the count left.
 		chat.unreadMentions = Int(object, "unread_mention_count");
 	} else
 		return false;
@@ -414,6 +417,9 @@ ChatList::MarkReadRequests(const Chat& chat)
 	if (chat.markedUnread)
 		out.push_back({{"@type", "toggleChatIsMarkedAsUnread"}, {"chat_id", chat.id},
 			{"is_marked_as_unread", false}});
+	// Mentions in older messages stay unread otherwise (the "@" badge).
+	if (chat.unreadMentions > 0)
+		out.push_back({{"@type", "readAllChatMentions"}, {"chat_id", chat.id}});
 	return out;
 }
 
