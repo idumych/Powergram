@@ -51,9 +51,9 @@ MessagePreview(const json& content)
 	if (type == "messageLocation" || type == "messageVenue")
 		return "Location";
 	if (type == "messageContact")
-		return "Contact";
+		return "Contact: " + Str(Field(content, "contact"), "first_name");
 	if (type == "messagePoll")
-		return "Poll";
+		return "Poll: " + Str(Field(Field(content, "poll"), "question"), "text");
 	if (type == "messageCall")
 		return "Call";
 	if (type == "messageChatAddMembers")

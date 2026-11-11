@@ -4,6 +4,7 @@
 #include "ChatList.h"
 
 #include <algorithm>
+#include <cstdio>
 
 namespace pp {
 
@@ -186,6 +187,53 @@ MessageText(const json& content)
 		return Str(Field(content, "caption"), "text");
 	if (type == "messageVideoNote")
 		return std::string();
+	if (type == "messagePoll") {
+		// The question, each option (with its share once results show) and
+		// the number of votes.
+		const json& poll = Field(content, "poll");
+		std::string text = "Poll: " + Str(Field(poll, "question"), "text");
+		const json& options = Field(poll, "options");
+		bool results = Bool(poll, "can_see_results") || Bool(poll, "is_closed");
+		if (options.is_array()) {
+			for (const json& o : options) {
+				text += "\n\xE2\x80\xA2 " + Str(Field(o, "text"), "text");
+				if (results)
+					text += " \xE2\x80\x93 " + std::to_string(Int(o, "vote_percentage")) + "%";
+				if (Bool(o, "is_chosen"))
+					text += " (your vote)";
+			}
+		}
+		int64_t votes = Int(poll, "total_voter_count");
+		text += "\n" + std::to_string(votes) + (votes == 1 ? " vote" : " votes");
+		if (Bool(poll, "is_closed"))
+			text += ", closed";
+		return text;
+	}
+	if (type == "messageLocation" || type == "messageVenue") {
+		const json& venue = Field(content, "venue");
+		const json& location = type == "messageVenue" ? Field(venue, "location")
+			: Field(content, "location");
+		double lat = Field(location, "latitude").is_number()
+			? Field(location, "latitude").get<double>() : 0;
+		double lon = Field(location, "longitude").is_number()
+			? Field(location, "longitude").get<double>() : 0;
+		char coords[64], url[160];
+		snprintf(coords, sizeof(coords), "%.5f, %.5f", lat, lon);
+		snprintf(url, sizeof(url), "https://www.openstreetmap.org/?mlat=%.5f&mlon=%.5f#map=16/%.5f/%.5f",
+			lat, lon, lat, lon);
+		std::string text = type == "messageVenue"
+			? "Place: " + Str(venue, "title") + "\n" + Str(venue, "address")
+			: "Location: " + std::string(coords);
+		return text + "\n" + url;
+	}
+	if (type == "messageContact") {
+		const json& contact = Field(content, "contact");
+		std::string name = Str(contact, "first_name");
+		std::string last = Str(contact, "last_name");
+		if (!last.empty())
+			name += " " + last;
+		return "Contact: " + name + "\n" + Str(contact, "phone_number");
+	}
 	if (type == "messageDocument") {
 		std::string text = "Document: " + Str(Field(content, "document"), "file_name");
 		std::string caption = Str(Field(content, "caption"), "text");

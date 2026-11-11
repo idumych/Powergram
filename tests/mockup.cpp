@@ -17,6 +17,7 @@
 
 #include "../src/app/MainWindow.h"
 #include "../src/app/Messages.h"
+#include "../src/core/ChatHistory.h"
 #include "../src/core/Format.h"
 
 namespace {
@@ -417,6 +418,21 @@ private:
 			r.image = Media("light.jpg").c_str(); r.mediaWidth = 1280; r.mediaHeight = 720;
 			Add(list, r);
 			r = _Mine(208, "Ha, perfect", now - 600);
+			Add(list, r);
+			// A poll and a location, as the core renders them.
+			pp::json poll = {{"@type", "messagePoll"}, {"poll", {{"question", {{"text", "Release on Friday?"}}},
+				{"options", pp::json::array({
+					{{"text", {{"text", "Yes"}}}, {"vote_percentage", 67}, {"is_chosen", true}},
+					{{"text", {{"text", "Next week"}}}, {"vote_percentage", 33}}})},
+				{"total_voter_count", 3}, {"can_see_results", true}}}};
+			r = Row(); r.id = 209; r.time = Clock(now - 500);
+			r.text = pp::MessageText(poll).c_str();
+			Add(list, r);
+			pp::json place = {{"@type", "messageLocation"},
+				{"location", {{"latitude", 45.4642}, {"longitude", 9.19}}}};
+			r = _Mine(210, "", now - 400);
+			r.text = pp::MessageText(place).c_str();
+			r.spans = pp::FindLinks(r.text.String());
 			Add(list, r);
 			}
 		}

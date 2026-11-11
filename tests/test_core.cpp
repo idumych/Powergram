@@ -847,6 +847,42 @@ TestLists()
 }
 
 
+static void
+TestPollsPlaces()
+{
+	json poll = {{"@type", "messagePoll"}, {"poll", {{"question", {{"text", "Lunch?"}}},
+		{"options", json::array({
+			{{"text", {{"text", "Pizza"}}}, {"vote_percentage", 75}, {"is_chosen", true}},
+			{{"text", {{"text", "Soup"}}}, {"vote_percentage", 25}}})},
+		{"total_voter_count", 4}, {"can_see_results", true}}}};
+	std::string text = MessageText(poll);
+	CHECK(text.find("Poll: Lunch?") == 0);
+	CHECK(text.find("Pizza \xE2\x80\x93 75% (your vote)") != std::string::npos);
+	CHECK(text.find("4 votes") != std::string::npos);
+	poll["poll"]["can_see_results"] = false;
+	CHECK(MessageText(poll).find("%") == std::string::npos);
+	CHECK(MessagePreview(poll) == "Poll: Lunch?");
+
+	json location = {{"@type", "messageLocation"}, {"location", {{"latitude", 52.52}, {"longitude", 13.405}}}};
+	text = MessageText(location);
+	CHECK(text.find("Location: 52.52000, 13.40500") == 0);
+	auto links = FindLinks(text);
+	CHECK(links.size() == 1 && links[0].url.find("openstreetmap.org/?mlat=52.52000") != std::string::npos);
+	json venue = {{"@type", "messageVenue"}, {"venue", {{"title", "Cafe"}, {"address", "Main St 1"},
+		{"location", {{"latitude", 1.0}, {"longitude", 2.0}}}}}};
+	CHECK(MessageText(venue).find("Place: Cafe\nMain St 1\nhttps://") == 0);
+	json contact = {{"@type", "messageContact"}, {"contact", {{"first_name", "Ann"},
+		{"last_name", "Example"}, {"phone_number", "+15550100"}}}};
+	CHECK(MessageText(contact) == "Contact: Ann Example\n+15550100");
+	CHECK(MessagePreview(contact) == "Contact: Ann");
+
+	// The link in a location message is clickable.
+	json message = Msg(42, 1, "");
+	message["content"] = location;
+	CHECK(ParseMessage(message).spans.size() == 1);
+}
+
+
 int
 main()
 {
@@ -865,6 +901,7 @@ main()
 	TestDrafts();
 	TestUnreadAndNewer();
 	TestLists();
+	TestPollsPlaces();
 	if (sFailures) {
 		std::fprintf(stderr, "%d check(s) failed\n", sFailures);
 		return EXIT_FAILURE;
