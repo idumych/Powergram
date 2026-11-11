@@ -20,14 +20,14 @@ enum {
 
 ChatPicker::ChatPicker(BWindow* parent, const std::vector<Entry>& chats, BMessage* reply)
 	:
+	// Modeless, as the HIG asks: skipping it loses nothing.
 	BWindow(BRect(0, 0, 320, 400), "Forward to", B_TITLED_WINDOW_LOOK,
-		B_MODAL_SUBSET_WINDOW_FEEL, B_NOT_ZOOMABLE | B_NOT_MINIMIZABLE
+		B_NORMAL_WINDOW_FEEL, B_NOT_ZOOMABLE | B_NOT_MINIMIZABLE
 			| B_AUTO_UPDATE_SIZE_LIMITS | B_CLOSE_ON_ESCAPE),
 	fTarget(parent),
 	fReply(reply),
 	fChats(chats)
 {
-	AddToSubset(parent);
 	fSearch = new BTextControl("search", "Search:", "", nullptr);
 	fSearch->SetModificationMessage(new BMessage(kMsgSearchChanged));
 	fList = new BListView("chats");
