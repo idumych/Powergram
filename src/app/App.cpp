@@ -2395,7 +2395,8 @@ App::_UpdateDeskbar()
 	if (GetAppInfo(&info) == B_OK && BPath(&info.ref).GetParent(&path) == B_OK)
 		path.Append("obj/PowergramDeskbar");
 	if (!BEntry(path.Path()).Exists()) {
-		BPathFinder finder(&info.ref);
+		// By reference: a pointer would pick the code-address constructor.
+		BPathFinder finder(info.ref);
 		finder.FindPath(B_FIND_PATH_ADD_ONS_DIRECTORY, "Powergram/PowergramDeskbar",
 			B_FIND_PATH_EXISTING_ONLY, path);
 	}
