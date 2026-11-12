@@ -54,6 +54,14 @@ MessageView::MessageReceived(BMessage* message)
 		_AnimationTick();
 		return;
 	}
+	if (message->what == B_COLORS_UPDATED) {
+		// The window recolours what Haiku doesn't (text typed in fields).
+		BView::MessageReceived(message);
+		if (Window() != nullptr)
+			Window()->PostMessage(kMsgColorsChanged);
+		Invalidate();
+		return;
+	}
 	if (message->what == B_COPY) {
 		BString text = SelectedText();
 		if (!text.IsEmpty() && be_clipboard->Lock()) {

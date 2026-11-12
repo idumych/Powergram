@@ -308,6 +308,10 @@ enum {
 	// location window → app: "chat_id", "latitude", "longitude" (double)
 	kMsgSendLocation = 'sloc',
 
+	// message view → main window: the system colours changed (a dark or
+	// light theme chosen while the app runs)
+	kMsgColorsChanged = 'clch',
+
 	kMsgLogOut = 'lout',
 	kMsgLogOutConfirmed = 'loco',
 	kMsgForceQuit = 'fqut'

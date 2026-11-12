@@ -51,6 +51,8 @@ private:
 	void _SendFiles(const BMessage* message);
 	BBitmap* _Avatar(const BMessage* list, int32 index);
 	BButton* _IconButton(const char* name, int kind, uint32 what, const char* tip);
+	// After a theme change: the icons, and the text already in the fields.
+	void _UpdateColors();
 	void _InsertEmoji(const char* emoji);
 
 	BListView* fList;

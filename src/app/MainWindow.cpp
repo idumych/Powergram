@@ -1352,6 +1352,38 @@ MainWindow::_IconButton(const char* name, int kind, uint32 what, const char* tip
 }
 
 
+// A theme chosen while the app runs: Haiku recolours the fields, but text
+// already typed keeps its colour (light on white after leaving a dark
+// theme), and the icons were drawn in the old text colour.
+void
+MainWindow::_UpdateColors()
+{
+	for (BTextControl* control : {fEntry, fChatSearch, fFindText}) {
+		BTextView* text = control->TextView();
+		BFont font;
+		rgb_color old;
+		text->GetFontAndColor(0, &font, &old);
+		rgb_color color = ui_color(B_DOCUMENT_TEXT_COLOR);
+		if (!control->IsEnabled())
+			color = tint_color(color, B_DISABLED_LABEL_TINT);
+		text->SetFontAndColor(0, text->TextLength(), &font, B_FONT_ALL, &color);
+		// What's typed next, too.
+		text->SetFontAndColor(&font, B_FONT_ALL, &color);
+		text->Invalidate();
+	}
+	font_height fh;
+	be_plain_font->GetHeight(&fh);
+	float size = roundf((fh.ascent + fh.descent) * 1.3f);
+	std::pair<BButton*, IconKind> buttons[] = {{fAttachButton, kIconAttach},
+		{fEmojiButton, kIconEmoji}, {fStickerButton, kIconSticker}, {fMicButton, kIconMic}};
+	for (const auto& [button, kind] : buttons) {
+		BBitmap* icon = MakeIcon(kind, size, ui_color(B_CONTROL_TEXT_COLOR));
+		button->SetIcon(icon);
+		delete icon;   // the button keeps its own copy
+	}
+}
+
+
 void
 MainWindow::_InsertEmoji(const char* emoji)
 {
@@ -1616,6 +1648,9 @@ MainWindow::MessageReceived(BMessage* message)
 			menu->Go(message->GetPoint("where", BPoint()), true, true, true);
 			break;
 		}
+		case kMsgColorsChanged:
+			_UpdateColors();
+			break;
 		case kMsgSendSilent:
 			_Send(true);
 			break;
