@@ -6,6 +6,8 @@
 #include <Bitmap.h>
 #include <DataIO.h>
 #include <FilePanel.h>
+#include <FindDirectory.h>
+#include <Path.h>
 #include <TranslationUtils.h>
 #include <Url.h>
 #include <Clipboard.h>
@@ -42,6 +44,7 @@
 #include "BitmapUtils.h"
 #include "ChatPicker.h"
 #include "ComposeWindows.h"
+#include "SendFilesWindow.h"
 #include "TouchScroll.h"
 #include "SettingsWindow.h"
 #include "Icons.h"
@@ -83,7 +86,8 @@ enum {
 	kMsgSendScheduleAsk = 'sdsa',
 	kMsgSendAt = 'sdat',
 	kMsgSendWhenOnline = 'sdwo',
-	kMsgChatWindow = 'cwin'
+	kMsgChatWindow = 'cwin',
+	kMsgPasteFiles = 'pstf'
 };
 
 
@@ -484,6 +488,31 @@ public:
 	}
 };
 
+// Paste in the entry: pictures and files on the clipboard go to the Send
+// window; text pastes as usual.
+class PasteFilter : public BMessageFilter {
+public:
+	explicit PasteFilter(BWindow* window)
+		: BMessageFilter(B_ANY_DELIVERY, B_ANY_SOURCE, B_PASTE), fWindow(window) {}
+
+	filter_result Filter(BMessage*, BHandler**) override
+	{
+		BMessage files(kMsgPasteFiles);
+		BPath folder;
+		if (find_directory(B_USER_SETTINGS_DIRECTORY, &folder) != B_OK)
+			return B_DISPATCH_MESSAGE;
+		folder.Append("Powergram/pasted");
+		if (!ClipboardFiles(folder.Path(), &files))
+			return B_DISPATCH_MESSAGE;
+		fWindow->PostMessage(&files);
+		return B_SKIP_MESSAGE;
+	}
+
+private:
+	BWindow* fWindow;
+};
+
+
 // On the entry: Up, Down, Enter and Tab go to the mention suggestions
 // while they show.
 class MentionKeyFilter : public BMessageFilter {
@@ -669,6 +698,7 @@ MainWindow::MainWindow(BRect frame, bool testDc,
 	AddCommonFilter(new EscapeFilter());
 	AddTouchScrolling(this);
 	fEntry->TextView()->AddFilter(new MentionKeyFilter(this));
+	fEntry->TextView()->AddFilter(new PasteFilter(this));
 
 	// Paper Plane: a 365 px sidebar next to the chat, for 14.6 px text.
 	float em = be_plain_font->Size();
@@ -1294,17 +1324,17 @@ MainWindow::_SendFiles(const BMessage* message)
 {
 	if (fOpenChat == 0 || !message->HasRef("refs"))
 		return;
-	BMessage send(kMsgSendFiles);
-	send.AddInt64("chat_id", fOpenChat);
+	// The Send window asks for a caption first: what's typed in the entry
+	// starts it; a pending reply applies.
+	BMessage* send = new BMessage(kMsgSendFiles);
+	send->AddInt64("chat_id", fOpenChat);
 	entry_ref ref;
 	for (int32 i = 0; message->FindRef("refs", i, &ref) == B_OK; i++)
-		send.AddRef("refs", &ref);
-	// Text in the entry becomes the caption, a pending reply applies.
-	send.AddString("caption", fEntry->Text());
-	send.AddInt64("reply_to", fReplyTo);
-	be_app->PostMessage(&send);
-	_CancelCompose();
-	fEntry->SetText("");
+		send->AddRef("refs", &ref);
+	send->AddBool("pasted", message->GetBool("pasted", false));
+	send->AddInt64("reply_to", fReplyTo);
+	send->AddString("entry_text", fEntry->Text());
+	(new SendFilesWindow(BMessenger(this), send, fEntry->Text(), Frame()))->Show();
 }
 
 
@@ -2047,7 +2077,26 @@ MainWindow::MessageReceived(BMessage* message)
 			break;
 		}
 		case kMsgSendFiles:
-			be_app->PostMessage(message);   // a chat chosen for them
+		{
+			if (!message->HasString("caption")) {
+				// Files for a chat chosen in the picker (from the Deskbar
+				// icon or Tracker): a caption first.
+				(new SendFilesWindow(BMessenger(this), new BMessage(*message), "",
+					Frame()))->Show();
+				break;
+			}
+			be_app->PostMessage(message);
+			// The entry's text went as the caption: it's sent, with the reply.
+			if (message->GetInt64("chat_id", 0) == fOpenChat
+				&& !message->HasInt64("to_chat_id") && message->HasString("entry_text")) {
+				if (BString(fEntry->Text()) == message->GetString("entry_text", ""))
+					fEntry->SetText("");
+				_CancelCompose();
+			}
+			break;
+		}
+		case kMsgPasteFiles:
+			_SendFiles(message);
 			break;
 		case kMsgFilesChosen:
 		case B_SIMPLE_DATA:

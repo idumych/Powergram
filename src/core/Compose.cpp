@@ -383,6 +383,44 @@ MapLink(double latitude, double longitude)
 }
 
 
+std::string
+PastedImageExtension(const std::string& mimeType)
+{
+	static const struct { const char* type; const char* extension; } kTypes[] = {
+		{"image/png", "png"}, {"image/jpeg", "jpg"}, {"image/jpg", "jpg"},
+		{"image/gif", "gif"}, {"image/webp", "webp"}, {"image/bmp", "bmp"},
+		{"image/x-bmp", "bmp"}, {"image/tiff", "tiff"}};
+	for (const auto& t : kTypes) {
+		if (mimeType == t.type)
+			return t.extension;
+	}
+	return std::string();
+}
+
+
+std::string
+PastedImageName(int year, int month, int day, int hour, int minute, int second,
+	const std::string& extension)
+{
+	char name[96];
+	snprintf(name, sizeof(name), "Pasted image %04d-%02d-%02d %02d.%02d.%02d.%s", year, month,
+		day, hour, minute, second, extension.c_str());
+	return name;
+}
+
+
+std::string
+CaptionProblem(const std::string& caption, int32_t maxLength)
+{
+	size_t length = CharacterCount(caption);
+	if ((int32_t)length > maxLength) {
+		return "The caption is " + std::to_string(length - maxLength)
+			+ " characters too long (at most " + std::to_string(maxLength) + ").";
+	}
+	return std::string();
+}
+
+
 namespace request {
 
 json

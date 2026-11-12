@@ -1812,6 +1812,14 @@ TestCompose()
 	CHECK(!ParseLocation("91, 10", &lat, &lon) && !ParseLocation("10, 181", &lat, &lon));
 	CHECK(!ParseLocation("0, 0", &lat, &lon) && !ParseLocation("48.85", &lat, &lon));
 	CHECK(!ParseLocation("https://example.com/page?id=5", &lat, &lon));
+	// Pasted pictures and captions.
+	CHECK(PastedImageExtension("image/png") == "png" && PastedImageExtension("image/jpeg") == "jpg"
+		&& PastedImageExtension("image/webp") == "webp" && PastedImageExtension("text/plain").empty()
+		&& PastedImageExtension("image/svg+xml").empty());
+	CHECK(PastedImageName(2026, 11, 2, 9, 5, 7, "png") == "Pasted image 2026-11-02 09.05.07.png");
+	CHECK(CaptionProblem("").empty() && CaptionProblem(std::string(1024, 'x')).empty());
+	CHECK(CaptionProblem(std::string(1030, 'x')) == "The caption is 6 characters too long (at most 1024).");
+	CHECK(CaptionProblem("\xD0\x91\xD0\xBE", 2).empty());   // characters, not bytes
 	CHECK(MapLink(48.8584, 2.2945)
 		== "https://www.openstreetmap.org/?mlat=48.858400&mlon=2.294500#map=16/48.858400/2.294500");
 	json place = request::SendLocation(5, 48.8584, 2.2945, 0, silent);

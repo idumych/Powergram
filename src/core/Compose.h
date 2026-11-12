@@ -90,6 +90,18 @@ bool ParseLocation(const std::string& text, double* latitude, double* longitude)
 // The OpenStreetMap link for a place, to look at it before sending.
 std::string MapLink(double latitude, double longitude);
 
+// A picture pasted from the clipboard as raw data of `mimeType`: the file
+// extension to save it with ("png", "jpg"…), or "" if it isn't a picture
+// Telegram takes as one.
+std::string PastedImageExtension(const std::string& mimeType);
+// "Pasted image 2026-11-12 14.05.09.png", for a picture pasted at `when`
+// (local time, broken down by the caller).
+std::string PastedImageName(int year, int month, int day, int hour, int minute,
+	int second, const std::string& extension);
+// What's wrong with a caption, "" if nothing: Telegram allows 1024
+// characters (TDLib's message_caption_length_max).
+std::string CaptionProblem(const std::string& caption, int32_t maxLength = 1024);
+
 namespace request {
 
 json SendTextWith(int64_t chatId, const std::string& text, int64_t replyTo,

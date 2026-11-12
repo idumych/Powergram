@@ -52,6 +52,7 @@
 #include "../core/Stickers.h"
 #include "ChatInfoWindow.h"
 #include "ComposeWindows.h"
+#include "SendFilesWindow.h"
 #include "ProfileWindow.h"
 #include "FileSaving.h"
 #include "MediaProbe.h"
@@ -336,6 +337,10 @@ App::_Params() const
 void
 App::ReadyToRun()
 {
+	// Pictures pasted on earlier days, sent or not, aren't needed any more.
+	BPath pasted = Settings::Directory();
+	pasted.Append("pasted");
+	CleanPastedFiles(pasted.Path());
 	fLogin = new LoginWindow(fTestDc);
 
 	BRect frame = fSettings.mainFrame;

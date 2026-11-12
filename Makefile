@@ -20,7 +20,7 @@ APP_SRCS := src/app/App.cpp src/app/TdClient.cpp src/app/Settings.cpp \
 	src/app/VoiceRecorder.cpp src/app/MentionPopup.cpp src/app/MediaProbe.cpp \
 	src/app/AvatarView.cpp src/app/ProfileWindow.cpp src/app/NewChatWindow.cpp src/app/ComposeWindows.cpp \
 	src/app/MediaWindow.cpp src/app/VideoPlayback.cpp src/app/LottieRenderer.cpp \
-	src/app/StickerPlayer.cpp src/app/WebmPlayer.cpp src/app/TouchScroll.cpp
+	src/app/StickerPlayer.cpp src/app/WebmPlayer.cpp src/app/TouchScroll.cpp src/app/SendFilesWindow.cpp
 
 BUILD := obj
 CORE_OBJS := $(CORE_SRCS:%.cpp=$(BUILD)/%.o)

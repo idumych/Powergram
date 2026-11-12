@@ -559,7 +559,7 @@ public:
 					message->GetInt64("chat_id", 0)));
 				for (int32 i = 0; message->FindRef("refs", i, &ref) == B_OK; i++)
 					printf(" %s", ref.name);
-				printf("\n");
+				printf(" caption \"%s\"\n", message->GetString("caption", ""));
 				fflush(stdout);
 				break;
 			}

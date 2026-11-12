@@ -76,6 +76,9 @@ made-up data so far.
   length), GIFs (as GIFs, which keep moving), files (file panel or drag and
   drop from Tracker) and stickers; several photos and videos at once go as
   an album; replying, editing, deleting, copying
+- Before files go, a Send window shows them (pictures as thumbnails) with a
+  caption field; pasting a picture (Alt+V, e.g. copied in ShowImage or a web
+  page) or files copied in Tracker into the message box sends them the same way
 - Right-click Send to send without sound, schedule the message for a day
   and time, or send it when the other person comes online; Chat > Scheduled
   messages lists them, to send now, reschedule or delete
