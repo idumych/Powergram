@@ -30,7 +30,15 @@ TD_LIBS := -ltdjson_static -ltdjson_private -ltdclient -ltdcore -ltdapi \
 	-ltdmtproto -ltdnet -ltddb -ltdsqlite -ltde2e -ltdactor -ltdutils \
 	-lssl -lcrypto -lz -lnetwork
 
-ifeq ($(shell uname -s),Haiku)
+# The system the app is built for; set TARGET_OS=Haiku with a Haiku cross
+# compiler (and RC, XRES and MIMESET from a Haiku build tree's host tools)
+# to build elsewhere, as packaging/cross-arm64.sh does.
+TARGET_OS ?= $(shell uname -s)
+RC ?= rc
+XRES ?= xres
+MIMESET ?= mimeset
+
+ifeq ($(TARGET_OS),Haiku)
 all: $(NAME) $(BUILD)/PowergramDeskbar
 
 # The Deskbar item: an add-on of its own, so Deskbar never loads the app.
@@ -41,8 +49,8 @@ $(BUILD)/PowergramDeskbar: src/deskbar/DeskbarItem.cpp src/app/Messages.h
 # The app at ./Powergram, resources from obj/ (packaging/build-hpkg.sh).
 $(NAME): $(CORE_OBJS) $(APP_OBJS) $(BUILD)/$(NAME).rsrc
 	$(CXX) -o $@ $(CORE_OBJS) $(APP_OBJS) $(LDFLAGS) -lbe -lmedia -ltracker -ltranslation -llocalestub -lopus -logg $(TD_LIBS)
-	xres -o $@ $(BUILD)/$(NAME).rsrc
-	mimeset -f $@
+	$(XRES) -o $@ $(BUILD)/$(NAME).rsrc
+	$(MIMESET) -f $@
 
 # The real main window with made-up chats, for screenshots.
 MOCKUP_OBJS := $(filter-out $(BUILD)/src/app/App.o $(BUILD)/src/app/TdClient.o \
@@ -117,7 +125,7 @@ $(BUILD)/bench_messageview: $(BUILD)/tests/bench_messageview.o $(BUILD)/src/app/
 
 $(BUILD)/$(NAME).rsrc: src/app/Powergram.rdef
 	@mkdir -p $(dir $@)
-	rc -o $@ $<
+	$(RC) -o $@ $<
 else
 all:
 	@echo "The app builds on Haiku or Renku only; 'make test' runs the core tests here."

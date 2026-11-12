@@ -6,24 +6,34 @@
 #
 # Build it on Haiku R1/beta6: the package requires haiku >= r1~beta6, and a
 # binary built against newer system libraries may not load on older ones.
+#
+# packaging/cross-arm64.sh builds the app elsewhere and then runs this with
+# SKIP_BUILD=1, ARCH, and MIMESET/PACKAGE set to a Haiku build tree's host
+# tools; HPKG_REQUIRES, if set, replaces the requirements from haiku-app.env.
 set -eu
 cd "$(dirname "$0")/.."
 ROOT=$(pwd)
+REQUIRES_OVERRIDE=${HPKG_REQUIRES-unset}
 . ./haiku-app.env
+[ "$REQUIRES_OVERRIDE" = unset ] || HPKG_REQUIRES_EXTRA=$REQUIRES_OVERRIDE
 
-ARCH=$(getarch)
+MIMESET=${MIMESET:-mimeset}
+PACKAGE=${PACKAGE:-package}
+ARCH=${ARCH:-$(getarch)}
 OUT="$ROOT/${APP_CMD}-${VERSION}-${REVISION}-${ARCH}.hpkg"
 
-for tool in rc xres mimeset package getarch; do
-	command -v "$tool" >/dev/null 2>&1 || {
-		echo "build-hpkg: '$tool' not found (pkgman install haiku_devel)" >&2; exit 1; }
-done
+if [ -z "${SKIP_BUILD:-}" ]; then
+	for tool in rc xres mimeset package getarch; do
+		command -v "$tool" >/dev/null 2>&1 || {
+			echo "build-hpkg: '$tool' not found (pkgman install haiku_devel)" >&2; exit 1; }
+	done
 
-# 1. Build. Strip at link time: xres appends the resources after the ELF
-#    data, so stripping afterwards would cut them off.
-make clean >/dev/null
-make LDFLAGS="${LDFLAGS:-} -s"
-[ -z "${TEST_CMD:-}" ] || sh -c "$TEST_CMD"
+	# 1. Build. Strip at link time: xres appends the resources after the ELF
+	#    data, so stripping afterwards would cut them off.
+	make clean >/dev/null
+	make LDFLAGS="${LDFLAGS:-} -s"
+	[ -z "${TEST_CMD:-}" ] || sh -c "$TEST_CMD"
+fi
 
 # 2. Package tree, relative to the install location (/boot/system)
 PKG="$ROOT/obj/hpkg"
@@ -31,7 +41,7 @@ rm -rf "$PKG"
 mkdir -p "$PKG/apps" "$PKG/bin" "$PKG/data/deskbar/menu/Applications" \
 	"$PKG/documentation/packages/$APP_CMD"
 cp "$APP_NAME" "$PKG/apps/$APP_NAME"
-mimeset -f "$PKG/apps/$APP_NAME"
+$MIMESET -f "$PKG/apps/$APP_NAME"
 ln -s "../apps/$APP_NAME" "$PKG/bin/$APP_CMD"
 ln -s "../../../../apps/$APP_NAME" \
 	"$PKG/data/deskbar/menu/Applications/${DESKBAR_NAME:-$APP_NAME}"
@@ -88,6 +98,6 @@ EOF
 # 4. Package. The licence must be one Haiku knows or one shipped in the
 #    package; `package create` says which when it isn't.
 rm -f "$OUT"
-package create -C "$PKG" "$OUT"
-package list -i "$OUT" >/dev/null
+$PACKAGE create -C "$PKG" "$OUT"
+$PACKAGE list -i "$OUT" >/dev/null
 echo "Built $OUT"
