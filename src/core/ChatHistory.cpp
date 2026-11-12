@@ -650,7 +650,9 @@ ChatHistory::Apply(const json& object)
 
 	if (type == "updateNewMessage") {
 		const json& message = Field(object, "message");
-		if (Int(message, "chat_id") != fChatId || !fAtLatest)
+		// Scheduled messages wait in a list of their own (Compose.h).
+		if (Int(message, "chat_id") != fChatId || !fAtLatest
+			|| Field(message, "scheduling_state").is_object())
 			return false;
 		_Add(message);
 		return true;
@@ -659,7 +661,8 @@ ChatHistory::Apply(const json& object)
 	if (type == "updateMessageSendSucceeded" || type == "updateMessageSendFailed") {
 		// These carry the chat id only inside "message".
 		const json& message = Field(object, "message");
-		if (Int(message, "chat_id") != fChatId)
+		if (Int(message, "chat_id") != fChatId
+			|| Field(message, "scheduling_state").is_object())
 			return false;
 		fMessages.erase(Int(object, "old_message_id"));
 		_Add(message);

@@ -40,6 +40,7 @@
 #include "../core/ChatHistory.h"
 #include "../core/ChatInfo.h"
 #include "../core/ChatList.h"
+#include "../core/Compose.h"
 #include "../core/Contacts.h"
 #include "../core/Files.h"
 #include "../core/Links.h"
@@ -50,6 +51,7 @@
 #include "../core/Presence.h"
 #include "../core/Stickers.h"
 #include "ChatInfoWindow.h"
+#include "ComposeWindows.h"
 #include "ProfileWindow.h"
 #include "FileSaving.h"
 #include "MediaProbe.h"
@@ -159,6 +161,12 @@ private:
 	BMessenger fNewChatWindow;
 	std::map<std::string, BMessenger> fCreateReplies;   // "create:<n>" → window
 	std::map<std::string, std::vector<int64_t>> fCreateMembers;   // a new channel's
+
+	// The Scheduled messages window, for one chat at a time.
+	void _SendScheduled();
+	BMessenger fScheduledWindow;
+	pp::ScheduledMessages fScheduled;
+	int32 fPollAnswersMax = 12;   // TDLib's "poll_answer_count_max"
 	int32 fCreateSeq = 0;
 
 	Settings fSettings;
@@ -429,6 +437,10 @@ App::_HandleObject(const json& object)
 	}
 	if (type == "updateOption" && pp::Str(object, "name") == "my_id")
 		fMyId = pp::Int(pp::Field(object, "value"), "value");
+	if (type == "updateOption" && pp::Str(object, "name") == "poll_answer_count_max")
+		fPollAnswersMax = (int32)pp::Int(pp::Field(object, "value"), "value", 12);
+	if (fScheduledWindow.IsValid() && fScheduled.Apply(object))
+		_SendScheduled();
 	if (fProfileWindow.IsValid() && fProfile.userId != 0
 		&& (type == "updateUser" || type == "updateUserFullInfo") && fProfile.Apply(object))
 		_SendProfile();
@@ -482,6 +494,25 @@ App::_HandleObject(const json& object)
 	}
 	if (extra.rfind("history:", 0) == 0) {
 		_HandleHistoryReply(object);
+		return;
+	}
+	if (extra.rfind("scheduled:", 0) == 0) {
+		if (type == "messages" && atoll(extra.c_str() + 10) == fScheduled.ChatId()) {
+			fScheduled.Set(object);
+			_SendScheduled();
+		}
+		return;
+	}
+	if (extra == "send_poll" || extra == "send_location" || extra == "reschedule"
+		|| extra == "send_scheduled") {
+		if (type == "error") {
+			BString text(extra == "send_poll" ? "Could not send the poll. "
+				: extra == "send_location" ? "Could not send the location. "
+				: extra == "reschedule" ? "Could not change the scheduled message. "
+				: "Could not schedule the message. ");
+			text << pp::AuthFlow::ErrorText(object).c_str();
+			_ShowError(text);
+		}
 		return;
 	}
 	if (extra == "secret_new" || extra == "self_destruct") {
@@ -1192,6 +1223,12 @@ App::_SendChatStatus()
 	}
 	message.AddBool("can_start_secret", chat != nullptr && !chat->secret
 		&& chat->kind == pp::Chat::kPrivate && chat->userId != 0 && chat->userId != fMyId);
+	// "Send when online" needs the other person's exact status.
+	pp::UserStatus::Kind seen = chat != nullptr && chat->userId != 0
+		? fPresence.Status(chat->userId).kind : pp::UserStatus::kUnknown;
+	message.AddBool("can_send_when_online", chat != nullptr && !chat->secret
+		&& chat->userId != fMyId
+		&& (seen == pp::UserStatus::kOnline || seen == pp::UserStatus::kOffline));
 	fMain->PostMessage(&message);
 	if (fInfoWindow != nullptr && fInfo.chatId == chatId)
 		_SendChatInfo();
@@ -1986,6 +2023,20 @@ App::_HandleContactsReply(const json& object, const std::string& extra)
 
 
 void
+App::_SendScheduled()
+{
+	if (!fScheduledWindow.IsValid())
+		return;
+	BMessage list(kMsgScheduledList);
+	for (const pp::ScheduledMessage& m : fScheduled.Sorted()) {
+		list.AddInt64("id", m.id);
+		list.AddInt64("send_at", m.sendAt);
+		list.AddString("preview", m.preview.c_str());
+	}
+	fScheduledWindow.SendMessage(&list);
+}
+
+void
 App::_SendPinned()
 {
 	BMessage pinned(kMsgPinned);
@@ -2196,6 +2247,80 @@ App::MessageReceived(BMessage* message)
 
 		case kMsgShowNewChat:
 			_ShowNewChat(message->GetString("what", ""));
+			break;
+
+		case kMsgShowScheduled:
+		{
+			int64 chatId = message->GetInt64("chat_id", 0);
+			if (fScheduledWindow.IsValid()) {
+				if (fScheduled.ChatId() == chatId) {
+					BMessage activate(B_EXECUTE_PROPERTY);
+					activate.AddSpecifier("Active");
+					activate.AddBool("data", true);
+					fScheduledWindow.SendMessage(&activate);
+					break;
+				}
+				fScheduledWindow.SendMessage(B_QUIT_REQUESTED);
+			}
+			ScheduledWindow* window = new ScheduledWindow(BMessenger(this), chatId,
+				fNames.Chat(chatId).c_str(), fMain->Frame());
+			fScheduledWindow = BMessenger(window);
+			fScheduled = pp::ScheduledMessages(chatId);
+			window->Show();
+			_Send(pp::request::ScheduledMessages(chatId, "scheduled:" + std::to_string(chatId)));
+			break;
+		}
+		case kMsgScheduledClosed:
+			if (message->GetInt64("chat_id", 0) == fScheduled.ChatId()) {
+				fScheduledWindow = BMessenger();
+				fScheduled = pp::ScheduledMessages();
+			}
+			break;
+		case kMsgScheduledAction:
+		{
+			int64 chatId = message->GetInt64("chat_id", 0);
+			int64 messageId = message->GetInt64("message_id", 0);
+			BString action = message->GetString("action", "");
+			if (action == "now")
+				_Send(pp::request::SendScheduledNow(chatId, messageId));
+			else if (action == "move")
+				_Send(pp::request::Reschedule(chatId, messageId, message->GetInt64("send_at", 0)));
+			else if (action == "delete")
+				_Send(pp::request::Delete(chatId, {messageId}, true));
+			break;
+		}
+
+		case kMsgShowPoll:
+		{
+			int64 chatId = message->GetInt64("chat_id", 0);
+			(new PollWindow(BMessenger(this), chatId, fPresence.IsChannel(chatId),
+				fPollAnswersMax, fMain->Frame()))->Show();
+			break;
+		}
+		case kMsgSendPoll:
+		{
+			pp::PollDraft poll;
+			poll.question = message->GetString("question", "");
+			const char* option;
+			for (int32 i = 0; message->FindString("option", i, &option) == B_OK; i++)
+				poll.options.push_back(option);
+			poll.anonymous = message->GetBool("anonymous", true);
+			poll.multipleAnswers = message->GetBool("multiple", false);
+			poll.quiz = message->GetBool("quiz", false);
+			poll.correctOption = message->GetInt32("correct", -1);
+			poll.explanation = message->GetString("explanation", "");
+			_Send(pp::request::SendPoll(message->GetInt64("chat_id", 0), poll, 0,
+				pp::SendOptions()));
+			break;
+		}
+		case kMsgShowLocation:
+			(new LocationWindow(BMessenger(this), message->GetInt64("chat_id", 0),
+				fMain->Frame()))->Show();
+			break;
+		case kMsgSendLocation:
+			_Send(pp::request::SendLocation(message->GetInt64("chat_id", 0),
+				message->GetDouble("latitude", 0), message->GetDouble("longitude", 0), 0,
+				pp::SendOptions()));
 			break;
 		case kMsgNewChatClosed:
 			fNewChatWindow = BMessenger();
@@ -2711,8 +2836,15 @@ App::MessageReceived(BMessage* message)
 			for (int32 i = 0; message->FindString("mention_name", i, &name) == B_OK; i++)
 				mentioned.push_back({name, message->GetInt64("mention_user", i, 0)});
 			std::string text = message->GetString("text", "");
-			_Send(pp::request::SendText(chatId, text, message->GetInt64("reply_to", 0),
-				pp::MentionEntities(text, mentioned)));
+			pp::SendOptions options;
+			options.silent = message->GetBool("silent", false);
+			options.sendAt = message->GetInt64("send_at", 0);
+			options.whenOnline = message->GetBool("when_online", false);
+			json send = pp::request::SendTextWith(chatId, text, message->GetInt64("reply_to", 0),
+				pp::MentionEntities(text, mentioned), options);
+			if (options.Scheduled())
+				send["@extra"] = "send_scheduled";
+			_Send(send);
 			fTyping.Reset();  // sending ends "typing" on Telegram's side
 			break;
 		}

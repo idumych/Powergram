@@ -68,7 +68,8 @@ enum {
 	// parallel arrays "id" (int64), "sender", "text", "time", "outgoing",
 	// "read", "pending", "failed", "edited", "service" (bools)
 	kMsgHistory = 'hist',
-	// main window → app: "chat_id" (int64), "text"
+	// main window → app: "chat_id" (int64), "text"; "silent" (bool, no
+	// sound), "send_at" (int64, scheduled) or "when_online" (bool)
 	kMsgSendText = 'stxt',
 	// main window → app: the entry changed; "chat_id" (int64), "empty" (bool)
 	kMsgEntryChanged = 'entc',
@@ -288,6 +289,24 @@ enum {
 	// app → group or add contact window: "text" (string) of a failure;
 	// "" when done, and the window closes
 	kMsgCreateResult = 'ncrs',
+
+	// main window → app: "chat_id" (int64); open the chat's Scheduled
+	// messages, a new poll, or a location to send
+	kMsgShowScheduled = 'shsc',
+	kMsgShowPoll = 'shpl',
+	kMsgShowLocation = 'shlc',
+	// app → scheduled window: arrays "id" (int64), "send_at" (int64, 0 for
+	// when online), "preview" (string)
+	kMsgScheduledList = 'scls',
+	// scheduled window → app: "chat_id", "message_id" (int64), "action"
+	// ("now", "move" with "send_at", "delete")
+	kMsgScheduledAction = 'scac',
+	kMsgScheduledClosed = 'sccl',
+	// poll window → app: "chat_id", "question", "option" (strings),
+	// "anonymous", "multiple", "quiz" (bool), "correct" (int32), "explanation"
+	kMsgSendPoll = 'spol',
+	// location window → app: "chat_id", "latitude", "longitude" (double)
+	kMsgSendLocation = 'sloc',
 
 	kMsgLogOut = 'lout',
 	kMsgLogOutConfirmed = 'loco',

@@ -41,6 +41,7 @@
 #include "../core/SecretChat.h"
 #include "BitmapUtils.h"
 #include "ChatPicker.h"
+#include "ComposeWindows.h"
 #include "SettingsWindow.h"
 #include "Icons.h"
 #include "Pickers.h"
@@ -75,7 +76,35 @@ enum {
 	kMsgChatMenuItem = 'cmit',
 	kMsgChatDeleteAnswer = 'cdan',
 	kMsgShowStickers = 'shst',
-	kMsgFilesChosen = 'fchs'
+	kMsgFilesChosen = 'fchs',
+	kMsgSendMenu = 'sdmn',
+	kMsgSendSilent = 'sdsl',
+	kMsgSendScheduleAsk = 'sdsa',
+	kMsgSendAt = 'sdat',
+	kMsgSendWhenOnline = 'sdwo',
+	kMsgChatWindow = 'cwin'
+};
+
+
+// The Send button: a right-click offers sending without sound, at a set
+// time, or when the other person comes online.
+class SendButton : public BButton {
+public:
+	SendButton() : BButton("send", "Send", new BMessage(kMsgSend)) {}
+
+	void MouseDown(BPoint where) override
+	{
+		uint32 buttons = 0;
+		if (Window()->CurrentMessage() != nullptr)
+			Window()->CurrentMessage()->FindInt32("buttons", (int32*)&buttons);
+		if ((buttons & B_SECONDARY_MOUSE_BUTTON) != 0 && IsEnabled()) {
+			BMessage menu(kMsgSendMenu);
+			menu.AddPoint("where", ConvertToScreen(where));
+			Window()->PostMessage(&menu);
+			return;
+		}
+		BButton::MouseDown(where);
+	}
 };
 
 // Telegram's avatar colours (Paper Plane's avatar.rs picks by id the same way).
@@ -545,6 +574,23 @@ MainWindow::MainWindow(BRect frame, bool testDc,
 	chat->AddSeparatorItem();
 	chat->AddItem(new BMenuItem("Open username or link" B_UTF8_ELLIPSIS,
 		new BMessage(kMsgOpenLinkAsk), 'O'));
+	chat->AddSeparatorItem();
+	// For the open chat: the app opens these windows.
+	BMessage* poll = new BMessage(kMsgChatWindow);
+	poll->AddInt32("which", kMsgShowPoll);
+	BMessage* location = new BMessage(kMsgChatWindow);
+	location->AddInt32("which", kMsgShowLocation);
+	BMessage* scheduled = new BMessage(kMsgChatWindow);
+	scheduled->AddInt32("which", kMsgShowScheduled);
+	fPollItem = new BMenuItem("New poll" B_UTF8_ELLIPSIS, poll);
+	fLocationItem = new BMenuItem("Send location" B_UTF8_ELLIPSIS, location);
+	fScheduleItem = new BMenuItem("Schedule message" B_UTF8_ELLIPSIS,
+		new BMessage(kMsgSendScheduleAsk));
+	fScheduledItem = new BMenuItem("Scheduled messages" B_UTF8_ELLIPSIS, scheduled);
+	for (BMenuItem* item : {fPollItem, fLocationItem, fScheduleItem, fScheduledItem}) {
+		item->SetEnabled(false);
+		chat->AddItem(item);
+	}
 	bar->AddItem(chat);
 
 	fList = new ChatListView();
@@ -592,7 +638,8 @@ MainWindow::MainWindow(BRect frame, bool testDc,
 
 	fEntry = new BTextControl("entry", nullptr, "", new BMessage(kMsgSend));
 	fEntry->SetModificationMessage(new BMessage(kMsgEntryModified));
-	fSendButton = new BButton("send", "Send", new BMessage(kMsgSend));
+	fSendButton = new SendButton();
+	fSendButton->SetToolTip("Right-click to send without sound or later");
 	// Icon buttons with tooltips, like Paper Plane's entry row.
 	fAttachButton = _IconButton("attach", kIconAttach, kMsgAttach, "Attach files");
 	fEmojiButton = _IconButton("emoji", kIconEmoji, kMsgShowEmoji, "Emoji");
@@ -770,7 +817,7 @@ MainWindow::_SelectionChanged()
 		fPinnedBar->Hide();
 	fCanJoin = false;
 	fWriteBlocked = false;
-	fSecretChat = fCanStartSecret = false;
+	fSecretChat = fCanStartSecret = fCanSendWhenOnline = false;
 	fSelfDestruct = 0;
 	_UpdateSecretMenu();
 	if (fRecording)
@@ -865,7 +912,7 @@ MainWindow::_UpdateHistory(const BMessage* history)
 
 
 void
-MainWindow::_Send()
+MainWindow::_Send(bool silent, int64 sendAt, bool whenOnline)
 {
 	BString text(fEntry->Text());
 	if (fOpenChat == 0 || text.Trim().IsEmpty())
@@ -881,6 +928,9 @@ MainWindow::_Send()
 		send.AddInt64("chat_id", fOpenChat);
 		send.AddString("text", fEntry->Text());
 		send.AddInt64("reply_to", fReplyTo);
+		send.AddBool("silent", silent);
+		send.AddInt64("send_at", sendAt);
+		send.AddBool("when_online", whenOnline);
 		for (const auto& mention : fMentioned) {
 			send.AddString("mention_name", mention.first.c_str());
 			send.AddInt64("mention_user", mention.second);
@@ -1179,6 +1229,13 @@ void
 MainWindow::_UpdateSecretMenu()
 {
 	fSecretItem->SetEnabled(fCanStartSecret);
+	// Polls, places and scheduling: not in secret chats, nor where one
+	// can't write.
+	bool canSend = fOpenChat != 0 && !fCanJoin && !fWriteBlocked;
+	fPollItem->SetEnabled(canSend && !fSecretChat);
+	fLocationItem->SetEnabled(canSend);
+	fScheduleItem->SetEnabled(canSend && !fSecretChat);
+	fScheduledItem->SetEnabled(fOpenChat != 0 && !fSecretChat);
 	fSelfDestructMenu->Superitem()->SetEnabled(fSecretChat && !fWriteBlocked);
 	for (int32 i = 0; BMenuItem* item = fSelfDestructMenu->ItemAt(i); i++)
 		item->SetMarked(item->Message()->GetInt32("seconds", -1) == fSelfDestruct);
@@ -1513,6 +1570,7 @@ MainWindow::MessageReceived(BMessage* message)
 				_SetWriteBlocked(notice[0] != '\0');
 				fSecretChat = message->GetBool("secret", false);
 				fCanStartSecret = message->GetBool("can_start_secret", false);
+				fCanSendWhenOnline = message->GetBool("can_send_when_online", false);
 				fSelfDestruct = message->GetInt32("self_destruct", 0);
 				_UpdateSecretMenu();
 			}
@@ -1533,6 +1591,64 @@ MainWindow::MessageReceived(BMessage* message)
 			}
 			_Send();
 			break;
+		case kMsgSendMenu:
+		{
+			if (fOpenChat == 0 || fCanJoin || fRecording || fEditing != 0)
+				break;
+			bool empty = BString(fEntry->Text()).Trim().IsEmpty();
+			BPopUpMenu* menu = new BPopUpMenu("send options", false, false);
+			BMenuItem* silent = new BMenuItem("Send without sound", new BMessage(kMsgSendSilent));
+			BMenuItem* schedule = new BMenuItem("Schedule message" B_UTF8_ELLIPSIS,
+				new BMessage(kMsgSendScheduleAsk));
+			BMenuItem* online = new BMenuItem("Send when online", new BMessage(kMsgSendWhenOnline));
+			silent->SetEnabled(!empty);
+			// Secret chats can't schedule; "when online" needs the other
+			// person's exact status.
+			schedule->SetEnabled(!empty && !fSecretChat);
+			online->SetEnabled(!empty && fCanSendWhenOnline);
+			menu->AddItem(silent);
+			menu->AddItem(schedule);
+			menu->AddItem(online);
+			menu->SetTargetForItems(this);
+			menu->SetAsyncAutoDestruct(true);
+			menu->Go(message->GetPoint("where", BPoint()), true, true, true);
+			break;
+		}
+		case kMsgSendSilent:
+			_Send(true);
+			break;
+		case kMsgSendWhenOnline:
+			_Send(false, 0, true);
+			break;
+		case kMsgSendScheduleAsk:
+		{
+			if (fOpenChat == 0 || fSecretChat || fEditing != 0)
+				break;
+			if (BString(fEntry->Text()).Trim().IsEmpty()) {
+				BAlert* alert = new BAlert("schedule", "Type the message first, then "
+					"choose when it's sent.", "OK");
+				alert->Go(nullptr);
+				break;
+			}
+			BMessage* reply = new BMessage(kMsgSendAt);
+			reply->AddInt64("chat_id", fOpenChat);
+			(new ScheduleWindow(BMessenger(this), reply, Frame()))->Show();
+			break;
+		}
+		case kMsgSendAt:
+			// The chat may have changed while the time was being chosen.
+			if (message->GetInt64("chat_id", 0) == fOpenChat)
+				_Send(false, message->GetInt64("send_at", 0));
+			break;
+		case kMsgChatWindow:
+		{
+			if (fOpenChat == 0)
+				break;
+			BMessage show(message->GetInt32("which", 0));
+			show.AddInt64("chat_id", fOpenChat);
+			be_app->PostMessage(&show);
+			break;
+		}
 		case kMsgEntryModified:
 		{
 			if (fOpenChat == 0)

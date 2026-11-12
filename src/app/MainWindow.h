@@ -38,7 +38,7 @@ private:
 	void _ShowFindBar(bool show);
 	void _UpdateHistory(const BMessage* history);
 	void _SelectionChanged();
-	void _Send();
+	void _Send(bool silent = false, int64 sendAt = 0, bool whenOnline = false);
 	void _ShowMessageMenu(const BMessage* properties);
 	void _StartReply(int64 messageId);
 	void _StartEdit(int64 messageId);
@@ -103,6 +103,11 @@ private:
 	void _UpdateSecretMenu();
 	bool fSecretChat = false;        // the open chat is a secret chat
 	bool fCanStartSecret = false;    // … or a private chat one can start from
+	bool fCanSendWhenOnline = false; // the other person's exact status is known
+	BMenuItem* fPollItem;
+	BMenuItem* fLocationItem;
+	BMenuItem* fScheduleItem;
+	BMenuItem* fScheduledItem;
 	int32 fSelfDestruct = 0;         // its timer, seconds
 	BMenuItem* fSecretItem;
 	BMenu* fSelfDestructMenu;

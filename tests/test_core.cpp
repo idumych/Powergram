@@ -8,6 +8,7 @@
 #include "../src/core/ChatHistory.h"
 #include "../src/core/ChatInfo.h"
 #include "../src/core/ChatList.h"
+#include "../src/core/Compose.h"
 #include "../src/core/Contacts.h"
 #include "../src/core/Files.h"
 #include "../src/core/Format.h"
@@ -1645,6 +1646,157 @@ TestContacts()
 }
 
 
+// Sending without sound, scheduled or when online; scheduled messages kept
+// out of the history and listed apart; polls and quizzes; places from
+// coordinates and map links.
+static void
+TestCompose()
+{
+	SendOptions none;
+	json plain = request::SendTextWith(5, "hi", 0, json(), none);
+	CHECK(Str(plain, "@type") == "sendMessage" && !plain.contains("options"));
+	SendOptions silent;
+	silent.silent = true;
+	json quiet = request::SendTextWith(5, "hi", 9, json(), silent);
+	CHECK(Bool(quiet["options"], "disable_notification") && !quiet["options"].contains("scheduling_state")
+		&& Int(quiet["reply_to"], "message_id") == 9);
+	SendOptions later;
+	later.sendAt = 1800000000;
+	json at = request::SendTextWith(5, "hi", 0, json(), later);
+	CHECK(Str(at["options"]["scheduling_state"], "@type") == "messageSchedulingStateSendAtDate"
+		&& Int(at["options"]["scheduling_state"], "send_date") == 1800000000
+		&& !Bool(at["options"], "disable_notification", true));
+	SendOptions online;
+	online.whenOnline = true;
+	CHECK(Str(request::SendTextWith(5, "hi", 0, json(), online)["options"]["scheduling_state"],
+		"@type") == "messageSchedulingStateSendWhenOnline");
+
+	CHECK(ParseClock("21:30") == 21 * 60 + 30 && ParseClock(" 9:05 ") == 9 * 60 + 5);
+	CHECK(ParseClock("9.05") == 545 && ParseClock("9") == 540 && ParseClock("0:00") == 0);
+	CHECK(ParseClock("9 pm") == 21 * 60 && ParseClock("9:30PM") == 21 * 60 + 30);
+	CHECK(ParseClock("8:41\xE2\x80\xAF" "AM") == 8 * 60 + 41 && ParseClock("8:41\xC2\xA0pm") == 20 * 60 + 41);
+	CHECK(ParseClock("12am") == 0 && ParseClock("12 pm") == 720 && ParseClock("11:59 p.m.") == 1439);
+	CHECK(ParseClock("24:00") == -1 && ParseClock("9:7") == -1 && ParseClock("13 pm") == -1);
+	CHECK(ParseClock("") == -1 && ParseClock("noon") == -1 && ParseClock("9:30 tomorrow") == -1);
+	CHECK(ScheduleProblem(1000, 1000) == "Choose a time in the future.");
+	CHECK(ScheduleProblem(1000 + 3600, 1000).empty());
+	CHECK(!ScheduleProblem(1000 + 366 * 86400, 1000).empty());
+
+	// The history leaves scheduled messages out; the scheduled list has them.
+	auto message = [](int64_t id, const char* text, int64_t sendAt) {
+		json m = {{"@type", "message"}, {"id", id}, {"chat_id", 5}, {"is_outgoing", true},
+			{"date", 0}, {"content", {{"@type", "messageText"},
+				{"text", {{"@type", "formattedText"}, {"text", text}}}}}};
+		if (sendAt > 0)
+			m["scheduling_state"] = {{"@type", "messageSchedulingStateSendAtDate"}, {"send_date", sendAt}};
+		else if (sendAt < 0)
+			m["scheduling_state"] = {{"@type", "messageSchedulingStateSendWhenOnline"}};
+		return m;
+	};
+	CHECK(IsScheduled(message(1, "a", 100)) && !IsScheduled(message(1, "a", 0)));
+	ChatHistory history(5);
+	CHECK(!history.Apply({{"@type", "updateNewMessage"}, {"message", message(70, "later", 2000)}}));
+	CHECK(history.Apply({{"@type", "updateNewMessage"}, {"message", message(71, "now", 0)}}));
+	CHECK(history.Sorted().size() == 1);
+
+	ScheduledMessages scheduled(5);
+	scheduled.Set({{"@type", "messages"}, {"messages", {message(80, "second", 3000),
+		message(81, "online", -1), message(82, "first", 2000), message(83, "not", 0)}}});
+	std::vector<ScheduledMessage> list = scheduled.Sorted();
+	CHECK(list.size() == 3 && list[0].id == 82 && list[1].id == 80 && list[2].id == 81);
+	CHECK(list[0].preview == "first" && list[0].sendAt == 2000 && list[2].sendAt == 0);
+	// A new one, one sent (its scheduled copy deleted), one edited, others' chats.
+	CHECK(scheduled.Apply({{"@type", "updateNewMessage"}, {"message", message(84, "new", 2500)}}));
+	CHECK(!scheduled.Apply({{"@type", "updateNewMessage"}, {"message", message(85, "plain", 0)}}));
+	CHECK(scheduled.Apply({{"@type", "updateDeleteMessages"}, {"chat_id", 5},
+		{"message_ids", {82}}, {"is_permanent", true}}));
+	CHECK(scheduled.Apply({{"@type", "updateMessageContent"}, {"chat_id", 5}, {"message_id", 80},
+		{"new_content", {{"@type", "messageText"}, {"text", {{"@type", "formattedText"},
+			{"text", "edited"}}}}}}));
+	CHECK(!scheduled.Apply({{"@type", "updateDeleteMessages"}, {"chat_id", 6}, {"message_ids", {80}}}));
+	json sent = message(86, "pending sent", 2600);
+	CHECK(scheduled.Apply({{"@type", "updateMessageSendSucceeded"}, {"message", sent},
+		{"old_message_id", 84}}));
+	list = scheduled.Sorted();
+	CHECK(list.size() == 3 && list[0].id == 86 && list[1].id == 80 && list[1].preview == "edited");
+
+	json now = request::SendScheduledNow(5, 80);
+	CHECK(Str(now, "@type") == "editMessageSchedulingState" && !now.contains("scheduling_state"));
+	json moved = request::Reschedule(5, 80, 5000);
+	CHECK(Int(moved["scheduling_state"], "send_date") == 5000);
+	CHECK(Str(request::ScheduledMessages(5, "s"), "@type") == "getChatScheduledMessages");
+
+	// Polls
+	PollDraft poll;
+	CHECK(PollProblem(poll, 12, false) == "Enter a question.");
+	poll.question = "Lunch?";
+	poll.options = {" Pizza ", "", "Soup"};
+	CHECK(PollOptions(poll) == std::vector<std::string>({"Pizza", "Soup"}));
+	CHECK(PollProblem(poll, 12, false).empty());
+	CHECK(PollProblem(poll, 1, false) == "A poll can have at most 1 answers.");
+	poll.options = {"Pizza"};
+	CHECK(PollProblem(poll, 12, false) == "Enter at least two answers.");
+	poll.options = {"Pizza", "Pizza"};
+	CHECK(PollProblem(poll, 12, false) == "Each answer must be different.");
+	poll.options = {"Pizza", std::string(101, 'x')};
+	CHECK(!PollProblem(poll, 12, false).empty());
+	poll.options = {"Pizza", "Soup"};
+	poll.anonymous = false;
+	CHECK(PollProblem(poll, 12, true) == "Polls in channels are anonymous.");
+	poll.quiz = true;
+	CHECK(PollProblem(poll, 12, false) == "Choose the right answer.");
+	poll.correctOption = 1;
+	poll.multipleAnswers = true;
+	poll.explanation = "Warm";
+	CHECK(PollProblem(poll, 12, false).empty());
+	json send = request::SendPoll(5, poll, 0, SendOptions());
+	const json& content = send["input_message_content"];
+	CHECK(Str(content, "@type") == "inputMessagePoll" && !Bool(content, "is_anonymous", true)
+		&& Str(content["question"], "text") == "Lunch?" && content["options"].size() == 2
+		&& Str(content["options"][1]["text"], "text") == "Soup"
+		&& !Bool(content, "allows_multiple_answers", true)
+		&& Str(content["type"], "@type") == "inputPollTypeQuiz"
+		&& content["type"]["correct_option_ids"] == json({1})
+		&& Str(content["type"]["explanation"], "text") == "Warm");
+	poll.quiz = false;
+	CHECK(Str(request::SendPoll(5, poll, 0, SendOptions())["input_message_content"]["type"],
+		"@type") == "inputPollTypeRegular");
+
+	// Places
+	double lat = 0, lon = 0;
+	CHECK(ParseLocation("48.8584, 2.2945", &lat, &lon) && std::fabs(lat - 48.8584) < 1e-9
+		&& std::fabs(lon - 2.2945) < 1e-9);
+	CHECK(ParseLocation("-33.8568,151.2153", &lat, &lon) && lat < 0 && lon > 151);
+	CHECK(ParseLocation("geo:37.786971,-122.399677", &lat, &lon) && lon < -122);
+	CHECK(ParseLocation("geo:0,0?q=51.5007,-0.1246(Big Ben)", &lat, &lon)
+		&& std::fabs(lat - 51.5007) < 1e-9);
+	CHECK(ParseLocation("https://www.google.com/maps/place/Eiffel+Tower/@48.8583701,2.2944813,17z/data=x",
+		&lat, &lon) && std::fabs(lat - 48.8583701) < 1e-9);
+	CHECK(ParseLocation("https://maps.google.com/?q=40.6892,-74.0445", &lat, &lon)
+		&& std::fabs(lon + 74.0445) < 1e-9);
+	CHECK(ParseLocation("https://www.google.com/maps/search/?api=1&query=47.5951%2C-122.3316",
+		&lat, &lon) && std::fabs(lat - 47.5951) < 1e-9);
+	CHECK(ParseLocation("https://www.openstreetmap.org/?mlat=52.5163&mlon=13.3777#map=17/52.5163/13.3777",
+		&lat, &lon) && std::fabs(lon - 13.3777) < 1e-9);
+	CHECK(ParseLocation("https://www.openstreetmap.org/#map=15/41.9029/12.4534", &lat, &lon)
+		&& std::fabs(lat - 41.9029) < 1e-9 && std::fabs(lon - 12.4534) < 1e-9);
+	CHECK(ParseLocation("https://maps.apple.com/?ll=35.6586,139.7454&q=Tokyo%20Tower", &lat, &lon)
+		&& std::fabs(lon - 139.7454) < 1e-9);
+	CHECK(ParseLocation("https://www.bing.com/maps?cp=55.7539~37.6208&lvl=16", &lat, &lon)
+		&& std::fabs(lat - 55.7539) < 1e-9);
+	CHECK(!ParseLocation("somewhere nice", &lat, &lon));
+	CHECK(!ParseLocation("91, 10", &lat, &lon) && !ParseLocation("10, 181", &lat, &lon));
+	CHECK(!ParseLocation("0, 0", &lat, &lon) && !ParseLocation("48.85", &lat, &lon));
+	CHECK(!ParseLocation("https://example.com/page?id=5", &lat, &lon));
+	CHECK(MapLink(48.8584, 2.2945)
+		== "https://www.openstreetmap.org/?mlat=48.858400&mlon=2.294500#map=16/48.858400/2.294500");
+	json place = request::SendLocation(5, 48.8584, 2.2945, 0, silent);
+	CHECK(Str(place["input_message_content"], "@type") == "inputMessageLocation"
+		&& place["input_message_content"]["location"]["latitude"] == 48.8584
+		&& Bool(place["options"], "disable_notification"));
+}
+
+
 int
 main()
 {
@@ -1679,6 +1831,7 @@ main()
 	TestQrLogin();
 	TestSecretChats();
 	TestContacts();
+	TestCompose();
 	if (sFailures) {
 		std::fprintf(stderr, "%d check(s) failed\n", sFailures);
 		return EXIT_FAILURE;

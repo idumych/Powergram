@@ -21,6 +21,7 @@
 #include "../src/app/SettingsWindow.h"
 #include "../src/app/ProfileWindow.h"
 #include "../src/app/NewChatWindow.h"
+#include "../src/app/ComposeWindows.h"
 #include "../src/app/ChatInfoWindow.h"
 #include "../src/app/LoginWindow.h"
 #include "../src/core/AuthFlow.h"
@@ -193,6 +194,7 @@ public:
 				// "links": looking at a group we aren't in.
 				status.AddBool("can_join", sScene == "links" && id == kGroup);
 				status.AddBool("can_start_secret", id == kPrivate);
+				status.AddBool("can_send_when_online", id == kPrivate);
 				if (id == kSecret) {
 					status.AddBool("secret", true);
 					status.AddString("notice", sScene == "secretwait"
@@ -209,6 +211,12 @@ public:
 					fMain->PostMessage(kMsgOpenLinkAsk);
 				else if (sScene == "profile")
 					PostMessage(kMsgShowProfile);
+				else if (sScene == "scheduled" || sScene == "poll" || sScene == "location") {
+					BMessage show(sScene == "scheduled" ? kMsgShowScheduled
+						: sScene == "poll" ? kMsgShowPoll : kMsgShowLocation);
+					show.AddInt64("chat_id", kGroup);
+					PostMessage(&show);
+				}
 				else if (sScene == "newchat" || sScene == "newgroup" || sScene == "newchannel"
 					|| sScene == "addcontact") {
 					BMessage show(kMsgShowNewChat);
@@ -325,6 +333,60 @@ public:
 				break;
 			case kMsgSettingsChanged:
 				fMain->PostMessage(message);
+				break;
+			case kMsgShowScheduled:
+			{
+				// Three made-up scheduled messages, as App would send them.
+				ScheduledWindow* window = new ScheduledWindow(BMessenger(this),
+					message->GetInt64("chat_id", 0), "Renku testers", fMain->Frame());
+				window->Show();
+				time_t now = time(nullptr);
+				BMessage list(kMsgScheduledList);
+				list.AddInt64("id", 901);
+				list.AddInt64("send_at", now + 3 * 3600);
+				list.AddString("preview", "Reminder: test build tonight");
+				list.AddInt64("id", 902);
+				list.AddInt64("send_at", now + 86400 + 600);
+				list.AddString("preview", "Photo");
+				list.AddInt64("id", 903);
+				list.AddInt64("send_at", now + 9 * 86400);
+				list.AddString("preview", "Happy birthday, Jonas!");
+				BMessenger(window).SendMessage(&list);
+				break;
+			}
+			case kMsgScheduledAction:
+				printf("scheduled %s %lld at %lld\n", message->GetString("action", ""),
+					(long long)message->GetInt64("message_id", 0),
+					(long long)message->GetInt64("send_at", 0));
+				fflush(stdout);
+				break;
+			case kMsgScheduledClosed:
+				break;
+			case kMsgShowPoll:
+				(new PollWindow(BMessenger(this), message->GetInt64("chat_id", 0), false, 12,
+					fMain->Frame()))->Show();
+				break;
+			case kMsgSendPoll:
+			{
+				printf("poll \"%s\"", message->GetString("question", ""));
+				const char* option;
+				for (int32 i = 0; message->FindString("option", i, &option) == B_OK; i++)
+					printf(" [%s]", option);
+				printf(" anonymous %d multiple %d quiz %d correct %d explanation \"%s\"\n",
+					message->GetBool("anonymous", false), message->GetBool("multiple", false),
+					message->GetBool("quiz", false), (int)message->GetInt32("correct", -1),
+					message->GetString("explanation", ""));
+				fflush(stdout);
+				break;
+			}
+			case kMsgShowLocation:
+				(new LocationWindow(BMessenger(this), message->GetInt64("chat_id", 0),
+					fMain->Frame()))->Show();
+				break;
+			case kMsgSendLocation:
+				printf("location %.6f %.6f\n", message->GetDouble("latitude", 0),
+					message->GetDouble("longitude", 0));
+				fflush(stdout);
 				break;
 			case kMsgShowNewChat:
 			{
@@ -539,6 +601,12 @@ public:
 			case kMsgSendText:
 			{
 				printf("send \"%s\"", message->GetString("text", ""));
+				if (message->GetBool("silent", false))
+					printf(" silent");
+				if (message->GetInt64("send_at", 0) != 0)
+					printf(" at %lld", (long long)message->GetInt64("send_at", 0));
+				if (message->GetBool("when_online", false))
+					printf(" when-online");
 				const char* name;
 				for (int32 i = 0; message->FindString("mention_name", i, &name) == B_OK; i++)
 					printf(" mention %s=%lld", name, (long long)message->GetInt64("mention_user", i, 0));
