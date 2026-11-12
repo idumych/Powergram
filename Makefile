@@ -30,7 +30,24 @@ TD_LIBS := -ltdjson_static -ltdjson_private -ltdclient -ltdcore -ltdapi \
 	-ltdmtproto -ltdnet -ltddb -ltdsqlite -ltde2e -ltdactor -ltdutils \
 	-lssl -lcrypto -lz -lnetwork
 
-ifeq ($(shell uname -s),Haiku)
+MIMESET := mimeset
+MEDIA_LIBS := -lmedia -lopus -logg
+ifneq ($(HAIKU_CROSS),)
+  # Haiku arm64, cross-compiled on Linux (tools/haiku-arm64: . env.sh, then
+  # build-deps.sh for TDLib, OpenSSL and zlib, all static). Haiku arm64 has
+  # no Media Kit yet: stand-ins replace the sound and video parts.
+  # Haiku's host mimeset can't read arm64 binaries; the package sets the type.
+  override CXXFLAGS += $(HAIKU_CROSS_CFLAGS) -I$(HAIKU_ARM64)/deps/include
+  override LDFLAGS += $(HAIKU_CROSS_LDFLAGS) -L$(HAIKU_ARM64)/deps/lib
+  MEDIA_SRCS := src/app/VoicePlayer.cpp src/app/VoiceRecorder.cpp \
+	src/app/MediaProbe.cpp src/app/VideoPlayback.cpp
+  APP_OBJS := $(patsubst %.cpp,$(BUILD)/%.o,$(filter-out $(MEDIA_SRCS),$(APP_SRCS)) \
+	src/app/NoMediaKit.cpp)
+  MEDIA_LIBS :=
+  MIMESET := :
+endif
+
+ifneq ($(HAIKU_CROSS)$(filter Haiku,$(shell uname -s)),)
 all: $(NAME) $(BUILD)/PowergramDeskbar
 
 # The Deskbar item: an add-on of its own, so Deskbar never loads the app.
@@ -40,9 +57,9 @@ $(BUILD)/PowergramDeskbar: src/deskbar/DeskbarItem.cpp src/app/Messages.h
 
 # The app at ./Powergram, resources from obj/ (packaging/build-hpkg.sh).
 $(NAME): $(CORE_OBJS) $(APP_OBJS) $(BUILD)/$(NAME).rsrc
-	$(CXX) -o $@ $(CORE_OBJS) $(APP_OBJS) $(LDFLAGS) -lbe -lmedia -ltracker -ltranslation -llocalestub -lopus -logg $(TD_LIBS)
+	$(CXX) -o $@ $(CORE_OBJS) $(APP_OBJS) $(LDFLAGS) -lbe -ltracker -ltranslation -llocalestub $(MEDIA_LIBS) $(TD_LIBS)
 	xres -o $@ $(BUILD)/$(NAME).rsrc
-	mimeset -f $@
+	$(MIMESET) -f $@
 
 # The real main window with made-up chats, for screenshots.
 MOCKUP_OBJS := $(filter-out $(BUILD)/src/app/App.o $(BUILD)/src/app/TdClient.o \

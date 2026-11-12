@@ -139,7 +139,7 @@ Logging in with a QR code (this one is made up).
 | Platform | State |
 |---|---|
 | Renku OS / Haiku R1/beta6, x86_64 | Builds and runs |
-| Haiku / Renku OS arm64 | Not yet: Renku's arm64 package repository has OpenSSL and zlib but no TDLib or noto_emoji yet, and HaikuPorts has no arm64 repository |
+| Haiku arm64 (nightlies) | Preview: runs on the hrev60397 nightly in QEMU. Haiku arm64 has no Media Kit or image translators yet, so voice messages, the video viewer and pictures don't work there |
 | Linux (Cosmoe) | Not yet |
 
 ## Building
@@ -153,6 +153,16 @@ make
 ```
 
 `sh packaging/build-hpkg.sh` builds the package.
+
+For Haiku arm64, cross-compiled on Linux (TDLib, OpenSSL and zlib are built
+for arm64 and linked in):
+
+```sh
+sh tools/haiku-arm64/make-sysroot.sh ~/.cache/haiku-arm64   # once, ~20 min
+. ~/.cache/haiku-arm64/env.sh
+sh tools/haiku-arm64/build-deps.sh                          # once, ~15 min
+sh packaging/build-hpkg-arm64.sh
+```
 
 HaikuPorts' TDLib is static only, so it's linked into the app; the result
 needs only OpenSSL and zlib at run time. Install `noto_emoji` for emoji.
