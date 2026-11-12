@@ -20,6 +20,7 @@
 #include "../src/app/MainWindow.h"
 #include "../src/app/SettingsWindow.h"
 #include "../src/app/ProfileWindow.h"
+#include "../src/app/NewChatWindow.h"
 #include "../src/app/ChatInfoWindow.h"
 #include "../src/app/LoginWindow.h"
 #include "../src/core/AuthFlow.h"
@@ -208,6 +209,14 @@ public:
 					fMain->PostMessage(kMsgOpenLinkAsk);
 				else if (sScene == "profile")
 					PostMessage(kMsgShowProfile);
+				else if (sScene == "newchat" || sScene == "newgroup" || sScene == "newchannel"
+					|| sScene == "addcontact") {
+					BMessage show(kMsgShowNewChat);
+					if (sScene != "newchat")
+						show.AddString("what", sScene == "addcontact" ? "contact"
+							: sScene == "newgroup" ? "group" : "channel");
+					PostMessage(&show);
+				}
 				else if (sScene == "deskbarfiles") {
 					// Two files dropped on the Deskbar item.
 					BMessage files(kMsgDeskbarFiles);
@@ -316,6 +325,98 @@ public:
 				break;
 			case kMsgSettingsChanged:
 				fMain->PostMessage(message);
+				break;
+			case kMsgShowNewChat:
+			{
+				// Made-up contacts, as App would send them.
+				std::vector<PersonRow> contacts = {
+					{201, "Ana Ribeiro", "online", "ana_r", "351910000001"},
+					{202, "Bogdan Kovalenko", "last seen today at 09:12", "", "380500000002"},
+					{203, "Chen Wei", "last seen recently", "chenwei", "8613800000003"},
+					{204, "Dmitri Sokolov", "last seen yesterday at 18:40", "dsokolov", ""},
+					{205, "Jonas Berg", "last seen within a week", "", "4670000000005"},
+					{206, "Mira Okafor", "online", "mira", "2348000000006"},
+					{207, "Weather Bot", "bot", "weatherbot", ""}};
+				BString what = message->GetString("what", "");
+				BRect frame = fMain->Frame();
+				if (what == "group" || what == "channel") {
+					(new NewGroupWindow(BMessenger(this), what == "channel", contacts, frame))->Show();
+					break;
+				}
+				if (what == "contact") {
+					(new AddContactWindow(BMessenger(this), frame))->Show();
+					break;
+				}
+				NewChatWindow* window = new NewChatWindow(BMessenger(this), frame);
+				window->Show();
+				BMessage list(kMsgNewChatContacts);
+				list.AddBool("loaded", true);
+				for (const PersonRow& row : contacts) {
+					list.AddInt64("id", row.id);
+					list.AddString("name", row.name);
+					list.AddString("detail", row.detail);
+					list.AddString("username", row.username);
+					list.AddString("phone", row.phone);
+				}
+				BMessenger(window).SendMessage(&list);
+				break;
+			}
+			case kMsgNewChatSearch:
+			{
+				// Two made-up public chats for anything searched.
+				BString query = message->GetString("query", "");
+				printf("search public \"%s\"\n", query.String());
+				fflush(stdout);
+				BMessage found(kMsgNewChatFound);
+				found.AddInt32("seq", message->GetInt32("seq", 0));
+				found.AddString("query", query);
+				found.AddInt64("id", -1001);
+				found.AddString("name", "Haiku Fans");
+				found.AddString("detail", "1204 members");
+				found.AddInt64("id", -1002);
+				found.AddString("name", "Haiku News");
+				found.AddString("detail", "8811 subscribers");
+				message->ReturnAddress().SendMessage(&found);
+				break;
+			}
+			case kMsgNewChatOpen:
+				printf("open user %lld chat %lld\n", (long long)message->GetInt64("user_id", 0),
+					(long long)message->GetInt64("chat_id", 0));
+				fflush(stdout);
+				break;
+			case kMsgRemoveContact:
+				printf("remove contact %lld\n", (long long)message->GetInt64("user_id", 0));
+				fflush(stdout);
+				break;
+			case kMsgCreateGroup:
+			{
+				printf("create %s \"%s\" \"%s\" members", message->GetBool("channel", false)
+					? "channel" : "group", message->GetString("title", ""),
+					message->GetString("description", ""));
+				int64 id;
+				for (int32 i = 0; message->FindInt64("user_id", i, &id) == B_OK; i++)
+					printf(" %lld", (long long)id);
+				printf("\n");
+				fflush(stdout);
+				BMessage result(kMsgCreateResult);
+				// "Fail" as the name shows how a failure looks.
+				result.AddString("text", BString(message->GetString("title", "")) == "Fail"
+					? "Could not create it: Too many requests, try again later." : "");
+				message->SendReply(&result);
+				break;
+			}
+			case kMsgAddContact:
+			{
+				printf("add contact \"%s\" \"%s\" \"%s\"\n", message->GetString("phone", ""),
+					message->GetString("first", ""), message->GetString("last", ""));
+				fflush(stdout);
+				BMessage result(kMsgCreateResult);
+				result.AddString("text", BString(message->GetString("phone", "")).EndsWith("0000")
+					? "Nobody on Telegram has this number." : "");
+				message->SendReply(&result);
+				break;
+			}
+			case kMsgNewChatClosed:
 				break;
 			case kMsgShowProfile:
 			{

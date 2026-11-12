@@ -8,6 +8,7 @@
 #include "../src/core/ChatHistory.h"
 #include "../src/core/ChatInfo.h"
 #include "../src/core/ChatList.h"
+#include "../src/core/Contacts.h"
 #include "../src/core/Files.h"
 #include "../src/core/Format.h"
 #include "../src/core/Links.h"
@@ -1557,6 +1558,93 @@ TestSecretChats()
 }
 
 
+// Contacts: followed through updateUser, the getContacts reply settling
+// who is one, matching names in any case and phone numbers, and the
+// requests that start chats.
+static void
+TestContacts()
+{
+	auto user = [](int64_t id, const char* first, const char* last, const char* username,
+		const char* phone, bool contact) {
+		json u = {{"@type", "user"}, {"id", id}, {"first_name", first}, {"last_name", last},
+			{"phone_number", phone}, {"is_contact", contact}, {"type", {{"@type", "userTypeRegular"}}}};
+		if (*username)
+			u["usernames"] = {{"active_usernames", {username}}};
+		return json{{"@type", "updateUser"}, {"user", u}};
+	};
+	Contacts contacts;
+	CHECK(!contacts.Loaded());
+	CHECK(contacts.Apply(user(1, "Ann", "Smith", "annsmith", "15550100001", true)));
+	CHECK(contacts.Apply(user(2, "\xD0\x91\xD0\xBE\xD0\xB3\xD0\xB4\xD0\xB0\xD0\xBD", "", "", "380501234567", true)));
+	CHECK(!contacts.Apply(user(3, "Stranger", "", "stranger", "", false)));
+	CHECK(contacts.Apply(user(4, "Zed", "Alpha", "", "4915100000", true)));
+	CHECK(!contacts.Apply(json{{"@type", "updateChatTitle"}}));
+	// Sorted by name; the stranger isn't a contact.
+	std::vector<Contact> all = contacts.Matching("");
+	CHECK(all.size() == 3 && all[0].id == 1 && all[1].id == 4 && all[2].id == 2);
+	CHECK(all[0].Name() == "Ann Smith" && all[0].username == "annsmith");
+	// Words of the name, any case, Cyrillic too; usernames; phone digits.
+	CHECK(contacts.Matching("smi").size() == 1 && contacts.Matching("SMITH")[0].id == 1);
+	CHECK(contacts.Matching("ann sm").size() == 1);
+	CHECK(contacts.Matching("mith").empty());
+	CHECK(contacts.Matching("\xD0\xB1\xD0\xBE\xD0\xB3").size() == 1);   // "бог" finds "Богдан"
+	CHECK(contacts.Matching("@ann").size() == 1 && contacts.Matching("@").empty());
+	CHECK(contacts.Matching("annsm")[0].id == 1);
+	CHECK(contacts.Matching("+380 50").size() == 1 && contacts.Matching("555").size() == 1);
+	CHECK(contacts.Matching("12").empty());
+	// The reply to getContacts decides: Zed isn't one any more, the stranger is.
+	contacts.SetContacts(json{{"@type", "users"}, {"total_count", 3}, {"user_ids", {1, 2, 3}}});
+	CHECK(contacts.Loaded());
+	all = contacts.Matching("");
+	CHECK(all.size() == 3 && all[0].id == 1 && all[1].id == 3 && all[2].id == 2);
+	CHECK(contacts.Find(4) != nullptr && !contacts.Find(4)->contact);
+	CHECK(contacts.Find(99) == nullptr);
+	// A contact removed elsewhere is a change.
+	CHECK(contacts.Apply(user(1, "Ann", "Smith", "annsmith", "15550100001", false)));
+	CHECK(contacts.Matching("ann").empty());
+	json deleted = user(5, "", "", "", "", true);
+	deleted["user"]["type"] = {{"@type", "userTypeDeleted"}};
+	contacts.Apply(deleted);
+	CHECK(contacts.Find(5)->Name() == "Deleted account" && contacts.Matching("").size() == 2);
+
+	CHECK(UserIds(json{{"user_ids", {"7", 8}}}) == std::vector<int64_t>({7, 8}));
+	CHECK(ChatIds(json{{"@type", "chats"}, {"chat_ids", {-100123}}}) == std::vector<int64_t>({-100123}));
+	CHECK(ChatIds(json{{"@type", "error"}}).empty());
+
+	json created = {{"@type", "createdBasicGroupChat"}, {"chat_id", -4001},
+		{"failed_to_add_members", {{"@type", "failedToAddMembers"}, {"failed_to_add_members",
+			{{{"@type", "failedToAddMember"}, {"user_id", 2}}}}}}};
+	CHECK(CreatedChatId(created) == -4001 && FailedMembers(created) == std::vector<int64_t>({2}));
+	CHECK(CreatedChatId(json{{"@type", "chat"}, {"id", -1007}}) == -1007);
+	CHECK(CreatedChatId(json{{"@type", "error"}}) == 0);
+	CHECK(FailedMembers(json{{"@type", "failedToAddMembers"}, {"failed_to_add_members", json::array()}}).empty());
+
+	CHECK(ChatTitleProblem("  ") == "Enter a name.");
+	CHECK(ChatTitleProblem(std::string(128, 'x')).empty());
+	CHECK(!ChatTitleProblem(std::string(129, 'x')).empty());
+	CHECK(ChatDescriptionProblem(std::string(255, 'x')).empty());
+	CHECK(!ChatDescriptionProblem(std::string(256, 'x')).empty());
+
+	CHECK(Str(request::GetContacts("c"), "@type") == "getContacts");
+	json search = request::SearchPublicChats(" @telegram ", "s");
+	CHECK(Str(search, "@type") == "searchPublicChats" && Str(search, "query") == "telegram");
+	json add = request::ImportContact("1 555 010 2030", " Mira ", "", "add");
+	CHECK(Str(add, "@type") == "importContacts"
+		&& Str(add["contacts"][0], "phone_number") == "+15550102030"
+		&& Str(add["contacts"][0], "first_name") == "Mira");
+	CHECK(Str(request::RemoveContact(3, "r"), "@type") == "removeContacts");
+	json group = request::NewGroup(" Book club ", {1, 2}, "g");
+	CHECK(Str(group, "@type") == "createNewBasicGroupChat" && Str(group, "title") == "Book club"
+		&& group["user_ids"] == json({1, 2}));
+	CHECK(request::NewGroup("Solo", {}, "g")["user_ids"].is_array());
+	json channel = request::NewChannel("News", "Daily", "ch");
+	CHECK(Str(channel, "@type") == "createNewSupergroupChat" && Bool(channel, "is_channel")
+		&& Str(channel, "description") == "Daily");
+	json members = request::AddMembers(-1007, {1}, "m");
+	CHECK(Str(members, "@type") == "addChatMembers" && Int(members, "chat_id") == -1007);
+}
+
+
 int
 main()
 {
@@ -1590,6 +1678,7 @@ main()
 	TestAvailableReactions();
 	TestQrLogin();
 	TestSecretChats();
+	TestContacts();
 	if (sFailures) {
 		std::fprintf(stderr, "%d check(s) failed\n", sFailures);
 		return EXIT_FAILURE;

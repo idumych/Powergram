@@ -510,6 +510,23 @@ MainWindow::MainWindow(BRect frame, bool testDc,
 		B_SHIFT_KEY));
 	bar->AddItem(search);
 	BMenu* chat = new BMenu("Chat");
+	// Starting chats: the app opens these windows.
+	BMenuItem* newChat = new BMenuItem("New chat" B_UTF8_ELLIPSIS,
+		new BMessage(kMsgShowNewChat), 'N');
+	BMessage* newGroup = new BMessage(kMsgShowNewChat);
+	newGroup->AddString("what", "group");
+	BMessage* newChannel = new BMessage(kMsgShowNewChat);
+	newChannel->AddString("what", "channel");
+	BMessage* addContact = new BMessage(kMsgShowNewChat);
+	addContact->AddString("what", "contact");
+	BMenuItem* newGroupItem = new BMenuItem("New group" B_UTF8_ELLIPSIS, newGroup);
+	BMenuItem* newChannelItem = new BMenuItem("New channel" B_UTF8_ELLIPSIS, newChannel);
+	BMenuItem* addContactItem = new BMenuItem("Add contact" B_UTF8_ELLIPSIS, addContact);
+	for (BMenuItem* item : {newChat, newGroupItem, newChannelItem, addContactItem}) {
+		item->SetTarget(be_app);
+		chat->AddItem(item);
+	}
+	chat->AddSeparatorItem();
 	fInfoItem = new BMenuItem("Info" B_UTF8_ELLIPSIS, new BMessage(kMsgShowChatInfo), 'I');
 	fInfoItem->SetEnabled(false);
 	chat->AddItem(fInfoItem);

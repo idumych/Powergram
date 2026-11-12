@@ -264,6 +264,31 @@ enum {
 	// main window → app: "chat_id" (int64), "seconds" (int32, 0: off)
 	kMsgSetSelfDestruct = 'ssdt',
 
+	// The New chat window. Main window menu → app: open it; "what"
+	// (string) "group", "channel" or "contact" opens that window instead.
+	kMsgShowNewChat = 'ncsh',
+	// app → new chat window: "loaded" (bool), arrays "id" (int64 user),
+	// "name", "detail" (string)
+	kMsgNewChatContacts = 'ncct',
+	// new chat window → app: find public chats, "query", "seq" (int32)
+	kMsgNewChatSearch = 'ncsr',
+	// app → new chat window: "seq", "error" (string, maybe), arrays "id"
+	// (int64 chat), "name", "detail"
+	kMsgNewChatFound = 'ncfd',
+	// new chat window → app: open "user_id" or "chat_id" (int64)
+	kMsgNewChatOpen = 'ncop',
+	// new chat window → app: "user_id" (int64) to remove from contacts
+	kMsgRemoveContact = 'ncrm',
+	kMsgNewChatClosed = 'nccl',
+	// group window → app: "title", "description", "channel" (bool), and
+	// "user_id" (int64 array) to add
+	kMsgCreateGroup = 'ngcr',
+	// add contact window → app: "phone", "first", "last"
+	kMsgAddContact = 'acad',
+	// app → group or add contact window: "text" (string) of a failure;
+	// "" when done, and the window closes
+	kMsgCreateResult = 'ncrs',
+
 	kMsgLogOut = 'lout',
 	kMsgLogOutConfirmed = 'loco',
 	kMsgForceQuit = 'fqut'

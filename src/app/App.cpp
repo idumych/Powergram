@@ -40,6 +40,7 @@
 #include "../core/ChatHistory.h"
 #include "../core/ChatInfo.h"
 #include "../core/ChatList.h"
+#include "../core/Contacts.h"
 #include "../core/Files.h"
 #include "../core/Links.h"
 #include "../core/Pinned.h"
@@ -55,6 +56,7 @@
 #include "LoginWindow.h"
 #include "MediaWindow.h"
 #include "MainWindow.h"
+#include "NewChatWindow.h"
 #include "Messages.h"
 #include "Settings.h"
 #include "SettingsWindow.h"
@@ -147,6 +149,18 @@ private:
 	int64 fPendingChat = 0;
 	int64 fPendingMessage = 0;
 
+	// Starting chats: the New chat window and the contacts it lists, and
+	// the group and add contact windows waiting for an answer.
+	void _ShowNewChat(const char* what);
+	void _SendContacts();
+	bool _HandleContactsReply(const json& object, const std::string& extra);
+	std::vector<PersonRow> _ContactRows() const;
+	pp::Contacts fContacts;
+	BMessenger fNewChatWindow;
+	std::map<std::string, BMessenger> fCreateReplies;   // "create:<n>" → window
+	std::map<std::string, std::vector<int64_t>> fCreateMembers;   // a new channel's
+	int32 fCreateSeq = 0;
+
 	Settings fSettings;
 	bool fTestDc;
 	std::unique_ptr<TdClient> fClient;
@@ -194,6 +208,7 @@ private:
 	void _ShowChatInfo(int64 chatId);
 	void _SendChatInfo();
 	BString _StatusText(int64 chatId, bool withTyping, bool* active = nullptr);
+	BString _UserStatusText(int64 user, bool* active = nullptr);
 	ChatInfoWindow* fInfoWindow = nullptr;   // only touched through fInfoMessenger
 	BMessenger fInfoMessenger;
 	pp::ChatInfo fInfo;
@@ -263,9 +278,13 @@ App::~App()
 	delete fPresenceRunner;
 	delete fVoiceRunner;
 	delete fRecordRunner;
-	BDeskbar deskbar;
-	if (deskbar.HasItem(kDeskbarItemName))
-		deskbar.RemoveItem(kDeskbarItemName);
+	// The item stays in Deskbar as a launcher (a click starts the app), so
+	// it's left there, without a count that would go stale.
+	if (fDeskbarItem.IsValid()) {
+		BMessage count(kMsgDeskbarUnread);
+		count.AddInt32("unread", 0);
+		fDeskbarItem.SendMessage(&count);
+	}
 }
 
 
@@ -397,6 +416,8 @@ App::_HandleObject(const json& object)
 	}
 
 	fNames.Apply(object);
+	if (fContacts.Apply(object) && fNewChatWindow.IsValid())
+		_SendContacts();
 	if (fSecret.Apply(object) && fHistory != nullptr) {
 		_SendChatStatus();
 		_ScheduleChatFlush();
@@ -476,6 +497,8 @@ App::_HandleObject(const json& object)
 	if (_HandleLinkReply(object, extra))
 		return;
 	if (_HandleProfileReply(object, extra))
+		return;
+	if (_HandleContactsReply(object, extra))
 		return;
 	if (extra.rfind("pinned:", 0) == 0) {
 		if (type == "foundChatMessages" && atoll(extra.c_str() + 7) == fPinned.ChatId()) {
@@ -1185,42 +1208,55 @@ App::_StatusText(int64 chatId, bool withTyping, bool* activeOut)
 	bool active = !typing.empty();
 	if (active)
 		status = typing.c_str();
-	else if (int64 user = fPresence.PrivateUser(chatId)) {
-		pp::UserStatus s = fPresence.Status(user);
-		switch (s.kind) {
-			case pp::UserStatus::kOnline:
-				status = "online";
-				active = true;
-				break;
-			case pp::UserStatus::kOffline:
-			{
-				// "last seen today at 22:41", "… yesterday at …", or a date.
-				time_t when = (time_t)s.time, now = time(nullptr);
-				struct tm w, n;
-				localtime_r(&when, &w);
-				localtime_r(&now, &n);
-				BString clock, date;
-				BTimeFormat().Format(clock, when, B_SHORT_TIME_FORMAT);
-				if (w.tm_year == n.tm_year && w.tm_yday == n.tm_yday)
-					status << "last seen today at " << clock;
-				else if (now - when < 2 * 86400 && (n.tm_yday - w.tm_yday == 1
-						|| (n.tm_yday == 0 && w.tm_mon == 11 && w.tm_mday == 31)))
-					status << "last seen yesterday at " << clock;
-				else {
-					BDateFormat().Format(date, when, B_MEDIUM_DATE_FORMAT);
-					status << "last seen " << date;
-				}
-				break;
-			}
-			case pp::UserStatus::kRecently: status = "last seen recently"; break;
-			case pp::UserStatus::kLastWeek: status = "last seen within a week"; break;
-			case pp::UserStatus::kLastMonth: status = "last seen within a month"; break;
-			default: break;
-		}
-	} else if (int32 count = fPresence.MemberCount(chatId)) {
+	else if (int64 user = fPresence.PrivateUser(chatId))
+		status = _UserStatusText(user, &active);
+	else if (int32 count = fPresence.MemberCount(chatId)) {
 		const char* what = fPresence.IsChannel(chatId)
 			? (count == 1 ? "subscriber" : "subscribers") : (count == 1 ? "member" : "members");
 		status << count << " " << what;
+	}
+	if (activeOut != nullptr)
+		*activeOut = active;
+	return status;
+}
+
+
+// "online", "last seen today at 22:41", "last seen recently"…; "" if unknown.
+BString
+App::_UserStatusText(int64 user, bool* activeOut)
+{
+	BString status;
+	bool active = false;
+	pp::UserStatus s = fPresence.Status(user);
+	switch (s.kind) {
+		case pp::UserStatus::kOnline:
+			status = "online";
+			active = true;
+			break;
+		case pp::UserStatus::kOffline:
+		{
+			// "last seen today at 22:41", "… yesterday at …", or a date.
+			time_t when = (time_t)s.time, now = time(nullptr);
+			struct tm w, n;
+			localtime_r(&when, &w);
+			localtime_r(&now, &n);
+			BString clock, date;
+			BTimeFormat().Format(clock, when, B_SHORT_TIME_FORMAT);
+			if (w.tm_year == n.tm_year && w.tm_yday == n.tm_yday)
+				status << "last seen today at " << clock;
+			else if (now - when < 2 * 86400 && (n.tm_yday - w.tm_yday == 1
+					|| (n.tm_yday == 0 && w.tm_mon == 11 && w.tm_mday == 31)))
+				status << "last seen yesterday at " << clock;
+			else {
+				BDateFormat().Format(date, when, B_MEDIUM_DATE_FORMAT);
+				status << "last seen " << date;
+			}
+			break;
+		}
+		case pp::UserStatus::kRecently: status = "last seen recently"; break;
+		case pp::UserStatus::kLastWeek: status = "last seen within a week"; break;
+		case pp::UserStatus::kLastMonth: status = "last seen within a month"; break;
+		default: break;
 	}
 	if (activeOut != nullptr)
 		*activeOut = active;
@@ -1772,6 +1808,184 @@ App::_SendProfile()
 
 
 void
+App::_ShowNewChat(const char* what)
+{
+	BRect frame = fMain != nullptr ? fMain->Frame() : BScreen().Frame();
+	BString kind(what);
+	if (kind == "group" || kind == "channel") {
+		(new NewGroupWindow(BMessenger(this), kind == "channel", _ContactRows(), frame))->Show();
+		if (!fContacts.Loaded())
+			_Send(pp::request::GetContacts("contacts"));
+		return;
+	}
+	if (kind == "contact") {
+		(new AddContactWindow(BMessenger(this), frame))->Show();
+		return;
+	}
+	if (fNewChatWindow.IsValid()) {
+		BMessage activate(B_EXECUTE_PROPERTY);
+		activate.AddSpecifier("Active");
+		activate.AddBool("data", true);
+		fNewChatWindow.SendMessage(&activate);
+		return;
+	}
+	NewChatWindow* window = new NewChatWindow(BMessenger(this), frame);
+	fNewChatWindow = BMessenger(window);
+	window->Show();
+	// Shown at once if they're known, and again when the server answers.
+	if (fContacts.Loaded())
+		_SendContacts();
+	_Send(pp::request::GetContacts("contacts"));
+}
+
+
+std::vector<PersonRow>
+App::_ContactRows() const
+{
+	std::vector<PersonRow> rows;
+	for (const pp::Contact& c : fContacts.Matching("")) {
+		BString detail = const_cast<App*>(this)->_UserStatusText(c.id);
+		if (c.bot)
+			detail = "bot";
+		else if (detail.IsEmpty() && !c.username.empty())
+			detail << "@" << c.username.c_str();
+		rows.push_back({c.id, c.Name().c_str(), detail, c.username.c_str(), c.phone.c_str()});
+	}
+	return rows;
+}
+
+
+void
+App::_SendContacts()
+{
+	if (!fNewChatWindow.IsValid())
+		return;
+	BMessage list(kMsgNewChatContacts);
+	list.AddBool("loaded", fContacts.Loaded());
+	for (const PersonRow& row : _ContactRows()) {
+		list.AddInt64("id", row.id);
+		list.AddString("name", row.name);
+		list.AddString("detail", row.detail);
+		list.AddString("username", row.username);
+		list.AddString("phone", row.phone);
+	}
+	fNewChatWindow.SendMessage(&list);
+}
+
+
+bool
+App::_HandleContactsReply(const json& object, const std::string& extra)
+{
+	std::string type = pp::Type(object);
+	auto answer = [&](const std::string& text) {
+		auto it = fCreateReplies.find(extra);
+		if (it == fCreateReplies.end())
+			return;
+		BMessage result(kMsgCreateResult);
+		result.AddString("text", text.c_str());
+		it->second.SendMessage(&result);
+		fCreateReplies.erase(it);
+	};
+	// People a new group or channel couldn't take: their privacy settings.
+	auto reportFailed = [&](const std::vector<int64_t>& failed) {
+		if (failed.empty())
+			return;
+		BString names;
+		for (size_t i = 0; i < failed.size(); i++) {
+			if (i > 0)
+				names << (i + 1 == failed.size() ? " and " : ", ");
+			names << fNames.User(failed[i]).c_str();
+		}
+		BString text;
+		text << names << " couldn't be added: their privacy settings only let people they know add them. "
+			"You can send them an invite link instead.";
+		BAlert* alert = new BAlert("not added", text, "OK", nullptr, nullptr,
+			B_WIDTH_AS_USUAL, B_INFO_ALERT);
+		alert->Go(nullptr);
+	};
+
+	if (extra == "contacts") {
+		if (type == "users") {
+			fContacts.SetContacts(object);
+			_SendContacts();
+		}
+		return true;
+	}
+	if (extra.rfind("publicsearch:", 0) == 0) {
+		// "publicsearch:<seq>:<query>"
+		size_t colon = extra.find(':', 13);
+		BMessage found(kMsgNewChatFound);
+		found.AddInt32("seq", atoi(extra.c_str() + 13));
+		found.AddString("query", colon != std::string::npos ? extra.c_str() + colon + 1 : "");
+		for (int64_t id : pp::ChatIds(object)) {
+			found.AddInt64("id", id);
+			found.AddString("name", fNames.Chat(id).c_str());
+			BString detail = _StatusText(id, false);
+			if (detail.IsEmpty())
+				detail = fPresence.IsChannel(id) ? "Channel" : "Group";
+			found.AddString("detail", detail);
+		}
+		if (fNewChatWindow.IsValid())
+			fNewChatWindow.SendMessage(&found);
+		return true;
+	}
+	if (extra.rfind("create:", 0) == 0) {
+		int64 chatId = pp::CreatedChatId(object);
+		if (type == "error" || chatId == 0) {
+			answer("Could not create it: " + pp::AuthFlow::ErrorText(object));
+			fCreateMembers.erase(extra);
+			return true;
+		}
+		auto members = fCreateMembers.find(extra);
+		if (members != fCreateMembers.end()) {
+			if (!members->second.empty()) {
+				_Send(pp::request::AddMembers(chatId, members->second,
+					"create_members:" + std::to_string(chatId)));
+			}
+			fCreateMembers.erase(members);
+		}
+		reportFailed(pp::FailedMembers(object));
+		answer("");
+		_ShowChat(chatId);
+		if (fMain != nullptr)
+			fMain->Activate();
+		return true;
+	}
+	if (extra.rfind("create_members:", 0) == 0) {
+		if (type == "error") {
+			BString text("Could not add the subscribers. ");
+			text << pp::AuthFlow::ErrorText(object).c_str();
+			_ShowError(text);
+		} else
+			reportFailed(pp::FailedMembers(object));
+		return true;
+	}
+	if (extra.rfind("addcontact:", 0) == 0) {
+		std::vector<int64_t> ids = pp::UserIds(object);
+		if (type == "error")
+			answer("Could not add the contact: " + pp::AuthFlow::ErrorText(object));
+		else if (ids.empty() || ids[0] == 0)
+			answer("Nobody on Telegram has this number.");
+		else {
+			answer("");
+			_Send(pp::request::GetContacts("contacts"));
+		}
+		return true;
+	}
+	if (extra == "contact_remove") {
+		if (type == "error") {
+			BString text("Could not remove the contact. ");
+			text << pp::AuthFlow::ErrorText(object).c_str();
+			_ShowError(text);
+		}
+		_Send(pp::request::GetContacts("contacts"));
+		return true;
+	}
+	return false;
+}
+
+
+void
 App::_SendPinned()
 {
 	BMessage pinned(kMsgPinned);
@@ -1979,6 +2193,60 @@ App::MessageReceived(BMessage* message)
 		case kMsgFlushChats:
 			_FlushChats();
 			break;
+
+		case kMsgShowNewChat:
+			_ShowNewChat(message->GetString("what", ""));
+			break;
+		case kMsgNewChatClosed:
+			fNewChatWindow = BMessenger();
+			break;
+		case kMsgNewChatSearch:
+		{
+			BString query = message->GetString("query", "");
+			BString extra("publicsearch:");
+			extra << message->GetInt32("seq", 0) << ":" << query;
+			_Send(pp::request::SearchPublicChats(query.String(), extra.String()));
+			break;
+		}
+		case kMsgNewChatOpen:
+			if (int64 user = message->GetInt64("user_id", 0))
+				_Send(pp::request::CreatePrivateChat(user, "openchat"));
+			else
+				_ShowChat(message->GetInt64("chat_id", 0));
+			if (fMain != nullptr)
+				fMain->Activate();
+			break;
+		case kMsgRemoveContact:
+			_Send(pp::request::RemoveContact(message->GetInt64("user_id", 0), "contact_remove"));
+			break;
+		case kMsgCreateGroup:
+		{
+			BString extra("create:");
+			extra << ++fCreateSeq;
+			fCreateReplies[extra.String()] = message->ReturnAddress();
+			std::string title = message->GetString("title", "");
+			std::vector<int64_t> members;
+			int64 id;
+			for (int32 i = 0; message->FindInt64("user_id", i, &id) == B_OK; i++)
+				members.push_back(id);
+			if (message->GetBool("channel", false)) {
+				// Subscribers are added once the channel is there.
+				fCreateMembers[extra.String()] = members;
+				_Send(pp::request::NewChannel(title, message->GetString("description", ""),
+					extra.String()));
+			} else
+				_Send(pp::request::NewGroup(title, members, extra.String()));
+			break;
+		}
+		case kMsgAddContact:
+		{
+			BString extra("addcontact:");
+			extra << ++fCreateSeq;
+			fCreateReplies[extra.String()] = message->ReturnAddress();
+			_Send(pp::request::ImportContact(message->GetString("phone", ""),
+				message->GetString("first", ""), message->GetString("last", ""), extra.String()));
+			break;
+		}
 
 		case kMsgNewSecretChat:
 		{
