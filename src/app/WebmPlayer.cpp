@@ -2,6 +2,11 @@
 // Video stickers: VP9 (or VP8) frames from the WebM file (pp::ParseWebm)
 // decoded with libvpx, the alpha picture by a second decoder, into a
 // bitmap at the video's size (the chat view scales it).
+//
+// libvpx is loaded when the first video sticker plays, whichever version
+// Haiku has (its FFmpeg media add-on brings one; HaikuPorts has several,
+// each with its own library version), so the package needs none in
+// particular. Without it, video stickers keep their thumbnail or emoji.
 #include "StickerPlayer.h"
 
 #include <Bitmap.h>
@@ -10,6 +15,8 @@
 #include <vpx/vp8dx.h>
 #include <vpx/vpx_decoder.h>
 
+#include <dlfcn.h>
+
 #include <algorithm>
 #include <string>
 
@@ -17,19 +24,73 @@
 
 namespace {
 
+// The libvpx functions used, from whichever libvpx is installed.
+struct Vpx {
+	vpx_codec_err_t (*initVer)(vpx_codec_ctx_t*, vpx_codec_iface_t*,
+		const vpx_codec_dec_cfg_t*, vpx_codec_flags_t, int) = nullptr;
+	vpx_codec_err_t (*decode)(vpx_codec_ctx_t*, const uint8_t*, unsigned int, void*,
+		long) = nullptr;
+	vpx_image_t* (*getFrame)(vpx_codec_ctx_t*, vpx_codec_iter_t*) = nullptr;
+	vpx_codec_err_t (*destroy)(vpx_codec_ctx_t*) = nullptr;
+	vpx_codec_iface_t* (*vp9)() = nullptr;
+	vpx_codec_iface_t* (*vp8)() = nullptr;
+
+	vpx_codec_err_t Init(vpx_codec_ctx_t* codec, vpx_codec_iface_t* iface,
+		const vpx_codec_dec_cfg_t* config) const
+	{
+		return initVer(codec, iface, config, 0, VPX_DECODER_ABI_VERSION);
+	}
+};
+
+
+// libvpx, loaded once; nullptr if there's none.
+const Vpx*
+LoadVpx()
+{
+	static Vpx vpx;
+	static bool tried = false;
+	static bool loaded = false;
+	if (tried)
+		return loaded ? &vpx : nullptr;
+	tried = true;
+	for (const char* name : {"libvpx.so.12", "libvpx.so.11", "libvpx.so.10", "libvpx.so.9",
+			"libvpx.so.8", "libvpx.so.7", "libvpx.so.6", "libvpx.so"}) {
+		void* library = dlopen(name, RTLD_NOW | RTLD_LOCAL);
+		if (library == nullptr)
+			continue;
+		vpx.initVer = (decltype(vpx.initVer))dlsym(library, "vpx_codec_dec_init_ver");
+		vpx.decode = (decltype(vpx.decode))dlsym(library, "vpx_codec_decode");
+		vpx.getFrame = (decltype(vpx.getFrame))dlsym(library, "vpx_codec_get_frame");
+		vpx.destroy = (decltype(vpx.destroy))dlsym(library, "vpx_codec_destroy");
+		vpx.vp9 = (decltype(vpx.vp9))dlsym(library, "vpx_codec_vp9_dx");
+		vpx.vp8 = (decltype(vpx.vp8))dlsym(library, "vpx_codec_vp8_dx");
+		if (vpx.initVer && vpx.decode && vpx.getFrame && vpx.destroy && vpx.vp9) {
+			loaded = true;
+			return &vpx;
+		}
+		dlclose(library);
+		vpx = Vpx();
+	}
+	return nullptr;
+}
+
+
 class WebmPlayer : public StickerPlayer {
 public:
 	~WebmPlayer() override
 	{
 		if (fOpen)
-			vpx_codec_destroy(&fCodec);
+			fVpx->destroy(&fCodec);
 		if (fAlphaOpen)
-			vpx_codec_destroy(&fAlphaCodec);
+			fVpx->destroy(&fAlphaCodec);
 		delete fBitmap;
 	}
 
 	bool Load(const BString& path)
 	{
+		fVpx = LoadVpx();
+		if (fVpx == nullptr)
+			return false;
 		BFile file(path.String(), B_READ_ONLY);
 		off_t size = 0;
 		// Telegram allows 256 KB for video stickers.
@@ -39,18 +100,18 @@ public:
 		std::string data(size, '\0');
 		if (file.Read(&data[0], size) != size || !pp::ParseWebm(data, &fVideo))
 			return false;
-		vpx_codec_iface_t* codec = fVideo.codec == "V_VP9" ? vpx_codec_vp9_dx()
-			: fVideo.codec == "V_VP8" ? vpx_codec_vp8_dx() : nullptr;
+		vpx_codec_iface_t* codec = fVideo.codec == "V_VP9" ? fVpx->vp9()
+			: fVideo.codec == "V_VP8" && fVpx->vp8 != nullptr ? fVpx->vp8() : nullptr;
 		if (codec == nullptr || fVideo.width <= 0 || fVideo.height <= 0
 			|| fVideo.width > 2048 || fVideo.height > 2048)
 			return false;
 		vpx_codec_dec_cfg_t config = {};
 		config.threads = 1;
-		if (vpx_codec_dec_init(&fCodec, codec, &config, 0) != VPX_CODEC_OK)
+		if (fVpx->Init(&fCodec, codec, &config) != VPX_CODEC_OK)
 			return false;
 		fOpen = true;
 		if (fVideo.alpha)
-			fAlphaOpen = vpx_codec_dec_init(&fAlphaCodec, codec, &config, 0) == VPX_CODEC_OK;
+			fAlphaOpen = fVpx->Init(&fAlphaCodec, codec, &config) == VPX_CODEC_OK;
 		const pp::WebmFrame& last = fVideo.frames.back();
 		fInterval = fVideo.frames.size() > 1
 			? std::max<int64>(last.time / (int64)(fVideo.frames.size() - 1), 1) : 33;
@@ -75,17 +136,17 @@ public:
 		vpx_image_t* alpha = nullptr;
 		for (; fNext <= target; fNext++) {
 			const pp::WebmFrame& frame = fVideo.frames[fNext];
-			if (vpx_codec_decode(&fCodec, (const uint8_t*)frame.data.data(),
+			if (fVpx->decode(&fCodec, (const uint8_t*)frame.data.data(),
 					(unsigned int)frame.data.size(), nullptr, 0) != VPX_CODEC_OK)
 				continue;
 			vpx_codec_iter_t iter = nullptr;
-			if (vpx_image_t* decoded = vpx_codec_get_frame(&fCodec, &iter))
+			if (vpx_image_t* decoded = fVpx->getFrame(&fCodec, &iter))
 				image = decoded;
 			if (fAlphaOpen && !frame.alpha.empty()
-				&& vpx_codec_decode(&fAlphaCodec, (const uint8_t*)frame.alpha.data(),
+				&& fVpx->decode(&fAlphaCodec, (const uint8_t*)frame.alpha.data(),
 					(unsigned int)frame.alpha.size(), nullptr, 0) == VPX_CODEC_OK) {
 				vpx_codec_iter_t alphaIter = nullptr;
-				if (vpx_image_t* decoded = vpx_codec_get_frame(&fAlphaCodec, &alphaIter))
+				if (vpx_image_t* decoded = fVpx->getFrame(&fAlphaCodec, &alphaIter))
 					alpha = decoded;
 			}
 		}
@@ -137,6 +198,7 @@ private:
 		}
 	}
 
+	const Vpx* fVpx = nullptr;
 	pp::WebmVideo fVideo;
 	vpx_codec_ctx_t fCodec = {};
 	vpx_codec_ctx_t fAlphaCodec = {};

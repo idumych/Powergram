@@ -33,7 +33,7 @@ TD_LIBS := -ltdjson_static -ltdjson_private -ltdclient -ltdcore -ltdapi \
 	-lssl -lcrypto -lz -lnetwork
 
 MIMESET := mimeset
-MEDIA_LIBS := -lmedia -lopus -logg -lvpx
+MEDIA_LIBS := -lmedia -lopus -logg
 ifneq ($(HAIKU_CROSS),)
   # Haiku arm64, cross-compiled on Linux (tools/haiku-arm64: . env.sh, then
   # build-deps.sh for TDLib, OpenSSL and zlib, all static). Haiku arm64 has
@@ -68,14 +68,14 @@ MOCKUP_OBJS := $(filter-out $(BUILD)/src/app/App.o $(BUILD)/src/app/TdClient.o \
 	$(BUILD)/src/app/Settings.o, $(APP_OBJS))
 mockup: $(BUILD)/PowergramMockup
 $(BUILD)/PowergramMockup: $(BUILD)/tests/mockup.o $(CORE_OBJS) $(MOCKUP_OBJS)
-	$(CXX) -o $@ $^ -lbe -lmedia -ltracker -ltranslation -llocalestub -lopus -logg -lvpx -lz
+	$(CXX) -o $@ $^ -lbe -lmedia -ltracker -ltranslation -llocalestub -lopus -logg -lz
 
 # Frames of an animated sticker (.tgs, Lottie .json or .webm) drawn into a PNG.
 lottie-render: $(BUILD)/lottie_render
 $(BUILD)/lottie_render: $(BUILD)/tests/lottie_render.o $(BUILD)/src/app/LottieRenderer.o \
 		$(BUILD)/src/app/StickerPlayer.o $(BUILD)/src/app/WebmPlayer.o \
 		$(BUILD)/src/core/Lottie.o $(BUILD)/src/core/Webm.o
-	$(CXX) -o $@ $^ -lbe -ltranslation -lvpx -lz
+	$(CXX) -o $@ $^ -lbe -ltranslation -lz
 
 # The entry's icon buttons and a picker with made-up content.
 pickers-demo: $(BUILD)/pickers_demo
@@ -83,7 +83,7 @@ $(BUILD)/pickers_demo: $(BUILD)/tests/pickers_demo.o $(BUILD)/src/app/Pickers.o 
 		$(BUILD)/src/app/Icons.o $(BUILD)/src/core/Stickers.o $(BUILD)/src/app/StickerPlayer.o \
 		$(BUILD)/src/app/WebmPlayer.o $(BUILD)/src/app/LottieRenderer.o \
 		$(BUILD)/src/core/Lottie.o $(BUILD)/src/core/Webm.o
-	$(CXX) -o $@ $^ -lbe -ltranslation -lvpx -lz
+	$(CXX) -o $@ $^ -lbe -ltranslation -lz
 
 # Scroll position through real resizes, in a visible window.
 live-scroll: $(BUILD)/live_scroll
