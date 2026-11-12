@@ -7,10 +7,10 @@ It talks to Telegram through [TDLib](https://github.com/tdlib/td), Telegram's
 own client library, and keeps Paper Plane's layout: the chat list on the left,
 the open chat on the right.
 
-**Preview.** Version 0.2.5 is a preview for Haiku and Renku OS (x86_64):
+**Preview.** Version 0.2.6 is a preview for Haiku and Renku OS (x86_64):
 download the `.hpkg` from
 [Releases](https://github.com/idumych/Powergram/releases) and install it
-with `pkgman install ./powergram-0.2.5-1-x86_64.hpkg`. The app was called
+with `pkgman install ./powergram-0.2.6-1-x86_64.hpkg`. The app was called
 Paper Plane for Haiku up to 0.1.0; Powergram replaces that package and keeps
 your login and settings.
 
@@ -132,6 +132,15 @@ Chat info: the description, members and shared photos.
 
 ![The Profile window](docs/screenshots/haiku-profile.png)
 Your profile, and the devices logged in to your account.
+
+![The New chat window](docs/screenshots/haiku-newchat.png)
+New chat (Cmd+N): your contacts, found as you type, and new groups and channels.
+
+![A new poll](docs/screenshots/haiku-poll.png)
+A poll or quiz: a new answer field appears as the last one is filled.
+
+![Scheduled messages](docs/screenshots/haiku-scheduled.png)
+A chat's scheduled messages, to send now, reschedule or delete.
 
 ![The Settings window](docs/screenshots/haiku-settings.png)
 Settings apply at once; here the text size is Large. Photos and videos open in their own apps unless you choose Powergram.
