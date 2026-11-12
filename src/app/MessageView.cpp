@@ -162,10 +162,14 @@ MessageView::_StickerFrame(const MessageRow& row, BRect box)
 	bigtime_t now = system_time();
 	playing.lastDrawn = now;
 	// Where it's on screen (the same sticker can be there more than once).
-	if (std::find(playing.frames.begin(), playing.frames.end(), box) == playing.frames.end()) {
-		playing.frames.push_back(box);
-		if (playing.frames.size() > 8)
-			playing.frames.erase(playing.frames.begin());
+	auto spot = std::find_if(playing.spots.begin(), playing.spots.end(),
+		[&](const Playing::Spot& s) { return s.frame == box; });
+	if (spot != playing.spots.end())
+		spot->background = fStickerBackground;
+	else {
+		playing.spots.push_back({box, fStickerBackground});
+		if (playing.spots.size() > 8)
+			playing.spots.erase(playing.spots.begin());
 	}
 	// The timer goes as fast as the fastest sticker on screen (at most 60
 	// frames a second).
@@ -195,11 +199,18 @@ MessageView::_AnimationTick()
 			continue;
 		}
 		if (playing.player != nullptr) {
-			for (const BRect& frame : playing.frames) {
-				if (frame.Intersects(visible)) {
-					Invalidate(frame);
-					any = true;
+			for (const Playing::Spot& spot : playing.spots) {
+				if (!spot.frame.Intersects(visible))
+					continue;
+				any = true;
+				// Under the floating buttons or a drop highlight: a normal
+				// redraw, which draws those over it.
+				if (fDropTarget || spot.frame.Intersects(_JumpButtonFrame())
+					|| spot.frame.Intersects(_MentionButtonFrame())) {
+					Invalidate(spot.frame);
+					continue;
 				}
+				_DrawStickerSpot(playing, spot, now);
 			}
 		}
 		++it;
@@ -213,6 +224,42 @@ MessageView::_AnimationTick()
 }
 
 
+// One sticker frame at its spot: composed off screen on its background,
+// then copied over what's there.
+void
+MessageView::_DrawStickerSpot(Playing& playing, const Playing::Spot& spot, bigtime_t now)
+{
+	int32 width = spot.frame.IntegerWidth() + 1;
+	int32 height = spot.frame.IntegerHeight() + 1;
+	const BBitmap* frame = playing.player->Frame(width, height, now);
+	if (frame == nullptr)
+		return;
+	if (fCompose == nullptr || fCompose->Bounds().IntegerWidth() + 1 < width
+		|| fCompose->Bounds().IntegerHeight() + 1 < height) {
+		delete fCompose;
+		fCompose = new BBitmap(BRect(0, 0, width - 1, height - 1), B_BITMAP_ACCEPTS_VIEWS,
+			B_RGBA32);
+		fComposeView = new BView(fCompose->Bounds(), "compose", B_FOLLOW_NONE, 0);
+		fCompose->AddChild(fComposeView);
+	}
+	BRect area(0, 0, width - 1, height - 1);
+	if (!fCompose->Lock())
+		return;
+	fComposeView->SetDrawingMode(B_OP_COPY);
+	fComposeView->SetHighColor(spot.background);
+	fComposeView->FillRect(area);
+	fComposeView->SetDrawingMode(B_OP_ALPHA);
+	fComposeView->SetBlendingMode(B_PIXEL_ALPHA, B_ALPHA_OVERLAY);
+	fComposeView->DrawBitmap(frame, frame->Bounds(), area, B_FILTER_BITMAP_BILINEAR);
+	fComposeView->Sync();
+	fCompose->Unlock();
+	PushState();
+	SetDrawingMode(B_OP_COPY);
+	DrawBitmap(fCompose, area, spot.frame);
+	PopState();
+}
+
+
 void
 MessageView::_ClearPlayers()
 {
@@ -222,6 +269,9 @@ MessageView::_ClearPlayers()
 	for (auto& [key, playing] : fPlaying)
 		delete playing.player;
 	fPlaying.clear();
+	delete fCompose;   // and its view
+	fCompose = nullptr;
+	fComposeView = nullptr;
 }
 
 
@@ -1064,7 +1114,7 @@ MessageView::_Relayout()
 {
 	// Stickers move: where they were drawn is learnt again.
 	for (auto& [key, playing] : fPlaying)
-		playing.frames.clear();
+		playing.spots.clear();
 	BFont font;
 	GetFont(&font);
 	font_height fh;
@@ -1774,6 +1824,7 @@ MessageView::Draw(BRect updateRect)
 		SetLowColor(fill);
 
 		if (row.mediaKind != 0)
+			fStickerBackground = fill;
 			_DrawMedia(row, l, fg, line);
 
 		// The sender's picture at the bottom of their run of messages.

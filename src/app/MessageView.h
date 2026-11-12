@@ -196,12 +196,24 @@ private:
 	struct Playing {
 		StickerPlayer* player = nullptr;   // nullptr: the file can't be played
 		bigtime_t lastDrawn = 0;
-		std::vector<BRect> frames;         // where it was drawn last
+		// Where it was drawn last, and the colour behind it there.
+		struct Spot {
+			BRect frame;
+			rgb_color background;
+		};
+		std::vector<Spot> spots;
 	};
 	const BBitmap* _StickerFrame(const MessageRow& row, BRect box);
 	void _AnimationTick();
+	void _DrawStickerSpot(Playing& playing, const Playing::Spot& spot, bigtime_t now);
 	void _ClearPlayers();
 	std::map<std::string, Playing> fPlaying;
+	rgb_color fStickerBackground;      // behind the media being drawn
+	// A frame is composed here (background, then the sticker) and copied
+	// to the view in one go: invalidating would erase it first, and the
+	// sticker flickered.
+	BBitmap* fCompose = nullptr;
+	BView* fComposeView = nullptr;
 	BMessageRunner* fAnimationRunner = nullptr;
 	bigtime_t fAnimationInterval = 0;
 
