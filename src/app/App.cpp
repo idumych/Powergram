@@ -1838,6 +1838,7 @@ App::_HandleAuth()
 	state.AddInt32("code_length", s.codeLength);
 	state.AddString("hint", s.passwordHint.c_str());
 	state.AddString("td_type", s.tdType.c_str());
+	state.AddString("link", s.link.c_str());
 	fLogin->PostMessage(&state);
 	if (s.step == AuthStep::NeedApiKey && !fBadApiKey.empty()) {
 		BMessage error(kMsgAuthError);
@@ -2173,6 +2174,9 @@ App::MessageReceived(BMessage* message)
 			break;
 		case kMsgSubmitPhone:
 			_Send(fAuth->PhoneRequest(message->GetString("text", "")), true);
+			break;
+		case kMsgSubmitQr:
+			_Send(fAuth->QrRequest(), true);
 			break;
 		case kMsgSubmitCode:
 			_Send(fAuth->CodeRequest(message->GetString("text", "")), true);

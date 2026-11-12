@@ -15,6 +15,7 @@
 #include "../src/core/VoiceNote.h"
 #include "../src/core/Mentions.h"
 #include "../src/core/Profile.h"
+#include "../src/core/QrCode.h"
 #include "../src/core/Presence.h"
 #include "../src/core/SendQueue.h"
 #include "../src/core/Stickers.h"
@@ -1432,6 +1433,51 @@ TestHaikuIcons()
 }
 
 
+// Logging in with a QR code: the request, the link TDLib gives, and the
+// code drawn from it.
+static void
+TestQrLogin()
+{
+	AuthFlow auth(TdParams{});
+	json request = auth.QrRequest();
+	CHECK(Str(request, "@type") == "requestQrCodeAuthentication");
+	CHECK(request["other_user_ids"].is_array() && request["other_user_ids"].empty());
+	CHECK(AuthFlow::IsAuthReply(request));
+
+	const std::string link = "tg://login?token=AQKx2PmVZ3c4uVq1_mNbYpTj0mUeQxV9gsQjEz5oW8kRqA";
+	std::vector<json> out;
+	CHECK(auth.Handle({{"@type", "updateAuthorizationState"}, {"authorization_state",
+		{{"@type", "authorizationStateWaitOtherDeviceConfirmation"}, {"link", link}}}}, out));
+	CHECK(auth.State().step == AuthStep::OtherDevice && auth.State().link == link);
+	CHECK(out.empty());
+
+	QrMatrix qr = EncodeQr(link);
+	// Version 4 or 5 (33 or 37 modules) for a link this long.
+	CHECK(qr.size >= 29 && qr.size <= 41 && (qr.size - 21) % 4 == 0);
+	CHECK((int)qr.modules.size() == qr.size * qr.size);
+	// The three finder patterns: a dark ring, a light ring, a dark centre.
+	auto finder = [&](int left, int top) {
+		bool ok = true;
+		for (int y = 0; y < 7; y++) {
+			for (int x = 0; x < 7; x++) {
+				bool ring = x == 0 || y == 0 || x == 6 || y == 6;
+				bool centre = x >= 2 && x <= 4 && y >= 2 && y <= 4;
+				ok &= qr.Dark(left + x, top + y) == (ring || centre);
+			}
+		}
+		return ok;
+	};
+	CHECK(finder(0, 0) && finder(qr.size - 7, 0) && finder(0, qr.size - 7));
+	CHECK(!finder(qr.size - 7, qr.size - 7));
+	CHECK(!qr.Dark(-1, 0) && !qr.Dark(0, qr.size));
+	// The same link gives the same code; another gives another.
+	CHECK(EncodeQr(link).modules == qr.modules);
+	CHECK(EncodeQr(link + "x").modules != qr.modules);
+	// Too long for any QR code: none.
+	CHECK(EncodeQr(std::string(8000, 'a')).size == 0);
+}
+
+
 int
 main()
 {
@@ -1463,6 +1509,7 @@ main()
 	TestUnreadChats();
 	TestProfile();
 	TestAvailableReactions();
+	TestQrLogin();
 	if (sFailures) {
 		std::fprintf(stderr, "%d check(s) failed\n", sFailures);
 		return EXIT_FAILURE;

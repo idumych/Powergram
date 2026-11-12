@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // One window for every login step, one card per step, like Paper Plane's
-// login stack: API key (ours), phone number, code, password, new account.
+// login stack: API key (ours), phone number or QR code, code, password,
+// new account.
 #pragma once
 
 #include <Window.h>
@@ -10,6 +11,7 @@ class BCardLayout;
 class BStringView;
 class BTextControl;
 class BTextView;
+class QrView;
 
 class LoginWindow : public BWindow {
 public:
@@ -20,7 +22,7 @@ public:
 
 private:
 	enum Card { kCardApiKey, kCardPhone, kCardCode, kCardPassword,
-		kCardName, kCardMessage };
+		kCardName, kCardQr, kCardMessage };
 
 	BView* _MakeCard(const char* title, BTextView** description,
 		BView* fields, BButton** next, uint32 what, BButton* extra = nullptr);
@@ -45,6 +47,11 @@ private:
 	BTextView* fCodeInfo;
 	BTextView* fPasswordInfo;
 	BTextView* fMessageText;
+	QrView* fQr;
+	BButton* fQrButton;
+	// The QR code was left for the phone number: TDLib keeps sending new
+	// codes, which then mustn't take the window back to it.
+	bool fPreferPhone = false;
 
 	BButton* fNext[kCardMessage];
 	bool fApiSiteOpened = false;   // once by itself, then by the button

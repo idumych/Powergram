@@ -10,7 +10,7 @@ CORE_SRCS := src/core/AuthFlow.cpp src/core/ChatList.cpp src/core/ChatHistory.cp
 	src/core/SendQueue.cpp src/core/Files.cpp src/core/Stickers.cpp \
 	src/core/Format.cpp src/core/Presence.cpp src/core/ChatInfo.cpp \
 	src/core/Links.cpp src/core/Pinned.cpp src/core/VoiceNote.cpp src/core/Mentions.cpp \
-	src/core/Profile.cpp
+	src/core/Profile.cpp src/core/QrCode.cpp src/third_party/qrcodegen/qrcodegen.cpp
 APP_SRCS := src/app/App.cpp src/app/TdClient.cpp src/app/Settings.cpp \
 	src/app/LoginWindow.cpp src/app/MainWindow.cpp src/app/MessageView.cpp \
 	src/app/BitmapUtils.cpp src/app/Icons.cpp src/app/Pickers.cpp src/app/ChatPicker.cpp \
@@ -46,7 +46,7 @@ $(NAME): $(CORE_OBJS) $(APP_OBJS) $(BUILD)/$(NAME).rsrc
 
 # The real main window with made-up chats, for screenshots.
 MOCKUP_OBJS := $(filter-out $(BUILD)/src/app/App.o $(BUILD)/src/app/TdClient.o \
-	$(BUILD)/src/app/LoginWindow.o $(BUILD)/src/app/Settings.o, $(APP_OBJS))
+	$(BUILD)/src/app/Settings.o, $(APP_OBJS))
 mockup: $(BUILD)/PowergramMockup
 $(BUILD)/PowergramMockup: $(BUILD)/tests/mockup.o $(CORE_OBJS) $(MOCKUP_OBJS)
 	$(CXX) -o $@ $^ -lbe -lmedia -ltracker -ltranslation -llocalestub -lopus -logg
@@ -134,12 +134,21 @@ $(BUILD)/test_core: $(CORE_OBJS) $(BUILD)/tests/test_core.o
 test: $(BUILD)/test_core
 	$(BUILD)/test_core
 
+# The login QR code read back by a real QR reader (needs zbarimg).
+qr-check: $(BUILD)/qr_dump
+	$(BUILD)/qr_dump "tg://login?token=AQKx2PmVZ3c4uVq1_mNbYpTj0mUeQxV9gsQjEz5oW8kRqA" > $(BUILD)/qr.pbm
+	test "$$(zbarimg -q --raw $(BUILD)/qr.pbm)" = "tg://login?token=AQKx2PmVZ3c4uVq1_mNbYpTj0mUeQxV9gsQjEz5oW8kRqA"
+	@echo "the QR code reads back"
+$(BUILD)/qr_dump: $(BUILD)/tests/qr_dump.o $(BUILD)/src/core/QrCode.o \
+		$(BUILD)/src/third_party/qrcodegen/qrcodegen.o
+	$(CXX) -o $@ $^
+
 clean:
 	rm -rf $(BUILD) $(NAME)
 
 -include $(CORE_OBJS:.o=.d) $(APP_OBJS:.o=.d) $(BUILD)/tests/test_core.d
 
-.PHONY: all test clean bench live-scroll pickers-demo mockup voice_play video-playback-test media-viewer-demo
+.PHONY: all test qr-check clean bench live-scroll pickers-demo mockup voice_play video-playback-test media-viewer-demo
 
 voice_play: $(BUILD)/voice_play
 $(BUILD)/voice_play: $(BUILD)/tests/voice_play.o $(BUILD)/src/app/VoicePlayer.o

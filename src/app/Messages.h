@@ -42,7 +42,7 @@ enum { kOpenAsSet = 0, kOpenInViewer = 1, kOpenInSystemApp = 2 };
 
 enum {
 	// app → login window: "step" (int32 pp::AuthStep), "code_info",
-	// "code_length" (int32), "hint"
+	// "code_length" (int32), "hint", "link" (the QR code's)
 	kMsgAuthState = 'aust',
 	// app → login window: "text"
 	kMsgAuthError = 'auer',
@@ -53,6 +53,7 @@ enum {
 	kMsgSubmitCode = 'scod',     // "text"
 	kMsgSubmitPassword = 'spwd', // "text"
 	kMsgSubmitName = 'snam',     // "first", "last"
+	kMsgSubmitQr = 'sqrc',       // log in with a QR code instead
 
 	// app → main window: parallel arrays "id" (int64), "title", "text",
 	// "sender", "date" (int64), "unread" (int32), "mentions" (int32),

@@ -5,6 +5,7 @@
 #include <Button.h>
 #include <CardLayout.h>
 #include <GridView.h>
+#include <GroupView.h>
 #include <LayoutBuilder.h>
 #include <StringView.h>
 #include <TextControl.h>
@@ -16,12 +17,14 @@
 #include <cstdlib>
 
 #include "../core/AuthFlow.h"
+#include "../core/QrCode.h"
 #include "Messages.h"
 
 namespace {
 enum {
 	kMsgOpenApiSite = 'oapi',
-	kMsgApiKeyEdited = 'eapi'
+	kMsgApiKeyEdited = 'eapi',
+	kMsgUsePhone = 'uphn'
 };
 // my.telegram.org's "API development tools" page (it asks for a login first).
 const char* kApiSite = "https://my.telegram.org/apps";
@@ -59,6 +62,59 @@ SetWrappedText(BTextView* view, const char* text, int32 minLines = 1)
 }
 
 
+// The login link as a QR code, dark on white whatever the colours, with
+// the light margin readers need around it.
+class QrView : public BView {
+public:
+	QrView()
+		:
+		BView("qr code", B_WILL_DRAW)
+	{
+		float side = ceilf(be_plain_font->Size() * 16);
+		SetExplicitSize(BSize(side, side));
+		SetViewColor(B_TRANSPARENT_COLOR);
+	}
+
+	void SetLink(const char* link)
+	{
+		if (fLink == link)
+			return;
+		fLink = link;
+		fQr = pp::EncodeQr(link);
+		Invalidate();
+	}
+
+	void Draw(BRect) override
+	{
+		BRect bounds = Bounds();
+		SetHighColor(255, 255, 255);
+		FillRect(bounds);
+		if (fQr.size == 0)
+			return;
+		// Whole pixels a module, so every module comes out the same size.
+		const int margin = 4;
+		int cells = fQr.size + 2 * margin;
+		float module = floorf(std::min(bounds.Width() + 1, bounds.Height() + 1) / cells);
+		if (module < 1)
+			return;
+		BPoint origin(floorf((bounds.Width() + 1 - module * fQr.size) / 2),
+			floorf((bounds.Height() + 1 - module * fQr.size) / 2));
+		SetHighColor(0, 0, 0);
+		for (int y = 0; y < fQr.size; y++) {
+			for (int x = 0; x < fQr.size; x++) {
+				if (fQr.Dark(x, y))
+					FillRect(BRect(origin.x + x * module, origin.y + y * module,
+						origin.x + (x + 1) * module - 1, origin.y + (y + 1) * module - 1));
+			}
+		}
+	}
+
+private:
+	BString fLink;
+	pp::QrMatrix fQr;
+};
+
+
 LoginWindow::LoginWindow(bool testDc)
 	:
 	BWindow(BRect(0, 0, 400, 260),
@@ -70,6 +126,7 @@ LoginWindow::LoginWindow(bool testDc)
 	BTextView* apiInfo;
 	BTextView* phoneInfo;
 	BTextView* nameInfo;
+	BTextView* qrInfo;
 
 	fApiId = new BTextControl("App api_id:", "", nullptr);
 	fApiHash = new BTextControl("App api_hash:", "", nullptr);
@@ -108,14 +165,21 @@ LoginWindow::LoginWindow(bool testDc)
 		new BMessage(kMsgOpenApiSite));
 	fCards->AddView(_MakeCard("Telegram API key", &apiInfo,
 		fields({fApiId, fApiHash}), &fNext[kCardApiKey], kMsgSubmitApiKey, openSite));
+	fQrButton = new BButton("qr", "Log in with a QR code", new BMessage(kMsgSubmitQr));
 	fCards->AddView(_MakeCard("Welcome", &phoneInfo,
-		fields({fPhone}), &fNext[kCardPhone], kMsgSubmitPhone));
+		fields({fPhone}), &fNext[kCardPhone], kMsgSubmitPhone, fQrButton));
 	fCards->AddView(_MakeCard("Enter the verification code", &fCodeInfo,
 		fields({fCode}), &fNext[kCardCode], kMsgSubmitCode));
 	fCards->AddView(_MakeCard("Enter your password", &fPasswordInfo,
 		fields({fPassword}), &fNext[kCardPassword], kMsgSubmitPassword));
 	fCards->AddView(_MakeCard("Create an account", &nameInfo,
 		fields({fFirstName, fLastName}), &fNext[kCardName], kMsgSubmitName));
+	fQr = new QrView();
+	BGroupView* qrBox = new BGroupView(B_HORIZONTAL);
+	BLayoutBuilder::Group<>(qrBox).AddGlue().Add(fQr).AddGlue();
+	fCards->AddView(_MakeCard("Log in with a QR code", &qrInfo, qrBox,
+		&fNext[kCardQr], kMsgUsePhone));
+	fNext[kCardQr]->SetLabel("Use phone number");
 	fCards->AddView(_MakeCard("Connecting", &fMessageText, nullptr, nullptr, 0));
 
 	SetWrappedText(apiInfo, "Powergram needs a Telegram API key of your own. "
@@ -129,6 +193,9 @@ LoginWindow::LoginWindow(bool testDc)
 			"account first with Telegram's mobile app (iOS Debug menu, or the "
 			"Android beta)."
 		: "Enter your phone number with the country code.");
+	SetWrappedText(qrInfo, "Open Telegram on your phone, go to Settings > "
+		"Devices > Link Desktop Device and point the camera at this code. "
+		"It changes every half minute.");
 	SetWrappedText(nameInfo, "This phone number has no Telegram account yet. "
 		"Enter the name to show to other people.");
 	SetWrappedText(fMessageText, "Connecting to Telegram…");
@@ -199,7 +266,7 @@ LoginWindow::_ShowCard(Card card)
 	fCard = card;
 	fCards->SetVisibleItem((int32)card);
 	_SetBusy(false);
-	SetDefaultButton(card == kCardMessage ? nullptr : fNext[card]);
+	SetDefaultButton(card == kCardMessage || card == kCardQr ? nullptr : fNext[card]);
 
 	BTextControl* focus = nullptr;
 	switch (card) {
@@ -278,6 +345,8 @@ LoginWindow::_SetBusy(bool busy)
 {
 	if (fCard != kCardMessage)
 		fNext[fCard]->SetEnabled(!busy);
+	if (fCard == kCardPhone)
+		fQrButton->SetEnabled(!busy);
 }
 
 
@@ -325,6 +394,9 @@ LoginWindow::_Submit(uint32 what)
 		case kMsgSubmitPassword:
 			message.AddString("text", fPassword->Text());
 			break;
+		case kMsgSubmitQr:
+			fPreferPhone = false;
+			break;
 		case kMsgSubmitName:
 		{
 			BString first(fFirstName->Text());
@@ -359,7 +431,14 @@ LoginWindow::MessageReceived(BMessage* message)
 		case kMsgSubmitCode:
 		case kMsgSubmitPassword:
 		case kMsgSubmitName:
+		case kMsgSubmitQr:
 			_Submit(message->what);
+			break;
+		case kMsgUsePhone:
+			// TDLib takes a phone number while it shows QR codes too.
+			fPreferPhone = true;
+			_SetError("");
+			_ShowCard(kCardPhone);
 			break;
 
 		case kMsgAuthState:
@@ -374,6 +453,7 @@ LoginWindow::MessageReceived(BMessage* message)
 						_OpenApiSite();
 					break;
 				case pp::AuthStep::Phone:
+					fPreferPhone = false;
 					_ShowCard(kCardPhone);
 					break;
 				case pp::AuthStep::Code:
@@ -406,9 +486,11 @@ LoginWindow::MessageReceived(BMessage* message)
 					_ShowCard(kCardMessage);
 					break;
 				case pp::AuthStep::OtherDevice:
-					SetWrappedText(fMessageText, "Log in with a QR code is not "
-						"supported yet.");
-					_ShowCard(kCardMessage);
+					// A new code every 30 s or so; the card only if it's
+					// still the way chosen.
+					fQr->SetLink(message->GetString("link", ""));
+					if (!fPreferPhone && fCard != kCardQr)
+						_ShowCard(kCardQr);
 					break;
 				case pp::AuthStep::Unsupported:
 				{

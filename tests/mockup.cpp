@@ -21,6 +21,8 @@
 #include "../src/app/SettingsWindow.h"
 #include "../src/app/ProfileWindow.h"
 #include "../src/app/ChatInfoWindow.h"
+#include "../src/app/LoginWindow.h"
+#include "../src/core/AuthFlow.h"
 #include "../src/app/Messages.h"
 #include "../src/core/ChatHistory.h"
 #include "../src/core/Format.h"
@@ -204,6 +206,20 @@ public:
 					get_ref_for_path("/boot/home/paper_plane/tests/data/clip.mp4", &ref);
 					files.AddRef("refs", &ref);
 					fMain->PostMessage(&files);
+				}
+				else if (sScene == "loginqr" || sScene == "loginphone") {
+					// The login window showing a QR code for a made-up
+					// token (or the phone page, with its QR code button).
+					LoginWindow* login = new LoginWindow(false);
+					BMessage state(kMsgAuthState);
+					bool qr = sScene == "loginqr";
+					state.AddInt32("step", (int32)(qr ? pp::AuthStep::OtherDevice
+						: pp::AuthStep::Phone));
+					state.AddString("link",
+						"tg://login?token=MadeUpTokenForTheMockup_NotARealLogin0000000");
+					login->PostMessage(&state);
+					login->MoveTo(560, 120);
+					login->Show();
 				}
 				else if (sScene == "emoji")
 					fMain->PostMessage(kMsgShowEmoji);
