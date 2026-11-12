@@ -38,6 +38,7 @@
 #include "../core/ChatList.h"
 #include "../core/Links.h"
 #include "../core/Mentions.h"
+#include "../core/SecretChat.h"
 #include "BitmapUtils.h"
 #include "ChatPicker.h"
 #include "SettingsWindow.h"
@@ -135,6 +136,7 @@ public:
 		fMuted = list->GetBool("muted", index, false);
 		fMarkedUnread = list->GetBool("marked_unread", index, false);
 		fKind = list->GetInt32("kind", index, 0);
+		fSecret = list->GetBool("secret", index, false);
 		fInitials = pp::Initials(fTitle.String()).c_str();
 		fKey = Key(list, index);
 	}
@@ -150,7 +152,8 @@ public:
 			<< list->GetInt32("unread", index, 0) << '\x1f' << list->GetInt32("mentions", index, 0)
 			<< '\x1f' << (int)list->GetBool("pinned", index, false)
 			<< (int)list->GetBool("read", index, false) << (int)list->GetBool("muted", index, false)
-			<< (int)list->GetBool("marked_unread", index, false) << '\x1f'
+			<< (int)list->GetBool("marked_unread", index, false)
+			<< (int)list->GetBool("secret", index, false) << '\x1f'
 			<< list->GetString("typing", index, "") << '\x1f' << list->GetString("draft", index, "")
 			<< '\x1f' << list->GetString("photo", index, "") << '\x1f'
 			<< (int32)FindBytes(list, "photo_mini", index).size();
@@ -226,9 +229,32 @@ public:
 
 		owner->SetFont(&bold);
 		owner->SetHighColor(fg);
+		float titleLeft = left;
+		if (fSecret) {
+			// Secret chats: a padlock and the title in green, as in
+			// Telegram's apps (the list's colours when selected).
+			rgb_color green = IsSelected() ? fg : rgb_color{0, 150, 70, 255};
+			owner->SetHighColor(green);
+			float base = mid - fh.descent - 2;
+			float size = ceilf(fh.ascent * 0.8f);
+			float width = ceilf(size * 0.75f);
+			BRect body(left, base - size * 0.55f, left + width, base);
+			BRect shackle(left + width * 0.2f, base - size, left + width * 0.8f,
+				base - size * 0.3f);
+			owner->SetPenSize(std::max(1.0f, roundf(size / 7)));
+			owner->StrokeArc(shackle, 0, 180);
+			owner->StrokeLine(BPoint(shackle.left, shackle.top + shackle.Height() / 2),
+				BPoint(shackle.left, body.top));
+			owner->StrokeLine(BPoint(shackle.right, shackle.top + shackle.Height() / 2),
+				BPoint(shackle.right, body.top));
+			owner->SetPenSize(1);
+			owner->FillRoundRect(body, 1.5f, 1.5f);
+			titleLeft = body.right + roundf(size * 0.4f);
+		}
 		BString title(fTitle);
-		bold.TruncateString(&title, B_TRUNCATE_END, right - dateWidth - pad - left);
-		owner->DrawString(title, BPoint(left, mid - fh.descent - 2));
+		bold.TruncateString(&title, B_TRUNCATE_END, right - dateWidth - pad - titleLeft);
+		owner->DrawString(title, BPoint(titleLeft, mid - fh.descent - 2));
+		owner->SetHighColor(fg);
 
 		// Second line: "You: text", unread badge or pin on the right.
 		float badgeRight = right;
@@ -300,6 +326,7 @@ private:
 	bool fMuted = false;
 	bool fMarkedUnread = false;
 	int32 fKind = 0;    // pp::Chat::Kind: 0 private, 1 group, 2 channel
+	bool fSecret = false;   // a secret chat: padlock, green title
 public:
 	bool Muted() const { return fMuted; }
 	bool Pinned() const { return fPinned; }
@@ -486,6 +513,18 @@ MainWindow::MainWindow(BRect frame, bool testDc,
 	fInfoItem = new BMenuItem("Info" B_UTF8_ELLIPSIS, new BMessage(kMsgShowChatInfo), 'I');
 	fInfoItem->SetEnabled(false);
 	chat->AddItem(fInfoItem);
+	fSecretItem = new BMenuItem("New secret chat", new BMessage(kMsgNewSecretChat));
+	fSecretItem->SetEnabled(false);
+	chat->AddItem(fSecretItem);
+	fSelfDestructMenu = new BMenu("Self-destruct timer");
+	fSelfDestructMenu->SetRadioMode(true);
+	for (int32 seconds : pp::SelfDestructTimes()) {
+		BMessage* timer = new BMessage(kMsgSetSelfDestruct);
+		timer->AddInt32("seconds", seconds);
+		fSelfDestructMenu->AddItem(new BMenuItem(pp::SelfDestructText(seconds).c_str(), timer));
+	}
+	chat->AddItem(fSelfDestructMenu);
+	fSelfDestructMenu->Superitem()->SetEnabled(false);
 	chat->AddSeparatorItem();
 	chat->AddItem(new BMenuItem("Open username or link" B_UTF8_ELLIPSIS,
 		new BMessage(kMsgOpenLinkAsk), 'O'));
@@ -713,6 +752,10 @@ MainWindow::_SelectionChanged()
 	if (!fPinnedBar->IsHidden())
 		fPinnedBar->Hide();
 	fCanJoin = false;
+	fWriteBlocked = false;
+	fSecretChat = fCanStartSecret = false;
+	fSelfDestruct = 0;
+	_UpdateSecretMenu();
 	if (fRecording)
 		_SetRecording(false, 0, 0);   // the app stops it when the chat changes
 	fSendButton->SetLabel("Send");
@@ -1095,6 +1138,37 @@ MainWindow::_SetRecording(bool recording, int32 seconds, float level)
 
 
 void
+MainWindow::_SetWriteBlocked(bool blocked)
+{
+	if (blocked == fWriteBlocked || fOpenChat == 0)
+		return;
+	fWriteBlocked = blocked;
+	if (blocked) {
+		_CancelCompose();
+		fEntry->MakeFocus(false);   // no caret left blinking in it
+	}
+	fSendButton->SetEnabled(!blocked);
+	fEntry->SetEnabled(!blocked);
+	fAttachButton->SetEnabled(!blocked);
+	fEmojiButton->SetEnabled(!blocked);
+	fStickerButton->SetEnabled(!blocked);
+	fMicButton->SetEnabled(!blocked);
+	if (!blocked)
+		fEntry->MakeFocus(true);
+}
+
+
+void
+MainWindow::_UpdateSecretMenu()
+{
+	fSecretItem->SetEnabled(fCanStartSecret);
+	fSelfDestructMenu->Superitem()->SetEnabled(fSecretChat && !fWriteBlocked);
+	for (int32 i = 0; BMenuItem* item = fSelfDestructMenu->ItemAt(i); i++)
+		item->SetMarked(item->Message()->GetInt32("seconds", -1) == fSelfDestruct);
+}
+
+
+void
 MainWindow::_SetCanJoin(bool canJoin)
 {
 	if (canJoin == fCanJoin || fOpenChat == 0)
@@ -1410,12 +1484,20 @@ MainWindow::MessageReceived(BMessage* message)
 		}
 		case kMsgChatStatus:
 			if (message->GetInt64("chat_id", 0) == fOpenChat) {
-				fSubtitle->SetText(message->GetString("status", ""));
-				if (message->GetBool("active", false))
+				// A secret chat that can't be written in says why instead.
+				const char* notice = message->GetString("notice", "");
+				fSubtitle->SetText(notice[0] != '\0' ? notice
+					: message->GetString("status", ""));
+				if (message->GetBool("active", false) && notice[0] == '\0')
 					fSubtitle->SetHighUIColor(B_CONTROL_HIGHLIGHT_COLOR);
 				else
 					fSubtitle->SetHighUIColor(B_PANEL_TEXT_COLOR, B_DARKEN_2_TINT);
 				_SetCanJoin(message->GetBool("can_join", false));
+				_SetWriteBlocked(notice[0] != '\0');
+				fSecretChat = message->GetBool("secret", false);
+				fCanStartSecret = message->GetBool("can_start_secret", false);
+				fSelfDestruct = message->GetInt32("self_destruct", 0);
+				_UpdateSecretMenu();
 			}
 			break;
 		case kMsgSelectionChanged:
@@ -1648,6 +1730,14 @@ MainWindow::MessageReceived(BMessage* message)
 			be_app->PostMessage(&show);
 			break;
 		}
+		case kMsgNewSecretChat:
+		case kMsgSetSelfDestruct:
+			if (fOpenChat != 0) {
+				message->RemoveName("chat_id");
+				message->AddInt64("chat_id", fOpenChat);
+				be_app->PostMessage(message);
+			}
+			break;
 		case kMsgShowChatInfo:
 			if (fOpenChat != 0) {
 				BMessage show(kMsgShowChatInfo);

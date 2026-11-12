@@ -31,6 +31,12 @@ struct Chat {
 	std::string photoPreview;   // its tiny inline JPEG
 
 	enum Kind { kPrivate, kGroup, kChannel } kind = kPrivate;
+	// Private and secret chats: the other person. Secret chats (end-to-end
+	// encrypted, on this device only) also have an id of their own.
+	int64_t userId = 0;
+	bool secret = false;
+	int32_t secretChatId = 0;
+	int32_t autoDelete = 0;     // seconds before messages delete themselves, 0: never
 	// Notification settings; "use default" means the scope's (kind's).
 	bool useDefaultMute = true;
 	int32_t muteFor = 0;
@@ -94,7 +100,8 @@ public:
 	static json MuteRequest(int64_t chatId, bool mute);
 	static json PinRequest(int64_t chatId, const std::string& list, bool pin);
 	static json MoveRequest(int64_t chatId, const std::string& toList);
-	// Private chats: delete the history for us; groups and channels: leave.
+	// Private chats: delete the history for us; secret chats: end them
+	// too; groups and channels: leave.
 	static std::vector<json> DeleteRequests(const Chat& chat);
 	static json ListObject(const std::string& list);
 

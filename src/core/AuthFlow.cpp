@@ -112,7 +112,7 @@ AuthFlow::ParametersRequest() const
 		{"use_file_database", true},
 		{"use_chat_info_database", true},
 		{"use_message_database", true},
-		{"use_secret_chats", false},
+		{"use_secret_chats", true},
 		{"api_id", fParams.apiId},
 		{"api_hash", fParams.apiHash},
 		{"system_language_code", fParams.language},

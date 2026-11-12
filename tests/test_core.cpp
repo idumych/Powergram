@@ -16,6 +16,7 @@
 #include "../src/core/Mentions.h"
 #include "../src/core/Profile.h"
 #include "../src/core/QrCode.h"
+#include "../src/core/SecretChat.h"
 #include "../src/core/Presence.h"
 #include "../src/core/SendQueue.h"
 #include "../src/core/Stickers.h"
@@ -1478,6 +1479,84 @@ TestQrLogin()
 }
 
 
+// Secret chats: the chat list knows them, their state is followed, the
+// key picture comes from the key hash, and the timer and requests.
+static void
+TestSecretChats()
+{
+	CHECK(Bool(AuthFlow(TdParams{}).ParametersRequest(), "use_secret_chats"));
+
+	ChatList list;
+	list.Apply({{"@type", "updateNewChat"}, {"chat", {{"id", -5000000777LL}, {"title", "Mira Okafor"},
+		{"type", {{"@type", "chatTypeSecret"}, {"secret_chat_id", 77}, {"user_id", 501}}},
+		{"message_auto_delete_time", 0},
+		{"positions", json::array({{{"list", {{"@type", "chatListMain"}}}, {"order", "9"}}})}}}});
+	list.Apply({{"@type", "updateNewChat"}, {"chat", {{"id", 501}, {"title", "Mira Okafor"},
+		{"type", {{"@type", "chatTypePrivate"}, {"user_id", 501}}}}}});
+	const Chat* secret = list.Find(-5000000777LL);
+	CHECK(secret != nullptr && secret->secret && secret->secretChatId == 77 && secret->userId == 501);
+	CHECK(secret->kind == Chat::kPrivate);
+	CHECK(!list.Find(501)->secret && list.Find(501)->userId == 501);
+	list.Apply({{"@type", "updateChatMessageAutoDeleteTime"}, {"chat_id", -5000000777LL},
+		{"message_auto_delete_time", 30}});
+	CHECK(list.Find(-5000000777LL)->autoDelete == 30);
+	// Deleting it ends it first.
+	std::vector<json> del = ChatList::DeleteRequests(*list.Find(-5000000777LL));
+	CHECK(del.size() == 2 && Str(del[0], "@type") == "closeSecretChat"
+		&& Int(del[0], "secret_chat_id") == 77 && Str(del[1], "@type") == "deleteChatHistory");
+	CHECK(ChatList::DeleteRequests(*list.Find(501)).size() == 1);
+
+	SecretChats chats;
+	auto update = [](const char* state, bool outbound, const std::string& hash) {
+		return json{{"@type", "updateSecretChat"}, {"secret_chat", {{"@type", "secretChat"},
+			{"id", 77}, {"user_id", 501}, {"state", {{"@type", state}}},
+			{"is_outbound", outbound}, {"key_hash", hash}}}};
+	};
+	CHECK(chats.Apply(update("secretChatStatePending", true, "")));
+	CHECK(!chats.Apply({{"@type", "updateUser"}}));
+	const SecretChat* s = chats.Find(77);
+	CHECK(s != nullptr && s->state == SecretChat::kPending && s->outbound && s->userId == 501);
+	CHECK(SecretChatNotice(*s, "Mira") == "Waiting for Mira to come online\xE2\x80\xA6");
+	chats.Apply(update("secretChatStatePending", false, ""));
+	CHECK(SecretChatNotice(*chats.Find(77), "Mira") == "Starting the secret chat\xE2\x80\xA6");
+
+	// Ready, with a 36-byte key hash (base64 in TDLib's JSON).
+	std::string hash;
+	for (int i = 0; i < 36; i++)
+		hash += (char)(i * 37 + 11);
+	chats.Apply(update("secretChatStateReady", true, EncodeBase64(hash)));
+	s = chats.Find(77);
+	CHECK(s->state == SecretChat::kReady && s->keyHash == hash);
+	CHECK(SecretChatNotice(*s, "Mira").empty());
+	std::vector<uint8_t> picture = KeyPicture(s->keyHash);
+	CHECK(picture.size() == 144);
+	// Two bits a square, low bits of each byte first: byte 0 is 11 (0b00001011).
+	CHECK(picture[0] == 3 && picture[1] == 2 && picture[2] == 0 && picture[3] == 0);
+	// Byte 35 (35 * 37 + 11 = 1306, so 0x1A) gives the last four squares.
+	CHECK(picture[140] == 2 && picture[141] == 2 && picture[142] == 1 && picture[143] == 0);
+	CHECK(KeyPicture("short").empty());
+	CHECK(kKeyPictureColors[0] == 0xffffff);
+
+	chats.Apply(update("secretChatStateClosed", true, ""));
+	CHECK(SecretChatNotice(*chats.Find(77), "") == "This secret chat has ended.");
+	CHECK(chats.Find(78) == nullptr);
+
+	// The timer.
+	const std::vector<int32_t>& times = SelfDestructTimes();
+	CHECK(times.front() == 0 && times.back() == 604800);
+	CHECK(SelfDestructText(0) == "Off" && SelfDestructText(1) == "1 second");
+	CHECK(SelfDestructText(15) == "15 seconds" && SelfDestructText(60) == "1 minute");
+	CHECK(SelfDestructText(3600) == "1 hour" && SelfDestructText(86400) == "1 day");
+	CHECK(SelfDestructText(604800) == "1 week" && SelfDestructText(90) == "90 seconds");
+	json timer = request::SetSelfDestruct(-5000000777LL, 30);
+	CHECK(Str(timer, "@type") == "setChatMessageAutoDeleteTime"
+		&& Int(timer, "message_auto_delete_time") == 30);
+	json start = request::NewSecretChat(501, "secret");
+	CHECK(Str(start, "@type") == "createNewSecretChat" && Int(start, "user_id") == 501
+		&& Str(start, "@extra") == "secret");
+}
+
+
 int
 main()
 {
@@ -1510,6 +1589,7 @@ main()
 	TestProfile();
 	TestAvailableReactions();
 	TestQrLogin();
+	TestSecretChats();
 	if (sFailures) {
 		std::fprintf(stderr, "%d check(s) failed\n", sFailures);
 		return EXIT_FAILURE;

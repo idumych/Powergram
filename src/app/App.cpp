@@ -36,6 +36,7 @@
 #endif
 
 #include "../core/AuthFlow.h"
+#include "../core/SecretChat.h"
 #include "../core/ChatHistory.h"
 #include "../core/ChatInfo.h"
 #include "../core/ChatList.h"
@@ -155,6 +156,9 @@ private:
 	std::set<std::string> fLoadedLists;
 	void _SendChatLists();
 	pp::Names fNames;
+	pp::SecretChats fSecret;
+	// A secret chat's state, notice and timer for the open chat's window.
+	const pp::SecretChat* _SecretChat(int64 chatId) const;
 	pp::FileStore fFiles;
 	pp::Presence fPresence;
 	AppSettings fPrefs;
@@ -393,6 +397,15 @@ App::_HandleObject(const json& object)
 	}
 
 	fNames.Apply(object);
+	if (fSecret.Apply(object) && fHistory != nullptr) {
+		_SendChatStatus();
+		_ScheduleChatFlush();
+	}
+	if (type == "updateChatMessageAutoDeleteTime" && fHistory != nullptr
+		&& pp::Int(object, "chat_id") == fHistory->ChatId()) {
+		fChats.Apply(object);
+		_SendChatStatus();
+	}
 	if (type == "updateOption" && pp::Str(object, "name") == "my_id")
 		fMyId = pp::Int(pp::Field(object, "value"), "value");
 	if (fProfileWindow.IsValid() && fProfile.userId != 0
@@ -448,6 +461,16 @@ App::_HandleObject(const json& object)
 	}
 	if (extra.rfind("history:", 0) == 0) {
 		_HandleHistoryReply(object);
+		return;
+	}
+	if (extra == "secret_new" || extra == "self_destruct") {
+		if (type == "error") {
+			BString text(extra == "secret_new" ? "Could not start a secret chat. "
+				: "Could not set the self-destruct timer. ");
+			text << pp::AuthFlow::ErrorText(object).c_str();
+			_ShowError(text);
+		} else if (type == "chat")
+			_ShowChat(pp::Int(object, "id"));
 		return;
 	}
 	if (_HandleLinkReply(object, extra))
@@ -1109,6 +1132,16 @@ App::_TypingText(int64 chatId)
 }
 
 
+const pp::SecretChat*
+App::_SecretChat(int64 chatId) const
+{
+	const pp::Chat* chat = fChats.Find(chatId);
+	if (chat == nullptr || !chat->secret)
+		return nullptr;
+	return fSecret.Find(chat->secretChatId);
+}
+
+
 void
 App::_SendChatStatus()
 {
@@ -1122,6 +1155,20 @@ App::_SendChatStatus()
 	message.AddString("status", status);
 	message.AddBool("active", active);
 	message.AddBool("can_join", fPresence.CanJoin(chatId));
+	// Secret chats: what to say while it can't be written in, and the
+	// timer; private chats: whether one can be started from here.
+	const pp::Chat* chat = fChats.Find(chatId);
+	if (const pp::SecretChat* secret = _SecretChat(chatId)) {
+		message.AddBool("secret", true);
+		message.AddString("notice", pp::SecretChatNotice(*secret,
+			fNames.User(secret->userId)).c_str());
+		message.AddInt32("self_destruct", chat->autoDelete);
+	} else if (chat != nullptr && chat->secret) {
+		message.AddBool("secret", true);
+		message.AddString("notice", "Starting the secret chat" B_UTF8_ELLIPSIS);
+	}
+	message.AddBool("can_start_secret", chat != nullptr && !chat->secret
+		&& chat->kind == pp::Chat::kPrivate && chat->userId != 0 && chat->userId != fMyId);
 	fMain->PostMessage(&message);
 	if (fInfoWindow != nullptr && fInfo.chatId == chatId)
 		_SendChatInfo();
@@ -1229,6 +1276,14 @@ App::_SendChatInfo()
 	info.AddString("status", _StatusText(chatId, false));
 	info.AddString("about", fInfo.about.c_str());
 	info.AddBool("private", fPresence.PrivateUser(chatId) != 0);
+	// A secret chat's key, as a picture to compare with the other phone.
+	if (const pp::SecretChat* secret = _SecretChat(chatId)) {
+		std::vector<uint8_t> key = pp::KeyPicture(secret->keyHash);
+		if (!key.empty()) {
+			AddBytes(info, "key_picture", std::string(key.begin(), key.end()));
+			info.AddString("key_name", fNames.User(secret->userId).c_str());
+		}
+	}
 	pp::Photo photo = fNames.ChatPhoto(chatId);
 	info.AddString("avatar", fFiles.Path(photo.fileId).c_str());
 	AddBytes(info, "avatar_mini", photo.preview);
@@ -1443,7 +1498,8 @@ App::_Notify(const json& message)
 	if (fPrefs.sound)
 		system_beep("Powergram new message");
 	BString content;
-	if (fPrefs.previews && fChats.ShowsPreview(chatId)) {
+	// Secret chats never show what was said outside the app.
+	if (fPrefs.previews && fChats.ShowsPreview(chatId) && !chat->secret) {
 		if (chat->kind == pp::Chat::kGroup) {
 			std::string sender = fNames.Sender(m);
 			if (!sender.empty())
@@ -1895,6 +1951,7 @@ App::_FlushChats()
 		list.AddBool("muted", fChats.IsMuted(c.id));
 		list.AddBool("marked_unread", c.markedUnread);
 		list.AddInt32("kind", (int32)c.kind);
+		list.AddBool("secret", c.secret);
 		BString photo = fFiles.Path(c.photoFileId).c_str();
 		list.AddString("photo", photo);
 		AddBytes(list, "photo_mini", c.photoPreview);
@@ -1922,6 +1979,22 @@ App::MessageReceived(BMessage* message)
 		case kMsgFlushChats:
 			_FlushChats();
 			break;
+
+		case kMsgNewSecretChat:
+		{
+			const pp::Chat* chat = fChats.Find(message->GetInt64("chat_id", 0));
+			if (chat != nullptr && chat->userId != 0)
+				_Send(pp::request::NewSecretChat(chat->userId, "secret_new"));
+			break;
+		}
+		case kMsgSetSelfDestruct:
+		{
+			json timer = pp::request::SetSelfDestruct(message->GetInt64("chat_id", 0),
+				message->GetInt32("seconds", 0));
+			timer["@extra"] = "self_destruct";
+			_Send(timer);
+			break;
+		}
 
 		case kMsgReact:
 		{

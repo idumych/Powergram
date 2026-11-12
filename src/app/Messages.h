@@ -258,6 +258,12 @@ enum {
 	kMsgPlaybackFrame = 'pbfr',
 	kMsgPlaybackEnded = 'pben',
 
+	// main window → app: "chat_id" (int64), a private chat whose person
+	// to start a secret chat with
+	kMsgNewSecretChat = 'nsec',
+	// main window → app: "chat_id" (int64), "seconds" (int32, 0: off)
+	kMsgSetSelfDestruct = 'ssdt',
+
 	kMsgLogOut = 'lout',
 	kMsgLogOutConfirmed = 'loco',
 	kMsgForceQuit = 'fqut'

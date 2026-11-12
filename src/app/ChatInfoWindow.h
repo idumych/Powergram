@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // A chat's info: its picture, name and status, the bio or description,
-// the members and the latest shared photos. Filled by kMsgChatInfo from
+// the members and the latest shared photos (and a secret chat's key). Filled by kMsgChatInfo from
 // the app; clicking a photo opens it like one in the chat.
 #pragma once
 
@@ -11,6 +11,7 @@ class BListView;
 class BScrollView;
 class BStringView;
 class BTextView;
+class KeyView;
 class PhotoGrid;
 
 class ChatInfoWindow : public BWindow {
@@ -31,6 +32,10 @@ private:
 	BStringView* fStatus;
 	BStringView* fAboutLabel;
 	BTextView* fAbout;
+	BStringView* fKeyLabel;
+	BView* fKeyBox;
+	KeyView* fKey;
+	BTextView* fKeyText;
 	BStringView* fMembersLabel;
 	BListView* fMembers;
 	BScrollView* fMembersScroll;

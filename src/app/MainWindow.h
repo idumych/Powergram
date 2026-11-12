@@ -17,6 +17,7 @@ class MentionPopup;
 class EmojiWindow;
 class StickerWindow;
 class BListView;
+class BMenu;
 class BMenuField;
 class BMenuItem;
 class BPopUpMenu;
@@ -96,6 +97,15 @@ private:
 	bool fCanJoin = false;
 	bool fMediaInApp = false;   // photos and videos open in Powergram (settings)
 	void _SetCanJoin(bool canJoin);
+	// Secret chats that can't be written in yet (or any more).
+	bool fWriteBlocked = false;
+	void _SetWriteBlocked(bool blocked);
+	void _UpdateSecretMenu();
+	bool fSecretChat = false;        // the open chat is a secret chat
+	bool fCanStartSecret = false;    // … or a private chat one can start from
+	int32 fSelfDestruct = 0;         // its timer, seconds
+	BMenuItem* fSecretItem;
+	BMenu* fSelfDestructMenu;
 	std::map<std::string, BBitmap*> fAvatars;   // round chat photos by path
 	BView* fComposeBar;         // "Reply to …" / "Edit message", over the entry
 	BStringView* fComposeLabel;

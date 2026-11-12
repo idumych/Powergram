@@ -10,7 +10,7 @@ CORE_SRCS := src/core/AuthFlow.cpp src/core/ChatList.cpp src/core/ChatHistory.cp
 	src/core/SendQueue.cpp src/core/Files.cpp src/core/Stickers.cpp \
 	src/core/Format.cpp src/core/Presence.cpp src/core/ChatInfo.cpp \
 	src/core/Links.cpp src/core/Pinned.cpp src/core/VoiceNote.cpp src/core/Mentions.cpp \
-	src/core/Profile.cpp src/core/QrCode.cpp src/third_party/qrcodegen/qrcodegen.cpp
+	src/core/Profile.cpp src/core/QrCode.cpp src/core/SecretChat.cpp src/third_party/qrcodegen/qrcodegen.cpp
 APP_SRCS := src/app/App.cpp src/app/TdClient.cpp src/app/Settings.cpp \
 	src/app/LoginWindow.cpp src/app/MainWindow.cpp src/app/MessageView.cpp \
 	src/app/BitmapUtils.cpp src/app/Icons.cpp src/app/Pickers.cpp src/app/ChatPicker.cpp \

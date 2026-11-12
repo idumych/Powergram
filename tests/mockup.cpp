@@ -23,6 +23,7 @@
 #include "../src/app/ChatInfoWindow.h"
 #include "../src/app/LoginWindow.h"
 #include "../src/core/AuthFlow.h"
+#include "../src/core/SecretChat.h"
 #include "../src/app/Messages.h"
 #include "../src/core/ChatHistory.h"
 #include "../src/core/Format.h"
@@ -37,6 +38,8 @@ enum {
 };
 
 const int64 kGroup = -1001, kPrivate = 2002, kChannel = -1003;
+// A secret chat with Mira ("secret", "secretwait" scenes only).
+const int64 kSecret = -2000000012LL;
 
 std::string sDir;
 std::string sScene;
@@ -167,8 +170,9 @@ public:
 		fMain->PostMessage(&lists);
 		snooze(300000);
 		BMessage select(kMsgSelectChat);
-		select.AddInt64("id", sScene == "media" || sScene == "media2" || sScene == "stickers"
-			? kPrivate : kGroup);
+		bool secretScene = sScene == "secret" || sScene == "secretwait";
+		select.AddInt64("id", secretScene ? kSecret
+			: sScene == "media" || sScene == "media2" || sScene == "stickers" ? kPrivate : kGroup);
 		fMain->PostMessage(&select);
 		BMessage next(kMsgNextStep);
 		BMessageRunner::StartSending(this, &next, 1200000, 1);
@@ -187,6 +191,13 @@ public:
 				status.AddBool("active", id == kGroup);
 				// "links": looking at a group we aren't in.
 				status.AddBool("can_join", sScene == "links" && id == kGroup);
+				status.AddBool("can_start_secret", id == kPrivate);
+				if (id == kSecret) {
+					status.AddBool("secret", true);
+					status.AddString("notice", sScene == "secretwait"
+						? "Waiting for Mira Okafor to come online\xE2\x80\xA6" : "");
+					status.AddInt32("self_destruct", 30);
+				}
 				fMain->PostMessage(&status);
 				if (sScene == "pinned" && id == kGroup)
 					_SendPinned();
@@ -235,6 +246,27 @@ public:
 					SettingsWindow* settings = new SettingsWindow(BMessenger(this), large);
 					settings->MoveTo(560, 120);
 					settings->Show();
+				} else if (sScene == "secret") {
+					// The secret chat's info: the key picture, from a
+					// made-up key hash.
+					ChatInfoWindow* info = new ChatInfoWindow(kSecret);
+					BMessage data(kMsgChatInfo);
+					data.AddInt64("chat_id", kSecret);
+					data.AddString("title", "Mira Okafor");
+					data.AddString("initials", "MO");
+					data.AddString("status", "last seen today at 22:41");
+					data.AddBool("private", true);
+					std::string hash;
+					for (int i = 0; i < 36; i++)
+						hash += (char)(i * 97 + 31);
+					std::vector<uint8_t> key = pp::KeyPicture(hash);
+					AddBytes(data, "key_picture", std::string(key.begin(), key.end()));
+					data.AddString("key_name", "Mira");
+					data.AddString("avatar", Media("avatar0.jpg").c_str());
+					AddBytes(data, "avatar_mini", "");
+					info->PostMessage(&data);
+					info->MoveTo(600, 60);
+					info->Show();
 				} else if (sScene == "info") {
 					ChatInfoWindow* info = new ChatInfoWindow(kGroup);
 					BMessage data(kMsgChatInfo);
@@ -538,6 +570,7 @@ private:
 			{kGroup, "Renku testers", "Nightly build00079 boots on my ThinkPad", "Jonas", 120, 3, 1, true, false, "renku.png"},
 			{kPrivate, "Mira Okafor", "Photo", "", 600, 0, 0, true, true, "avatar0.jpg"},
 			{kChannel, "Powergram news", "Stickers and emoji have landed", "", 3600, 12, 0, false, false, "plane.jpg"},
+			{kSecret, "Mira Okafor", "Photo", "", 1800, 0, 0, false, true, "avatar0.jpg"},
 			{2004, "Teo Marchetti", "See you at BeGeistert!", "You", 3 * 3600, 0, 0, false, true, "avatar3.jpg"},
 			{2005, "Priya Raman", "The driver builds now", "", 26 * 3600, 0, 0, false, false, nullptr},
 			{2006, "Saved Messages", "notes.pdf", "", 2 * 86400, 0, 0, false, false, nullptr},
@@ -554,6 +587,8 @@ private:
 		}
 		BMessage list(kMsgChatList);
 		for (const Chat& c : chats) {
+			if (c.id == kSecret && sScene != "secret" && sScene != "secretwait")
+				continue;
 			list.AddInt64("id", c.id);
 			list.AddString("title", c.title);
 			list.AddString("text", c.text);
@@ -567,7 +602,8 @@ private:
 			list.AddString("draft", c.id == 2005 ? "I'll test it tonight and" : "");
 			list.AddBool("muted", c.id == kChannel);
 			list.AddBool("marked_unread", c.id == 2009);
-			list.AddInt32("kind", c.id < 0 ? (c.id == kChannel ? 2 : 1) : 0);
+			list.AddInt32("kind", c.id < 0 && c.id != kSecret ? (c.id == kChannel ? 2 : 1) : 0);
+			list.AddBool("secret", c.id == kSecret);
 			list.AddString("photo", c.photo != nullptr ? Media(c.photo).c_str() : "");
 			AddBytes(list, "photo_mini", "");
 		}
@@ -782,6 +818,13 @@ private:
 				r.duration = 5;
 				r.waveform = wave(100, 4);
 				Add(list, r);
+			}
+		} else if (chatId == kSecret) {
+			// A secret chat: what's said stays on the two devices.
+			Add(list, _Date("Today"));
+			if (sScene == "secret") {
+				Add(list, _From(kMira, 401, "Here's the code for the test server", now - 1900));
+				Add(list, _Mine(402, "Got it, thanks. I'll delete it after", now - 1850));
 			}
 		} else {
 			// "media": photo, video, round video; "media2" (and the sticker

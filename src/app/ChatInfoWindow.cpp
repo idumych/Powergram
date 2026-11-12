@@ -20,6 +20,7 @@
 
 #include "AvatarView.h"
 #include "BitmapUtils.h"
+#include "../core/SecretChat.h"
 #include "Messages.h"
 
 namespace {
@@ -154,6 +155,45 @@ private:
 };
 
 
+// A secret chat's encryption key as Telegram's apps draw it: 12 by 12
+// squares in four blues, to compare with the other person's phone.
+class KeyView : public BView {
+public:
+	KeyView()
+		:
+		BView("key", B_WILL_DRAW)
+	{
+		float side = ceilf(be_plain_font->Size() * 7);
+		SetExplicitSize(BSize(side, side));
+	}
+
+	void Set(const std::string& squares)
+	{
+		if (squares == fSquares)
+			return;
+		fSquares = squares;
+		Invalidate();
+	}
+
+	void Draw(BRect) override
+	{
+		if (fSquares.size() != 144)
+			return;
+		BRect bounds = Bounds();
+		float cell = floorf((std::min(bounds.Width(), bounds.Height()) + 1) / 12);
+		for (int i = 0; i < 144; i++) {
+			uint32 color = pp::kKeyPictureColors[(uint8)fSquares[i] & 3];
+			SetHighColor((color >> 16) & 0xff, (color >> 8) & 0xff, color & 0xff);
+			float x = (i % 12) * cell, y = (i / 12) * cell;
+			FillRect(BRect(x, y, x + cell - 1, y + cell - 1));
+		}
+	}
+
+private:
+	std::string fSquares;
+};
+
+
 ChatInfoWindow::ChatInfoWindow(int64 chatId)
 	:
 	BWindow(BRect(0, 0, 380, 560), "Info", B_TITLED_WINDOW,
@@ -185,6 +225,21 @@ ChatInfoWindow::ChatInfoWindow(int64 chatId)
 	fAbout->SetLowUIColor(B_PANEL_BACKGROUND_COLOR);
 	fAbout->SetExplicitMinSize(BSize(be_plain_font->Size() * 16, B_SIZE_UNSET));
 
+	fKeyLabel = label("key label");
+	fKeyLabel->SetText("Encryption key");
+	fKey = new KeyView();
+	fKeyText = new BTextView("key text");
+	fKeyText->MakeEditable(false);
+	fKeyText->MakeSelectable(false);
+	fKeyText->SetWordWrap(true);
+	fKeyText->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
+	fKeyText->SetLowUIColor(B_PANEL_BACKGROUND_COLOR);
+	fKeyText->SetExplicitMinSize(BSize(be_plain_font->Size() * 10, B_SIZE_UNSET));
+	fKeyBox = new BView("key box", 0);
+	BLayoutBuilder::Group<>(fKeyBox, B_HORIZONTAL)
+		.Add(fKey, 0)
+		.Add(fKeyText, 1);
+
 	fMembersLabel = label("members label");
 	fMembers = new BListView("members");
 	fMembersScroll = new BScrollView("members scroll", fMembers, 0, false, true);
@@ -200,7 +255,7 @@ ChatInfoWindow::ChatInfoWindow(int64 chatId)
 
 	// Labels and text would otherwise cap the window at their own width.
 	for (BView* view : {(BView*)fTitle, (BView*)fStatus, (BView*)fAboutLabel,
-			(BView*)fMembersLabel, (BView*)fPhotosLabel})
+			(BView*)fMembersLabel, (BView*)fPhotosLabel, (BView*)fKeyLabel})
 		view->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
 	fAbout->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
 	fMembersScroll->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNLIMITED));
@@ -219,6 +274,8 @@ ChatInfoWindow::ChatInfoWindow(int64 chatId)
 		.End()
 		.Add(fAboutLabel)
 		.Add(fAbout, 0)
+		.Add(fKeyLabel)
+		.Add(fKeyBox, 0)
 		.Add(fMembersLabel)
 		.Add(fMembersScroll, 1)
 		.Add(fPhotosLabel)
@@ -227,6 +284,8 @@ ChatInfoWindow::ChatInfoWindow(int64 chatId)
 	// Until the app's reply: nothing but the picture and name.
 	fAboutLabel->Hide();
 	fAbout->Hide();
+	fKeyLabel->Hide();
+	fKeyBox->Hide();
 	fMembersLabel->Hide();
 	fMembersScroll->Hide();
 	fPhotosLabel->Hide();
@@ -258,6 +317,21 @@ ChatInfoWindow::_Update(const BMessage* info)
 		fAbout->SetText(about);
 	show(fAboutLabel, !about.IsEmpty());
 	show(fAbout, !about.IsEmpty());
+
+	// A secret chat: the key picture, once the chat is ready.
+	std::string key = FindBytes(info, "key_picture", 0);
+	if (key.size() == 144) {
+		fKey->Set(key);
+		BString text("If this picture looks the same on ");
+		BString name = info->GetString("key_name", "");
+		text << (name.IsEmpty() ? BString("the other person's") : name << "'s")
+			<< " phone, no one else can read this chat: it is encrypted from "
+			"end to end.";
+		if (text != fKeyText->Text())
+			fKeyText->SetText(text);
+	}
+	show(fKeyLabel, key.size() == 144);
+	show(fKeyBox, key.size() == 144);
 
 	int32 count = info->GetInt32("member_count", 0);
 	BString members;

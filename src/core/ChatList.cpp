@@ -232,7 +232,12 @@ ChatList::Apply(const json& object)
 		if (chat.id == 0)
 			return false;
 		chat.title = Str(c, "title");
-		chat.kind = KindOf(Field(c, "type"));
+		const json& chatType = Field(c, "type");
+		chat.kind = KindOf(chatType);
+		chat.userId = Int(chatType, "user_id");
+		chat.secret = Type(chatType) == "chatTypeSecret";
+		chat.secretChatId = (int32_t)Int(chatType, "secret_chat_id");
+		chat.autoDelete = (int32_t)Int(c, "message_auto_delete_time");
 		chat.draft = DraftText(Field(c, "draft_message"));
 		chat.markedUnread = Bool(c, "is_marked_as_unread");
 		ApplyPhoto(chat, Field(c, "photo"));
@@ -311,6 +316,9 @@ ChatList::Apply(const json& object)
 		ApplyPositions(chat, Field(object, "positions"));
 	} else if (type == "updateChatPhoto") {
 		ApplyPhoto(chat, Field(object, "photo"));
+	} else if (type == "updateChatMessageAutoDeleteTime") {
+		chat.autoDelete = (int32_t)Int(object, "message_auto_delete_time");
+		return false;
 	} else if (type == "updateChatNotificationSettings") {
 		ApplyNotificationSettings(chat, Field(object, "notification_settings"));
 		return false;
@@ -477,9 +485,13 @@ ChatList::MoveRequest(int64_t chatId, const std::string& toList)
 std::vector<json>
 ChatList::DeleteRequests(const Chat& chat)
 {
+	json deleteHistory = {{"@type", "deleteChatHistory"}, {"chat_id", chat.id},
+		{"remove_from_chat_list", true}, {"revoke", false}};
+	if (chat.secret)
+		return {{{"@type", "closeSecretChat"}, {"secret_chat_id", chat.secretChatId}},
+			deleteHistory};
 	if (chat.kind == Chat::kPrivate)
-		return {{{"@type", "deleteChatHistory"}, {"chat_id", chat.id},
-			{"remove_from_chat_list", true}, {"revoke", false}}};
+		return {deleteHistory};
 	return {{{"@type", "leaveChat"}, {"chat_id", chat.id}},
 		{{"@type", "deleteChatHistory"}, {"chat_id", chat.id},
 			{"remove_from_chat_list", true}, {"revoke", false}}};
