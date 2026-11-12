@@ -25,7 +25,8 @@ added since 0.2.0, and videos, GIFs, round video messages, sending photos and
 files, spoilers and self-destructing photos, has only been checked with
 made-up data so far.
 
-- Logging in: phone number, code, cloud password, new accounts
+- Logging in: phone number, code, cloud password, new accounts, or a QR code
+  scanned with Telegram on your phone (Settings > Devices > Link Desktop Device)
 - Your own API key, entered in the login window: it opens my.telegram.org/apps
   in your browser, and pasting the api_id and api_hash lines fills both fields
 - Chat list with profile pictures, unread and mention badges, pinned chats,
@@ -53,7 +54,16 @@ made-up data so far.
 - Your profile (Powergram > Profile): picture, name and bio, and the devices
   logged in to your account, any of which you can log out
 - Settings: notifications, message text in notifications, a sound (chosen in
-  the Sounds preferences), text size
+  the Sounds preferences), text size, and where photos and videos open
+- Photos and videos open in their own apps (ShowImage, MediaPlayer) as
+  before, or, if Settings say so, in Powergram's viewer: videos play with
+  sound, Space or a click pauses, the slider or the arrow keys seek, GIFs
+  loop; a button opens the file in its app anyway. The message menu always
+  offers both
+- Secret chats (Chat > New secret chat): end-to-end encrypted, on this
+  computer only; a green padlock in the chat list, a self-destruct timer
+  (Chat > Self-destruct timer), notifications without the text, and the
+  encryption key in Info as a picture to compare with the other phone
 - Photos, videos, GIFs, round video messages and stickers (WebP; animated
   stickers show their emoji); spoilers and self-destructing photos
 - Sending text, photos, videos (MP4 and QuickTime, with their size and
@@ -72,8 +82,7 @@ made-up data so far.
   apps send them, and every request throttled (a few at a time, and a full
   stop when Telegram asks to wait)
 
-Not yet: calls, secret chats, QR-code login, video
-playback inside the app (videos open in MediaPlayer), a Linux (Cosmoe) build.
+Not yet: calls, a Linux (Cosmoe) build.
 
 ## Screenshots
 
@@ -114,7 +123,16 @@ Chat info: the description, members and shared photos.
 Your profile, and the devices logged in to your account.
 
 ![The Settings window](docs/screenshots/haiku-settings.png)
-Settings apply at once; here the text size is Large.
+Settings apply at once; here the text size is Large. Photos and videos open in their own apps unless you choose Powergram.
+
+![Powergram's video viewer](docs/screenshots/haiku-viewer.png)
+Powergram's viewer playing a video, with a button to open it in MediaPlayer instead.
+
+![A secret chat and its encryption key](docs/screenshots/haiku-secret.png)
+A secret chat: the padlock in the chat list, and the encryption key to compare with the other phone.
+
+![Logging in with a QR code](docs/screenshots/haiku-qr.png)
+Logging in with a QR code (this one is made up).
 
 ## Platforms
 
@@ -141,10 +159,14 @@ needs only OpenSSL and zlib at run time. Install `noto_emoji` for emoji.
 
 `make test` runs the core tests (login flow, chat list, history, throttling,
 files and download progress, stickers, formatting, presence, voice, chat info,
-links and usernames, pinned messages, voice recording, mentions, profile and devices) on any system with a C++17 compiler.
+links and usernames, pinned messages, voice recording, mentions, profile and devices,
+QR login, secret chats) on any system with a C++17 compiler, and `make qr-check`
+reads the login QR code back with zbarimg.
 On Haiku, `make file-saving-test` checks saving received files and
 `make voice-record-test` checks the voice message files it records and
-`make media-probe-test` what files are sent as (photo, video or document).
+`make media-probe-test` what files are sent as (photo, video or document) and
+`make video-playback-test` the viewer's video playback (timing, pausing,
+seeking, the end, looping, and sound staying with the picture).
 
 ## Your API key
 
