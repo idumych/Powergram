@@ -139,7 +139,7 @@ Logging in with a QR code (this one is made up).
 | Platform | State |
 |---|---|
 | Renku OS / Haiku R1/beta6, x86_64 | Builds and runs |
-| Haiku / Renku OS arm64 | Not yet: Renku's arm64 package repository has OpenSSL and zlib but no TDLib or noto_emoji yet, and HaikuPorts has no arm64 repository |
+| Haiku / Renku OS arm64 | Cross-built with `packaging/cross-arm64.sh`; starts and reaches Telegram on Renku OS arm64 in QEMU (not yet used with a real account). TDLib, Opus and OGG are linked in; there is no noto_emoji for arm64 yet |
 | Linux (Cosmoe) | Not yet |
 
 ## Building
@@ -153,6 +153,17 @@ make
 ```
 
 `sh packaging/build-hpkg.sh` builds the package.
+
+For arm64 there is no TDLib, Opus or OGG to install, and no arm64 Haiku to
+build on comfortably, so `packaging/cross-arm64.sh` cross-builds all of it on
+Linux with the cross tools of a Haiku arm64 build tree, and packages it:
+
+```sh
+HAIKU_GENERATED=/path/to/haiku/generated.arm64 sh packaging/cross-arm64.sh
+```
+
+The script says what the build tree needs. TDLib gets Haiku support from
+`tools/patch-tdlib.py`; the package needs only OpenSSL and zlib at run time.
 
 HaikuPorts' TDLib is static only, so it's linked into the app; the result
 needs only OpenSSL and zlib at run time. Install `noto_emoji` for emoji.
