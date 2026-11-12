@@ -1823,9 +1823,10 @@ MessageView::Draw(BRect updateRect)
 		}
 		SetLowColor(fill);
 
-		if (row.mediaKind != 0)
+		if (row.mediaKind != 0) {
 			fStickerBackground = fill;
 			_DrawMedia(row, l, fg, line);
+		}
 
 		// The sender's picture at the bottom of their run of messages.
 		if (row.showAvatar) {
