@@ -77,6 +77,8 @@ struct PickerSticker {
 	int32 height;
 	BString emoji;
 	BString imagePath;   // empty until downloaded (or not drawable)
+	BString animationPath;     // an animated sticker without an image
+	int32 animationFormat = 0;
 };
 
 class StickerGrid : public BView {
@@ -94,6 +96,7 @@ public:
 private:
 	void _Layout();
 	BBitmap* _Bitmap(const BString& path);
+	BBitmap* _FirstFrame(const PickerSticker& sticker, int32 side);
 
 	BMessenger fTarget;
 	std::vector<PickerSticker> fStickers;

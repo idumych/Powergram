@@ -27,6 +27,9 @@ main(int argc, char** argv)
 	CHECK(webm.kind == pp::OutgoingFile::kDocument);   // not every app plays it
 	pp::OutgoingFile png = ProbeFile((dir + "/photo.png").c_str());
 	CHECK(png.kind == pp::OutgoingFile::kPhoto && png.width == 64 && png.height == 48);
+	// A GIF (40 × 30, five frames) goes as an animation, which keeps moving.
+	pp::OutgoingFile gif = ProbeFile((dir + "/anim.gif").c_str());
+	CHECK(gif.kind == pp::OutgoingFile::kAnimation && gif.width == 40 && gif.height == 30);
 	pp::OutgoingFile text = ProbeFile((dir + "/notes.txt").c_str());
 	CHECK(text.kind == pp::OutgoingFile::kDocument && text.path == dir + "/notes.txt");
 	printf(sFailures == 0 ? "media probe tests passed\n" : "%d failures\n", sFailures);

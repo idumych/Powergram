@@ -3,6 +3,7 @@
 
 #include <Bitmap.h>
 #include <File.h>
+#include <MessageRunner.h>
 #include <IconUtils.h>
 #include <Mime.h>
 #include <Roster.h>
@@ -21,6 +22,7 @@
 
 #include "BitmapUtils.h"
 #include "Messages.h"
+#include "StickerPlayer.h"
 
 MessageView::MessageView()
 	:
@@ -41,11 +43,17 @@ MessageView::MessageView()
 
 
 static const size_t kMaxBitmaps = 150;
+// The timer that redraws the animated stickers on screen.
+static const uint32 kMsgAnimationTick = 'mvat';
 
 
 void
 MessageView::MessageReceived(BMessage* message)
 {
+	if (message->what == kMsgAnimationTick) {
+		_AnimationTick();
+		return;
+	}
 	if (message->what == B_COPY) {
 		BString text = SelectedText();
 		if (!text.IsEmpty() && be_clipboard->Lock()) {
@@ -118,6 +126,7 @@ void
 MessageView::DetachedFromWindow()
 {
 	_ClearBitmaps();
+	_ClearPlayers();
 	BView::DetachedFromWindow();
 }
 
@@ -132,6 +141,87 @@ MessageView::_ClearBitmaps()
 	for (auto& [key, bitmap] : fIcons)
 		delete bitmap;
 	fIcons.clear();
+}
+
+
+// The frame of an animated sticker due now, drawn in `box`; nullptr when it
+// can't be played (the still image or emoji are drawn instead).
+const BBitmap*
+MessageView::_StickerFrame(const MessageRow& row, BRect box)
+{
+	std::string key = row.animationPath.String();
+	auto it = fPlaying.find(key);
+	if (it == fPlaying.end()) {
+		Playing playing;
+		playing.player = StickerPlayer::Open(row.animationPath, row.animationFormat);
+		it = fPlaying.emplace(key, playing).first;
+	}
+	Playing& playing = it->second;
+	if (playing.player == nullptr)
+		return nullptr;
+	bigtime_t now = system_time();
+	playing.lastDrawn = now;
+	// Where it's on screen (the same sticker can be there more than once).
+	if (std::find(playing.frames.begin(), playing.frames.end(), box) == playing.frames.end()) {
+		playing.frames.push_back(box);
+		if (playing.frames.size() > 8)
+			playing.frames.erase(playing.frames.begin());
+	}
+	// The timer goes as fast as the fastest sticker on screen (at most 60
+	// frames a second).
+	bigtime_t interval = std::max<bigtime_t>(playing.player->FrameInterval(), 16666);
+	if (fAnimationRunner == nullptr || interval < fAnimationInterval) {
+		delete fAnimationRunner;
+		BMessage tick(kMsgAnimationTick);
+		fAnimationRunner = new BMessageRunner(BMessenger(this), &tick, interval);
+		fAnimationInterval = interval;
+	}
+	return playing.player->Frame(box.IntegerWidth() + 1, box.IntegerHeight() + 1, now);
+}
+
+
+void
+MessageView::_AnimationTick()
+{
+	bigtime_t now = system_time();
+	BRect visible = Bounds();
+	bool any = false;
+	for (auto it = fPlaying.begin(); it != fPlaying.end();) {
+		Playing& playing = it->second;
+		// Not drawn for a few seconds (scrolled away, another chat): drop it.
+		if (now - playing.lastDrawn > 3000000) {
+			delete playing.player;
+			it = fPlaying.erase(it);
+			continue;
+		}
+		if (playing.player != nullptr) {
+			for (const BRect& frame : playing.frames) {
+				if (frame.Intersects(visible)) {
+					Invalidate(frame);
+					any = true;
+				}
+			}
+		}
+		++it;
+	}
+	if (!any) {
+		// Nothing on screen plays: the timer stops until one is drawn again.
+		delete fAnimationRunner;
+		fAnimationRunner = nullptr;
+		fAnimationInterval = 0;
+	}
+}
+
+
+void
+MessageView::_ClearPlayers()
+{
+	delete fAnimationRunner;
+	fAnimationRunner = nullptr;
+	fAnimationInterval = 0;
+	for (auto& [key, playing] : fPlaying)
+		delete playing.player;
+	fPlaying.clear();
 }
 
 
@@ -230,6 +320,16 @@ MessageView::_DrawMedia(const MessageRow& row, const Layout& l, rgb_color fg,
 	} else if (!hidden)
 		bitmap = _Bitmap(row, &blurred, row.mediaKind == 5);
 	float radius = roundf(line * 0.5f);
+
+	// An animated sticker playing: its current frame.
+	if (row.mediaKind == 2 && !row.animationPath.IsEmpty()) {
+		if (const BBitmap* frame = _StickerFrame(row, box)) {
+			SetDrawingMode(B_OP_ALPHA);
+			SetBlendingMode(B_PIXEL_ALPHA, B_ALPHA_OVERLAY);
+			DrawBitmapAsync(frame, frame->Bounds(), box, B_FILTER_BITMAP_BILINEAR);
+			return;
+		}
+	}
 
 	bool emojiDrawable = false;
 	if (bitmap == nullptr && row.mediaKind == 2 && !row.emoji.IsEmpty()) {
@@ -962,6 +1062,9 @@ MessageView::_Wrap(const BString& text, const Measured& m, float width, float* w
 void
 MessageView::_Relayout()
 {
+	// Stickers move: where they were drawn is learnt again.
+	for (auto& [key, playing] : fPlaying)
+		playing.frames.clear();
 	BFont font;
 	GetFont(&font);
 	font_height fh;
@@ -1023,7 +1126,7 @@ MessageView::_Relayout()
 			float boxW = row.mediaKind == 5 ? line * 13 : sticker ? line * 9 : maxBubble - pad;
 			float boxH = row.mediaKind == 5 ? line * 13 : sticker ? line * 9 : line * 20;
 			if (sticker && row.imagePath.IsEmpty() && row.minithumbnail.empty()
-				&& !row.emoji.IsEmpty())
+				&& row.animationPath.IsEmpty() && !row.emoji.IsEmpty())
 				boxW = boxH = line * 4;  // just the emoji
 			float scale = std::min(boxW / w, boxH / h);
 			if (!sticker)

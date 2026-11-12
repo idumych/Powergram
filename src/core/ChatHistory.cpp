@@ -80,11 +80,17 @@ StickerMedia(const json& sticker)
 	media.emoji = Str(sticker, "emoji");
 	media.width = (int32_t)Int(sticker, "width");
 	media.height = (int32_t)Int(sticker, "height");
-	// Haiku decodes WebP; Lottie (.tgs) and video (.webm) stickers show
-	// their still thumbnail when it's an image format, else the emoji.
-	if (Type(Field(sticker, "format")) == "stickerFormatWebp") {
+	// Haiku decodes WebP; Lottie (.tgs) and video (.webm) stickers play,
+	// and show their still thumbnail meanwhile when it's an image format,
+	// else the emoji.
+	std::string stickerFormat = Type(Field(sticker, "format"));
+	if (stickerFormat == "stickerFormatWebp") {
 		media.fileId = (int32_t)Int(Field(sticker, "sticker"), "id");
 		return media;
+	}
+	if (stickerFormat == "stickerFormatTgs" || stickerFormat == "stickerFormatWebm") {
+		media.animationFileId = (int32_t)Int(Field(sticker, "sticker"), "id");
+		media.animationFormat = stickerFormat == "stickerFormatTgs" ? Media::kTgs : Media::kWebm;
 	}
 	const json& thumbnail = Field(sticker, "thumbnail");
 	std::string format = Type(Field(thumbnail, "format"));
@@ -196,6 +202,18 @@ IsPlayableVideo(const std::string& mimeType, const std::string& path)
 			return true;
 	}
 	return false;
+}
+
+
+bool
+IsGif(const std::string& mimeType, const std::string& path)
+{
+	if (mimeType == "image/gif")
+		return true;
+	std::string name = path;
+	for (char& c : name)
+		c = (char)std::tolower((unsigned char)c);
+	return name.size() > 4 && name.compare(name.size() - 4, 4, ".gif") == 0;
 }
 
 
@@ -1041,6 +1059,12 @@ FileContent(const OutgoingFile& file, const std::string& caption)
 					{"duration", file.duration}, {"width", file.width},
 					{"height", file.height}, {"supports_streaming", true}}},
 				{"caption", Caption(caption)}};
+		case OutgoingFile::kAnimation:
+			return {{"@type", "inputMessageAnimation"},
+				{"animation", {{"@type", "inputAnimation"}, {"animation", input},
+					{"duration", file.duration}, {"width", file.width},
+					{"height", file.height}}},
+				{"caption", Caption(caption)}};
 		default:
 			return {{"@type", "inputMessageDocument"},
 				{"document", {{"@type", "inputDocument"}, {"document", input}}},
@@ -1057,10 +1081,12 @@ SendFiles(int64_t chatId, const std::vector<OutgoingFile>& files, const std::str
 	std::string text = caption;
 	for (size_t i = 0; i < files.size(); ) {
 		// A run of photos and videos, up to ten: one album.
+		auto inAlbum = [](const OutgoingFile& f) {
+			return f.kind == OutgoingFile::kPhoto || f.kind == OutgoingFile::kVideo;
+		};
 		size_t end = i + 1;
-		if (files[i].kind != OutgoingFile::kDocument) {
-			while (end < files.size() && end - i < 10
-				&& files[end].kind != OutgoingFile::kDocument)
+		if (inAlbum(files[i])) {
+			while (end < files.size() && end - i < 10 && inAlbum(files[end]))
 				end++;
 		}
 		json request;

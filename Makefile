@@ -10,7 +10,7 @@ CORE_SRCS := src/core/AuthFlow.cpp src/core/ChatList.cpp src/core/ChatHistory.cp
 	src/core/SendQueue.cpp src/core/Files.cpp src/core/Stickers.cpp \
 	src/core/Format.cpp src/core/Presence.cpp src/core/ChatInfo.cpp \
 	src/core/Links.cpp src/core/Pinned.cpp src/core/VoiceNote.cpp src/core/Mentions.cpp \
-	src/core/Profile.cpp src/core/QrCode.cpp src/core/SecretChat.cpp src/core/Contacts.cpp src/core/Compose.cpp \
+	src/core/Profile.cpp src/core/QrCode.cpp src/core/SecretChat.cpp src/core/Contacts.cpp src/core/Compose.cpp src/core/Lottie.cpp src/core/Webm.cpp \
 	src/third_party/qrcodegen/qrcodegen.cpp
 APP_SRCS := src/app/App.cpp src/app/TdClient.cpp src/app/Settings.cpp \
 	src/app/LoginWindow.cpp src/app/MainWindow.cpp src/app/MessageView.cpp \
@@ -19,7 +19,8 @@ APP_SRCS := src/app/App.cpp src/app/TdClient.cpp src/app/Settings.cpp \
 	src/app/ChatInfoWindow.cpp src/app/FileSaving.cpp src/app/OpenLinkWindow.cpp \
 	src/app/VoiceRecorder.cpp src/app/MentionPopup.cpp src/app/MediaProbe.cpp \
 	src/app/AvatarView.cpp src/app/ProfileWindow.cpp src/app/NewChatWindow.cpp src/app/ComposeWindows.cpp \
-	src/app/MediaWindow.cpp src/app/VideoPlayback.cpp
+	src/app/MediaWindow.cpp src/app/VideoPlayback.cpp src/app/LottieRenderer.cpp \
+	src/app/StickerPlayer.cpp src/app/WebmPlayer.cpp
 
 BUILD := obj
 CORE_OBJS := $(CORE_SRCS:%.cpp=$(BUILD)/%.o)
@@ -32,7 +33,7 @@ TD_LIBS := -ltdjson_static -ltdjson_private -ltdclient -ltdcore -ltdapi \
 	-lssl -lcrypto -lz -lnetwork
 
 MIMESET := mimeset
-MEDIA_LIBS := -lmedia -lopus -logg
+MEDIA_LIBS := -lmedia -lopus -logg -lvpx
 ifneq ($(HAIKU_CROSS),)
   # Haiku arm64, cross-compiled on Linux (tools/haiku-arm64: . env.sh, then
   # build-deps.sh for TDLib, OpenSSL and zlib, all static). Haiku arm64 has
@@ -41,7 +42,7 @@ ifneq ($(HAIKU_CROSS),)
   override CXXFLAGS += $(HAIKU_CROSS_CFLAGS) -I$(HAIKU_ARM64)/deps/include
   override LDFLAGS += $(HAIKU_CROSS_LDFLAGS) -L$(HAIKU_ARM64)/deps/lib
   MEDIA_SRCS := src/app/VoicePlayer.cpp src/app/VoiceRecorder.cpp \
-	src/app/MediaProbe.cpp src/app/VideoPlayback.cpp
+	src/app/MediaProbe.cpp src/app/VideoPlayback.cpp src/app/WebmPlayer.cpp
   APP_OBJS := $(patsubst %.cpp,$(BUILD)/%.o,$(filter-out $(MEDIA_SRCS),$(APP_SRCS)) \
 	src/app/NoMediaKit.cpp)
   MEDIA_LIBS :=
@@ -67,13 +68,22 @@ MOCKUP_OBJS := $(filter-out $(BUILD)/src/app/App.o $(BUILD)/src/app/TdClient.o \
 	$(BUILD)/src/app/Settings.o, $(APP_OBJS))
 mockup: $(BUILD)/PowergramMockup
 $(BUILD)/PowergramMockup: $(BUILD)/tests/mockup.o $(CORE_OBJS) $(MOCKUP_OBJS)
-	$(CXX) -o $@ $^ -lbe -lmedia -ltracker -ltranslation -llocalestub -lopus -logg
+	$(CXX) -o $@ $^ -lbe -lmedia -ltracker -ltranslation -llocalestub -lopus -logg -lvpx -lz
+
+# Frames of an animated sticker (.tgs, Lottie .json or .webm) drawn into a PNG.
+lottie-render: $(BUILD)/lottie_render
+$(BUILD)/lottie_render: $(BUILD)/tests/lottie_render.o $(BUILD)/src/app/LottieRenderer.o \
+		$(BUILD)/src/app/StickerPlayer.o $(BUILD)/src/app/WebmPlayer.o \
+		$(BUILD)/src/core/Lottie.o $(BUILD)/src/core/Webm.o
+	$(CXX) -o $@ $^ -lbe -ltranslation -lvpx -lz
 
 # The entry's icon buttons and a picker with made-up content.
 pickers-demo: $(BUILD)/pickers_demo
 $(BUILD)/pickers_demo: $(BUILD)/tests/pickers_demo.o $(BUILD)/src/app/Pickers.o \
-		$(BUILD)/src/app/Icons.o $(BUILD)/src/core/Stickers.o
-	$(CXX) -o $@ $^ -lbe -ltranslation
+		$(BUILD)/src/app/Icons.o $(BUILD)/src/core/Stickers.o $(BUILD)/src/app/StickerPlayer.o \
+		$(BUILD)/src/app/WebmPlayer.o $(BUILD)/src/app/LottieRenderer.o \
+		$(BUILD)/src/core/Lottie.o $(BUILD)/src/core/Webm.o
+	$(CXX) -o $@ $^ -lbe -ltranslation -lvpx -lz
 
 # Scroll position through real resizes, in a visible window.
 live-scroll: $(BUILD)/live_scroll
@@ -147,7 +157,7 @@ $(BUILD)/%.o: %.cpp
 	$(CXX) $(CXXFLAGS) -MMD -MP -c -o $@ $<
 
 $(BUILD)/test_core: $(CORE_OBJS) $(BUILD)/tests/test_core.o
-	$(CXX) -o $@ $^
+	$(CXX) -o $@ $^ -lz
 
 test: $(BUILD)/test_core
 	$(BUILD)/test_core

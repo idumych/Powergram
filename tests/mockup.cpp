@@ -82,7 +82,8 @@ Clock(time_t when)
 // One history row with every field the window reads (parallel arrays).
 struct Row {
 	int64 id = 0;
-	BString sender, text, time, forward, replySender, replyText, image, emoji;
+	BString sender, text, time, forward, replySender, replyText, image, emoji, animation;
+	int32 animationFormat = 0;
 	bool outgoing = false, read = false, pending = false, failed = false;
 	bool edited = false, service = false, spoiler = false, secret = false;
 	int32 mediaKind = 0, mediaWidth = 0, mediaHeight = 0, duration = 0;
@@ -122,6 +123,8 @@ Add(BMessage& list, const Row& r)
 	list.AddBool("spoiler", r.spoiler);
 	list.AddBool("secret", r.secret);
 	list.AddString("emoji", r.emoji);
+	list.AddString("animation", r.animation);
+	list.AddInt32("animation_format", r.animationFormat);
 	list.AddInt32("duration", r.duration);
 	list.AddBool("show_avatar", r.showAvatar);
 	list.AddInt64("sender_key", r.senderKey);
@@ -711,7 +714,13 @@ public:
 					list.AddString("emoji", "\xF0\x9F\x98\x80");
 					std::string sticker = Media(i % 3 == 0 ? "sticker2.webp"
 						: i % 3 == 1 ? "sticker0.webp" : "sticker1.webp");
-					list.AddString("image", sticker.c_str());
+					// The last two: animated, without an image (their first frame).
+					bool animated = i >= 9;
+					list.AddString("image", animated ? "" : sticker.c_str());
+					list.AddString("animation", !animated ? ""
+						: i == 9 ? "/boot/home/paper_plane/tests/data/sticker.tgs"
+						: "/boot/home/paper_plane/tests/data/sticker.webm");
+					list.AddInt32("animation_format", !animated ? 0 : i == 9 ? 1 : 2);
 				}
 				fMain->PostMessage(&list);
 				break;
@@ -1029,6 +1038,18 @@ private:
 			r.image = Media("light.jpg").c_str(); r.mediaWidth = 1280; r.mediaHeight = 720;
 			Add(list, r);
 			r = _Mine(208, "Ha, perfect", now - 600);
+			Add(list, r);
+			// Animated stickers: a Lottie one and a video one (made up,
+			// from tests/data).
+			r = Row(); r.id = 211; r.time = Clock(now - 550); r.mediaKind = 2;
+			r.emoji = "\xE2\x9D\xA4"; r.mediaWidth = r.mediaHeight = 512;
+			r.animation = "/boot/home/paper_plane/tests/data/sticker.tgs";
+			r.animationFormat = 1;
+			Add(list, r);
+			r = _Mine(212, "", now - 520);
+			r.mediaKind = 2; r.mediaWidth = r.mediaHeight = 512;
+			r.animation = "/boot/home/paper_plane/tests/data/sticker.webm";
+			r.animationFormat = 2;
 			Add(list, r);
 			// A poll and a location, as the core renders them.
 			pp::json poll = {{"@type", "messagePoll"}, {"poll", {{"question", {{"text", "Release on Friday?"}}},

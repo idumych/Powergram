@@ -25,8 +25,10 @@ ParseSticker(const json& sticker)
 	const json& thumbnail = Field(sticker, "thumbnail");
 	if (DrawableThumbnail(thumbnail))
 		item.imageFileId = (int32_t)Int(Field(thumbnail, "file"), "id");
-	else if (Type(Field(sticker, "format")) == "stickerFormatWebp")
+	std::string format = Type(Field(sticker, "format"));
+	if (item.imageFileId == 0 && format == "stickerFormatWebp")
 		item.imageFileId = item.fileId;
+	item.animationFormat = format == "stickerFormatTgs" ? 1 : format == "stickerFormatWebm" ? 2 : 0;
 	return item;
 }
 

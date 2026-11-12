@@ -18,6 +18,9 @@ struct StickerItem {
 	int32_t width = 0;
 	int32_t height = 0;
 	std::string emoji;
+	// Animated stickers (Media::kTgs, kWebm; 0 for still ones): without an
+	// image thumbnail, the picker shows the first frame of the file itself.
+	int32_t animationFormat = 0;
 };
 
 struct StickerSetInfo {

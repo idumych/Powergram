@@ -851,7 +851,8 @@ App::_SendHistory()
 	// Every row adds every field: the window reads them as parallel arrays.
 	struct Row {
 		int64 id = 0;
-		BString sender, text, time, forward, replySender, replyText, image, emoji;
+		BString sender, text, time, forward, replySender, replyText, image, emoji, animation;
+		int32 animationFormat = 0;
 		bool outgoing = false, read = false, pending = false, failed = false;
 		bool edited = false, service = false, spoiler = false, secret = false;
 		int32 mediaKind = 0, mediaWidth = 0, mediaHeight = 0, duration = 0;
@@ -888,6 +889,8 @@ App::_SendHistory()
 		list.AddBool("spoiler", r.spoiler);
 		list.AddBool("secret", r.secret);
 		list.AddString("emoji", r.emoji);
+		list.AddString("animation", r.animation);
+		list.AddInt32("animation_format", r.animationFormat);
 		list.AddInt32("duration", r.duration);
 		list.AddBool("show_avatar", r.showAvatar);
 		list.AddInt64("sender_key", r.senderKey);
@@ -1005,6 +1008,14 @@ App::_SendHistory()
 			// only when it's opened.
 			if (!media.secret && r.image.IsEmpty())
 				fFiles.Want(media.fileId, 1 + (int)std::min<size_t>(30, 30 * i / messages.size()));
+			// Animated stickers play once their file is here.
+			if (media.animationFileId != 0) {
+				r.animation = fFiles.Path(media.animationFileId).c_str();
+				r.animationFormat = media.animationFormat;
+				if (r.animation.IsEmpty())
+					fFiles.Want(media.animationFileId,
+						1 + (int)std::min<size_t>(30, 30 * i / messages.size()));
+			}
 			// The file that's opened or saved: its name and, for a
 			// document's card, how much of it is here.
 			int32 file = media.fullFileId != 0 ? media.fullFileId : media.fileId;
@@ -1465,6 +1476,16 @@ App::_SendStickers(bool update)
 		// The picker's images, first ones first, after the chat's media.
 		if (path.IsEmpty() && sticker.imageFileId != 0)
 			fFiles.Want(sticker.imageFileId, std::max(2, priority--));
+		// An animated sticker without an image: the sticker itself, whose
+		// first frame the picker draws.
+		BString animation;
+		if (sticker.imageFileId == 0 && sticker.animationFormat != 0) {
+			animation = fFiles.Path(sticker.fileId).c_str();
+			if (animation.IsEmpty())
+				fFiles.Want(sticker.fileId, std::max(2, priority--));
+		}
+		list.AddString("animation", animation);
+		list.AddInt32("animation_format", sticker.animationFormat);
 	}
 	fMain->PostMessage(&list);
 	_StartDownloads();

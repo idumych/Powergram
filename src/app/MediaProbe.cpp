@@ -48,17 +48,7 @@ ProbeFile(const char* path)
 	entry_ref ref;
 	if (get_ref_for_path(path, &ref) != B_OK)
 		return file;
-	// Images Haiku can read go as photos, with their size.
-	if (BBitmap* image = BTranslationUtils::GetBitmap(&ref)) {
-		BRect bounds = image->Bounds();
-		delete image;
-		file.kind = pp::OutgoingFile::kPhoto;
-		file.width = bounds.IntegerWidth() + 1;
-		file.height = bounds.IntegerHeight() + 1;
-		return file;
-	}
-	// MP4 and QuickTime videos as videos; the type from the file system,
-	// else guessed from the name.
+	// The type from the file system, else guessed from the name.
 	char type[B_MIME_TYPE_LENGTH] = "";
 	BNode node(&ref);
 	BNodeInfo info(&node);
@@ -67,6 +57,18 @@ ProbeFile(const char* path)
 		if (BMimeType::GuessMimeType(path, &guess) == B_OK && guess.Type() != nullptr)
 			strlcpy(type, guess.Type(), sizeof(type));
 	}
+	// Images Haiku can read go as photos, with their size; GIFs as
+	// animations, which keep moving.
+	if (BBitmap* image = BTranslationUtils::GetBitmap(&ref)) {
+		BRect bounds = image->Bounds();
+		delete image;
+		file.kind = pp::IsGif(type, path) ? pp::OutgoingFile::kAnimation
+			: pp::OutgoingFile::kPhoto;
+		file.width = bounds.IntegerWidth() + 1;
+		file.height = bounds.IntegerHeight() + 1;
+		return file;
+	}
+	// MP4 and QuickTime videos as videos.
 	if (pp::IsPlayableVideo(type, path) && ProbeVideo(ref, &file))
 		file.kind = pp::OutgoingFile::kVideo;
 	return file;

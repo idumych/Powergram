@@ -26,6 +26,10 @@ struct Media {
 	bool spoiler = false;      // hidden until clicked
 	bool secret = false;       // self-destructing: hidden until opened
 	std::string emoji;         // stickers: shown when there's no image
+	// Animated stickers: the .tgs (Lottie) or .webm file that plays.
+	int32_t animationFileId = 0;
+	enum { kStill = 0, kTgs = 1, kWebm = 2 };
+	int32_t animationFormat = kStill;
 	bool bigEmoji = false;     // a message of one emoji, drawn large
 	int32_t duration = 0;      // videos and voice messages, seconds
 	std::string waveform;      // voice messages: one 0..31 level per byte
@@ -245,9 +249,10 @@ json Online(bool online);
 } // namespace request
 
 // A file being sent, as found on disk: a photo, a video Telegram plays
-// (with its size and length), or anything else as a document.
+// (with its size and length), a GIF (sent as an animation, which loops),
+// or anything else as a document.
 struct OutgoingFile {
-	enum Kind { kPhoto, kVideo, kDocument } kind = kDocument;
+	enum Kind { kPhoto, kVideo, kDocument, kAnimation } kind = kDocument;
 	std::string path;
 	int32_t width = 0;
 	int32_t height = 0;
@@ -257,12 +262,15 @@ struct OutgoingFile {
 // Whether a video file goes as a video (MP4 and QuickTime, which every
 // Telegram app plays) rather than as a document; by MIME type or name.
 bool IsPlayableVideo(const std::string& mimeType, const std::string& path);
+// Whether an image is a GIF, which goes as an animation rather than a
+// still photo; by MIME type or name.
+bool IsGif(const std::string& mimeType, const std::string& path);
 
 namespace request {
 
 // The requests that send files picked or dropped together: photos and
-// videos next to each other go as albums of up to ten, documents one by
-// one. The caption goes with the first file and the reply with the first
+// videos next to each other go as albums of up to ten, documents and GIFs
+// one by one. The caption goes with the first file and the reply with the first
 // message.
 std::vector<json> SendFiles(int64_t chatId, const std::vector<OutgoingFile>& files,
 	const std::string& caption, int64_t replyTo = 0);

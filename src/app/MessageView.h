@@ -45,6 +45,8 @@ struct MessageRow {
 	bool spoiler;               // hidden until clicked
 	bool secret;                // self-destructing: hidden until opened
 	BString emoji;              // a sticker without an image
+	BString animationPath;      // an animated sticker's file, once here
+	int32 animationFormat;      // StickerPlayer::Format, 0 for none
 	BString fileName;           // what Save As suggests
 	BString fileTitle;          // a document's card: its name, or the song
 	BString fileType;           // its MIME type, for the icon
@@ -70,6 +72,8 @@ struct MessageRow {
 };
 
 class BBitmap;
+class BMessageRunner;
+class StickerPlayer;
 
 class MessageView : public BView {
 public:
@@ -186,6 +190,20 @@ private:
 	std::map<std::string, BBitmap*> fIcons;  // HVIF files, by path and size
 	std::list<std::string> fBitmapOrder;
 	std::set<int64> fRevealed;  // spoilers clicked open
+
+	// Animated stickers on screen, by file: each plays while it's drawn,
+	// and a timer redraws them; ones not drawn for a while are dropped.
+	struct Playing {
+		StickerPlayer* player = nullptr;   // nullptr: the file can't be played
+		bigtime_t lastDrawn = 0;
+		std::vector<BRect> frames;         // where it was drawn last
+	};
+	const BBitmap* _StickerFrame(const MessageRow& row, BRect box);
+	void _AnimationTick();
+	void _ClearPlayers();
+	std::map<std::string, Playing> fPlaying;
+	BMessageRunner* fAnimationRunner = nullptr;
+	bigtime_t fAnimationInterval = 0;
 
 	// Text selection, within one message, in characters of its Measured.
 	int32 _IndexOf(int64 id) const;

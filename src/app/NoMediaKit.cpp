@@ -9,6 +9,7 @@
 #include <TranslationUtils.h>
 
 #include "MediaProbe.h"
+#include "StickerPlayer.h"
 #include "VideoPlayback.h"
 #include "VoicePlayer.h"
 #include "VoiceRecorder.h"
@@ -60,6 +61,12 @@ ProbeFile(const char* path)
 	entry_ref ref;
 	if (get_ref_for_path(path, &ref) != B_OK)
 		return file;
+	// GIFs as animations, even where no translator reads them (their size
+	// left for Telegram to find).
+	if (pp::IsGif("", path)) {
+		file.kind = pp::OutgoingFile::kAnimation;
+		return file;
+	}
 	if (BBitmap* image = BTranslationUtils::GetBitmap(&ref)) {
 		BRect bounds = image->Bounds();
 		delete image;
@@ -68,4 +75,13 @@ ProbeFile(const char* path)
 		file.height = bounds.IntegerHeight() + 1;
 	}
 	return file;
+}
+
+
+// Video stickers need libvpx, which Haiku arm64 doesn't have yet: they
+// show their still thumbnail or emoji.
+StickerPlayer*
+OpenWebmSticker(const BString&)
+{
+	return nullptr;
 }

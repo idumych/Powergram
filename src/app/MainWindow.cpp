@@ -869,6 +869,8 @@ MainWindow::_UpdateHistory(const BMessage* history)
 		row.spoiler = history->GetBool("spoiler", i, false);
 		row.secret = history->GetBool("secret", i, false);
 		row.emoji = history->GetString("emoji", i, "");
+		row.animationPath = history->GetString("animation", i, "");
+		row.animationFormat = history->GetInt32("animation_format", i, 0);
 		row.duration = history->GetInt32("duration", i, 0);
 		row.waveform = FindBytes(history, "waveform", i);
 		row.fileName = history->GetString("file_name", i, "");

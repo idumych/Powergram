@@ -3,6 +3,9 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <fstream>
+#include <sstream>
+#include <zlib.h>
 
 #include "../src/core/AuthFlow.h"
 #include "../src/core/ChatHistory.h"
@@ -13,6 +16,7 @@
 #include "../src/core/Files.h"
 #include "../src/core/Format.h"
 #include "../src/core/Links.h"
+#include "../src/core/Lottie.h"
 #include "../src/core/Pinned.h"
 #include "../src/core/VoiceNote.h"
 #include "../src/core/Mentions.h"
@@ -22,6 +26,7 @@
 #include "../src/core/Presence.h"
 #include "../src/core/SendQueue.h"
 #include "../src/core/Stickers.h"
+#include "../src/core/Webm.h"
 
 using namespace pp;
 
@@ -506,6 +511,13 @@ TestMedia()
 	CHECK(StickerMedia(tgs).fileId == 11);
 	tgs["thumbnail"]["format"] = {{"@type", "thumbnailFormatTgs"}};
 	CHECK(StickerMedia(tgs).fileId == 0 && StickerMedia(tgs).emoji == "😀");
+	// … and the animation itself, to play once it's here.
+	CHECK(StickerMedia(tgs).animationFileId == 10 && StickerMedia(tgs).animationFormat == Media::kTgs);
+	json webm = webp;
+	webm["format"] = {{"@type", "stickerFormatWebm"}};
+	CHECK(StickerMedia(webm).animationFileId == 10 && StickerMedia(webm).animationFormat == Media::kWebm
+		&& StickerMedia(webm).fileId == 11);
+	CHECK(StickerMedia(webp).animationFileId == 0 && StickerMedia(webp).animationFormat == Media::kStill);
 	message["content"] = {{"@type", "messageSticker"}, {"sticker", webp}};
 	CHECK(ParseMessage(message).media.kind == Media::kSticker);
 	CHECK(ParseMessage(message).text.empty());
@@ -678,6 +690,7 @@ TestPhotosAndStickers()
 	CHECK(items.size() == 3);
 	CHECK(items[0].fileId == 50 && items[0].imageFileId == 51);
 	CHECK(items[1].fileId == 52 && items[1].imageFileId == 0 && items[1].emoji == "🎉");
+	CHECK(items[1].animationFormat == 1 && items[0].animationFormat == 0);
 	CHECK(items[2].imageFileId == 50);
 
 	auto sets = ParseStickerSets({{"@type", "stickerSets"}, {"sets", json::array({
@@ -1311,6 +1324,16 @@ TestSendingFiles()
 	// Two documents: one by one.
 	r = request::SendFiles(42, {file(OutgoingFile::kDocument, "/a"), file(OutgoingFile::kDocument, "/b")}, "x");
 	CHECK(r.size() == 2 && r[0]["@type"] == "sendMessage" && r[1]["@type"] == "sendMessage");
+	// A GIF between photos: an animation of its own, which splits the album.
+	r = request::SendFiles(42, {file(OutgoingFile::kPhoto, "/p1.jpg"),
+		file(OutgoingFile::kAnimation, "/cat.gif"), file(OutgoingFile::kPhoto, "/p2.jpg")}, "Look", 0);
+	CHECK(r.size() == 3 && r[1]["@type"] == "sendMessage"
+		&& r[1]["input_message_content"]["@type"] == "inputMessageAnimation"
+		&& r[1]["input_message_content"]["animation"]["animation"]["path"] == "/cat.gif"
+		&& r[1]["input_message_content"]["animation"]["width"] == 640
+		&& r[0]["input_message_content"]["caption"]["text"] == "Look");
+	CHECK(IsGif("image/gif", "/x") && IsGif("", "/a/Cat.GIF") && !IsGif("image/png", "/a.png")
+		&& !IsGif("", "/gif"));
 }
 
 
@@ -1797,6 +1820,290 @@ TestCompose()
 }
 
 
+static std::string
+Gzip(const std::string& text)
+{
+	z_stream stream = {};
+	deflateInit2(&stream, 9, Z_DEFLATED, 16 + MAX_WBITS, 8, Z_DEFAULT_STRATEGY);
+	std::string out(text.size() + 128, '\0');
+	stream.next_in = (Bytef*)text.data();
+	stream.avail_in = (uInt)text.size();
+	stream.next_out = (Bytef*)&out[0];
+	stream.avail_out = (uInt)out.size();
+	deflate(&stream, Z_FINISH);
+	out.resize(stream.total_out);
+	deflateEnd(&stream);
+	return out;
+}
+
+
+// The bounding box of every point of a frame's shapes (mattes included).
+struct Box { float left = 1e9, top = 1e9, right = -1e9, bottom = -1e9; int contours = 0; };
+static void
+Bounds(const LottieList& list, Box& box)
+{
+	for (const LottieItem& item : list) {
+		for (const auto& contour : item.shape.contours) {
+			box.contours++;
+			for (const LottiePoint& p : contour) {
+				box.left = std::min(box.left, p.x);
+				box.top = std::min(box.top, p.y);
+				box.right = std::max(box.right, p.x);
+				box.bottom = std::max(box.bottom, p.y);
+			}
+		}
+		if (item.content)
+			Bounds(*item.content, box);
+	}
+}
+
+
+// Animated stickers: easing, unpacking, keyframes, shapes and their
+// paint, transforms and parents, trim paths, mattes and precomps.
+static void
+TestLottie()
+{
+	CHECK(std::fabs(BezierEase(0.42f, 0, 0.58f, 1, 0.5f) - 0.5f) < 1e-3f);
+	CHECK(std::fabs(BezierEase(0, 0, 1, 1, 0.3f) - 0.3f) < 1e-4f);
+	CHECK(BezierEase(0.42f, 0, 1, 1, 0.25f) < 0.25f);           // ease in starts slow
+	CHECK(BezierEase(0, 0, 0.58f, 1, 0.25f) > 0.25f);           // ease out starts fast
+	CHECK(BezierEase(0.3f, 0.2f, 0.7f, 0.9f, 0) == 0 && BezierEase(0.3f, 0.2f, 0.7f, 0.9f, 1) == 1);
+
+	CHECK(GunzipTgs(Gzip("{\"v\":1}")) == "{\"v\":1}");
+	CHECK(GunzipTgs("not gzip").empty());
+	CHECK(GunzipTgs(Gzip(std::string(5000, 'x')), 1000).empty());   // too big unpacked
+
+	LottieAnimation bad;
+	CHECK(!bad.Load("{}") && !bad.Load("not json") && !bad.Load("{\"layers\":[],\"w\":0}"));
+
+	// A 100 × 100 animation: a red square moving right over 30 frames
+	// (linear), with a blue circle above it drawn half transparent.
+	json linear = {{"x", {1}}, {"y", {1}}};
+	json zero = {{"x", {0}}, {"y", {0}}};
+	json anim = {{"v", "5.5.2"}, {"fr", 30}, {"ip", 0}, {"op", 30}, {"w", 100}, {"h", 100},
+		{"layers", {{{"ty", 4}, {"ind", 1}, {"ip", 0}, {"op", 30}, {"st", 0},
+			{"ks", {{"o", {{"a", 0}, {"k", 100}}}, {"r", {{"a", 0}, {"k", 0}}},
+				{"p", {{"a", 1}, {"k", {{{"t", 0}, {"s", {20, 50}}, {"i", linear}, {"o", zero}},
+					{{"t", 30}, {"s", {80, 50}}}}}}},
+				{"a", {{"a", 0}, {"k", {0, 0}}}}, {"s", {{"a", 0}, {"k", {100, 100}}}}}},
+			{"shapes", {
+				{{"ty", "gr"}, {"it", {
+					{{"ty", "el"}, {"p", {{"a", 0}, {"k", {0, 0}}}}, {"s", {{"a", 0}, {"k", {10, 10}}}}},
+					{{"ty", "fl"}, {"c", {{"a", 0}, {"k", {0, 0, 1, 1}}}}, {"o", {{"a", 0}, {"k", 50}}}},
+					{{"ty", "tr"}, {"p", {{"a", 0}, {"k", {0, 0}}}}, {"a", {{"a", 0}, {"k", {0, 0}}}},
+						{"s", {{"a", 0}, {"k", {100, 100}}}}, {"r", {{"a", 0}, {"k", 0}}},
+						{"o", {{"a", 0}, {"k", 100}}}}}}},
+				{{"ty", "rc"}, {"p", {{"a", 0}, {"k", {0, 0}}}}, {"s", {{"a", 0}, {"k", {20, 20}}}},
+					{"r", {{"a", 0}, {"k", 0}}}},
+				{{"ty", "fl"}, {"c", {{"a", 0}, {"k", {1, 0, 0, 1}}}}, {"o", {{"a", 0}, {"k", 100}}}}}}}}}};
+	LottieAnimation a;
+	CHECK(a.Load(anim.dump()));
+	CHECK(a.FrameRate() == 30 && a.FrameCount() == 30 && a.Width() == 100);
+	LottieList frame = a.Render(15, 200, 200);
+	// The red fill (bottom) uses the square and the circle's group above it;
+	// the group's own blue fill comes after, on top.
+	CHECK(frame.size() == 2);
+	CHECK(frame[0].shape.paint.r == 1 && frame[0].shape.paint.b == 0 && frame[0].shape.contours.size() == 2);
+	CHECK(frame[1].shape.paint.b == 1 && std::fabs(frame[1].shape.paint.a - 0.5f) < 1e-6f
+		&& frame[1].shape.contours.size() == 1 && frame[1].shape.closed[0]);
+	// At frame 15 the square is at x = 50, scaled ×2: 80..120.
+	Box box;
+	Bounds({frame[0]}, box);
+	CHECK(std::fabs(box.left - 80) < 0.01f && std::fabs(box.right - 120) < 0.01f
+		&& std::fabs(box.top - 80) < 0.01f && std::fabs(box.bottom - 120) < 0.01f);
+	Box circle;
+	Bounds({frame[1]}, circle);
+	CHECK(std::fabs(circle.left - 90) < 0.5f && std::fabs(circle.right - 110) < 0.5f);
+	// Before the first keyframe it waits at the start; at 0 it's at x = 20.
+	Box start;
+	Bounds(a.Render(0, 100, 100), start);
+	CHECK(std::fabs(start.left - 10) < 0.01f);
+	// Outside the layer's frames nothing is drawn.
+	CHECK(a.Render(30, 100, 100).empty());
+
+	// Hold keyframes keep their value; eased ones lag behind linear.
+	anim["layers"][0]["ks"]["p"]["k"][0]["h"] = 1;
+	LottieAnimation held;
+	held.Load(anim.dump());
+	Box hold;
+	Bounds(held.Render(29, 100, 100), hold);
+	CHECK(std::fabs(hold.left - 10) < 0.01f);
+	anim["layers"][0]["ks"]["p"]["k"][0].erase("h");
+	anim["layers"][0]["ks"]["p"]["k"][0]["o"] = {{"x", {0.42}}, {"y", {0}}};
+	anim["layers"][0]["ks"]["p"]["k"][0]["i"] = {{"x", {1}}, {"y", {1}}};
+	LottieAnimation eased;
+	eased.Load(anim.dump());
+	Box ease;
+	Bounds(eased.Render(7.5f, 100, 100), ease);
+	CHECK(ease.left + 10 < 20 + 15);   // linear would be at x = 35
+
+	// Parenting: a child of layer 1 moves with it; a rotation of 90° turns
+	// it round its anchor; opacity isn't inherited.
+	json child = anim["layers"][0];
+	child["ind"] = 2;
+	child["parent"] = 1;
+	child["ks"]["p"] = {{"a", 0}, {"k", {0, 30}}};
+	child["ks"]["o"] = {{"a", 0}, {"k", 100}};
+	child["shapes"] = json::array({anim["layers"][0]["shapes"][1], anim["layers"][0]["shapes"][2]});
+	json family = anim;
+	family["layers"][0]["ks"]["p"] = {{"a", 0}, {"k", {50, 20}}};
+	family["layers"][0]["ks"]["o"] = {{"a", 0}, {"k", 50}};
+	family["layers"].push_back(child);
+	LottieAnimation f;
+	f.Load(family.dump());
+	LottieList fam = f.Render(0, 100, 100);
+	CHECK(fam.size() == 3);
+	// Layers are drawn last first: the child (index 1) is at the bottom.
+	Box kid;
+	Bounds({fam[0]}, kid);
+	CHECK(std::fabs(kid.top - 40) < 0.01f && std::fabs(kid.left - 40) < 0.01f);
+	CHECK(fam[0].shape.paint.a == 1 && std::fabs(fam[1].shape.paint.a - 0.5f) < 1e-6f);
+	family["layers"][0]["ks"]["r"] = {{"a", 0}, {"k", 90}};
+	f.Load(family.dump());
+	Box turned;
+	Bounds({f.Render(0, 100, 100)[0]}, turned);
+	// (0, 30) from the parent at (50, 20), turned 90° clockwise: (20, 20).
+	CHECK(std::fabs((turned.left + turned.right) / 2 - 20) < 0.01f
+		&& std::fabs((turned.top + turned.bottom) / 2 - 20) < 0.01f);
+
+	// Strokes: width scaled, caps and joins; trim paths keep part of a path.
+	json line = {{"ty", "sh"}, {"ks", {{"a", 0}, {"k", {{"c", false}, {"v", {{0, 0}, {100, 0}}},
+		{"i", {{0, 0}, {0, 0}}}, {"o", {{0, 0}, {0, 0}}}}}}}};
+	json stroke = {{"ty", "st"}, {"c", {{"a", 0}, {"k", {0, 1, 0, 1}}}}, {"o", {{"a", 0}, {"k", 100}}},
+		{"w", {{"a", 0}, {"k", 4}}}, {"lc", 1}, {"lj", 3}};
+	json trim = {{"ty", "tm"}, {"s", {{"a", 0}, {"k", 25}}}, {"e", {{"a", 0}, {"k", 75}}},
+		{"o", {{"a", 0}, {"k", 0}}}, {"m", 1}};
+	json lineAnim = anim;
+	lineAnim["layers"][0]["ks"]["p"] = {{"a", 0}, {"k", {0, 50}}};
+	lineAnim["layers"][0]["shapes"] = {line, trim, stroke};
+	LottieAnimation l;
+	l.Load(lineAnim.dump());
+	LottieList lines = l.Render(0, 200, 200);
+	CHECK(lines.size() == 1 && lines[0].shape.paint.kind == LottiePaint::kStroke
+		&& lines[0].shape.paint.width == 8 && lines[0].shape.paint.cap == LottiePaint::kButt
+		&& lines[0].shape.paint.join == LottiePaint::kBevel && !lines[0].shape.closed[0]);
+	Box trimmed;
+	Bounds(lines, trimmed);
+	CHECK(std::fabs(trimmed.left - 50) < 0.01f && std::fabs(trimmed.right - 150) < 0.01f);
+	// An offset past the end wraps round a closed path: two pieces.
+	lineAnim["layers"][0]["shapes"] = {anim["layers"][0]["shapes"][1], trim, stroke};
+	lineAnim["layers"][0]["shapes"][1]["o"] = {{"a", 0}, {"k", 180}};
+	l.Load(lineAnim.dump());
+	CHECK(l.Render(0, 100, 100)[0].shape.contours.size() == 2);
+	lineAnim["layers"][0]["shapes"][1]["e"] = {{"a", 0}, {"k", 25}};
+	lineAnim["layers"][0]["shapes"][1]["o"] = {{"a", 0}, {"k", 0}};
+	l.Load(lineAnim.dump());
+	CHECK(l.Render(0, 100, 100).empty());   // nothing left to stroke
+
+	// Gradients: stops with their opacity, points transformed.
+	json gradient = {{"ty", "gf"}, {"o", {{"a", 0}, {"k", 100}}}, {"r", 2}, {"t", 2},
+		{"s", {{"a", 0}, {"k", {0, 0}}}}, {"e", {{"a", 0}, {"k", {10, 0}}}},
+		{"g", {{"p", 2}, {"k", {{"a", 0}, {"k", {0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 1, 0.5}}}}}}};
+	json gradAnim = anim;
+	gradAnim["layers"][0]["ks"]["p"] = {{"a", 0}, {"k", {50, 50}}};
+	gradAnim["layers"][0]["shapes"] = {anim["layers"][0]["shapes"][1], gradient};
+	LottieAnimation g;
+	g.Load(gradAnim.dump());
+	LottieList grad = g.Render(0, 100, 100);
+	CHECK(grad.size() == 1 && grad[0].shape.paint.gradient == LottiePaint::kRadial
+		&& grad[0].shape.paint.evenOdd && grad[0].shape.paint.stops.size() == 2
+		&& grad[0].shape.paint.stops[0].r == 1 && grad[0].shape.paint.stops[1].b == 1
+		&& grad[0].shape.paint.stops[0].a == 1 && std::fabs(grad[0].shape.paint.stops[1].a - 0.5f) < 1e-6f
+		&& std::fabs(grad[0].shape.paint.start.x - 50) < 0.01f
+		&& std::fabs(grad[0].shape.paint.end.x - 60) < 0.01f);
+
+	// Track mattes: the layer under a matte layer is drawn through it; the
+	// matte layer isn't drawn by itself.
+	json matteAnim = gradAnim;
+	json matteLayer = anim["layers"][0];
+	matteLayer["td"] = 1;
+	json content = anim["layers"][0];
+	content["tt"] = 1;
+	content["ind"] = 2;
+	matteAnim["layers"] = {matteLayer, content};
+	LottieAnimation mt;
+	mt.Load(matteAnim.dump());
+	LottieList matted = mt.Render(0, 100, 100);
+	CHECK(matted.size() == 1 && matted[0].matte == LottieItem::kAlpha
+		&& matted[0].content && matted[0].content->size() == 2
+		&& matted[0].matteSource && matted[0].matteSource->size() == 2);
+
+	// Layer masks (not allowed in stickers, but cheap): an added one draws
+	// the layer through it, a subtracted one cuts it away.
+	json maskPath = {{"a", 0}, {"k", {{"c", true}, {"v", {{0, 0}, {50, 0}, {50, 50}}},
+		{"i", {{0, 0}, {0, 0}, {0, 0}}}, {"o", {{0, 0}, {0, 0}, {0, 0}}}}}};
+	json masked = gradAnim;
+	masked["layers"][0]["masksProperties"] = {{{"mode", "a"}, {"pt", maskPath},
+		{"o", {{"a", 0}, {"k", 100}}}}};
+	LottieAnimation mk;
+	mk.Load(masked.dump());
+	LottieList maskedFrame = mk.Render(0, 100, 100);
+	CHECK(maskedFrame.size() == 1 && maskedFrame[0].matte == LottieItem::kAlpha
+		&& maskedFrame[0].matteSource->size() == 1 && maskedFrame[0].content->size() == 1);
+	masked["layers"][0]["masksProperties"][0]["mode"] = "s";
+	mk.Load(masked.dump());
+	maskedFrame = mk.Render(0, 100, 100);
+	CHECK(maskedFrame.size() == 1 && maskedFrame[0].matte == LottieItem::kAlphaInverted);
+	masked["layers"][0]["masksProperties"].push_back({{"mode", "a"}, {"pt", maskPath},
+		{"o", {{"a", 0}, {"k", 100}}}});
+	mk.Load(masked.dump());
+	maskedFrame = mk.Render(0, 100, 100);
+	CHECK(maskedFrame.size() == 1 && maskedFrame[0].matte == LottieItem::kAlphaInverted
+		&& maskedFrame[0].content->size() == 1
+		&& (*maskedFrame[0].content)[0].matte == LottieItem::kAlpha);
+
+	// Precompositions: their layers, with the precomp layer's transform and
+	// its time offset (the square moving linearly again).
+	anim["layers"][0]["ks"]["p"]["k"][0]["o"] = zero;
+	json precomp = {{"v", "5.5.2"}, {"fr", 30}, {"ip", 0}, {"op", 30}, {"w", 100}, {"h", 100},
+		{"assets", {{{"id", "comp_0"}, {"layers", anim["layers"]}}}},
+		{"layers", {{{"ty", 0}, {"refId", "comp_0"}, {"ind", 1}, {"ip", 0}, {"op", 30}, {"st", -15},
+			{"w", 100}, {"h", 100},
+			{"ks", {{"p", {{"a", 0}, {"k", {0, 10}}}}, {"a", {{"a", 0}, {"k", {0, 0}}}},
+				{"s", {{"a", 0}, {"k", {100, 100}}}}, {"o", {{"a", 0}, {"k", 100}}}}}}}}};
+	LottieAnimation pc;
+	CHECK(pc.Load(precomp.dump()));
+	Box inner;
+	Bounds(pc.Render(0, 100, 100), inner);
+	// Its time is 15 frames ahead (x = 50) and it's 10 lower.
+	CHECK(std::fabs(inner.left - 40) < 0.5f && std::fabs(inner.top - 50) < 0.5f);
+}
+
+
+// Video stickers: the WebM container's video track, its frames and their
+// alpha pictures (tests/data/sticker.webm: 64 × 64 VP9 with alpha, ten
+// frames at 10 fps, made with ffmpeg's test pattern).
+static void
+TestWebm()
+{
+	std::ifstream in("tests/data/sticker.webm", std::ios::binary);
+	std::stringstream data;
+	data << in.rdbuf();
+	std::string file = data.str();
+	CHECK(file.size() > 1000);
+	WebmVideo video;
+	CHECK(ParseWebm(file, &video));
+	CHECK(video.codec == "V_VP9" && video.width == 64 && video.height == 64 && video.alpha);
+	CHECK(video.frames.size() == 10);
+	CHECK(std::fabs(video.duration - 1000) < 1);
+	bool ordered = true, alphas = true;
+	for (size_t i = 0; i < video.frames.size(); i++) {
+		ordered = ordered && video.frames[i].time == (int64_t)i * 100;
+		alphas = alphas && !video.frames[i].alpha.empty() && !video.frames[i].data.empty();
+	}
+	CHECK(ordered && alphas);
+	CHECK(video.frames[0].keyframe);
+	// A VP9 keyframe starts with its frame marker (2 bits: 10).
+	CHECK(((uint8_t)video.frames[0].data[0] >> 6) == 2);
+	// Cut short, it gives what's there; garbage isn't WebM.
+	WebmVideo part;
+	CHECK(ParseWebm(file.substr(0, file.size() / 2), &part) && part.frames.size() < 10
+		&& !part.frames.empty());
+	CHECK(!ParseWebm("not a webm file", &part) && !ParseWebm("", &part));
+	CHECK(!ParseWebm(file.substr(0, 30), &part));
+}
+
+
 int
 main()
 {
@@ -1832,6 +2139,8 @@ main()
 	TestSecretChats();
 	TestContacts();
 	TestCompose();
+	TestLottie();
+	TestWebm();
 	if (sFailures) {
 		std::fprintf(stderr, "%d check(s) failed\n", sFailures);
 		return EXIT_FAILURE;

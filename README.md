@@ -64,12 +64,23 @@ made-up data so far.
   computer only; a green padlock in the chat list, a self-destruct timer
   (Chat > Self-destruct timer), notifications without the text, and the
   encryption key in Info as a picture to compare with the other phone
-- Photos, videos, GIFs, round video messages and stickers (WebP; animated
-  stickers show their emoji); spoilers and self-destructing photos
+- Photos, videos, GIFs, round video messages and stickers; animated
+  stickers play, both Lottie (.tgs, drawn by Powergram itself) and video
+  (.webm, with libvpx) ones, in chats and as the first frame in the picker;
+  spoilers and self-destructing photos
 - Sending text, photos, videos (MP4 and QuickTime, with their size and
-  length), files (file panel or drag and drop from Tracker) and stickers;
-  several photos and videos at once go as an album; replying, editing,
-  deleting, copying
+  length), GIFs (as GIFs, which keep moving), files (file panel or drag and
+  drop from Tracker) and stickers; several photos and videos at once go as
+  an album; replying, editing, deleting, copying
+- Right-click Send to send without sound, schedule the message for a day
+  and time, or send it when the other person comes online; Chat > Scheduled
+  messages lists them, to send now, reschedule or delete
+- Polls and quizzes (Chat > New poll), and locations from coordinates or a
+  link copied from a map website (Chat > Send location)
+- Contacts and new chats (Chat > New chat, Cmd+N): your contacts with their
+  status, searched by name, username or phone number, public chats and
+  channels found by name; new groups and channels with the contacts you
+  tick; adding a contact by phone number
 - Mentions: typing @ in a group suggests its members (Up, Down, Enter or Tab,
   or a click); people without a username are mentioned by name. An "@" button
   with the count goes to your oldest unread mention
@@ -139,7 +150,7 @@ Logging in with a QR code (this one is made up).
 | Platform | State |
 |---|---|
 | Renku OS / Haiku R1/beta6, x86_64 | Builds and runs |
-| Haiku arm64 (nightlies) | Preview: runs on the hrev60397 nightly in QEMU. Haiku arm64 has no Media Kit or image translators yet, so voice messages, the video viewer and pictures don't work there |
+| Haiku arm64 (nightlies) | Preview: runs on the hrev60397 nightly in QEMU. Haiku arm64 has no Media Kit or image translators yet, so voice messages, the video viewer, video stickers and pictures don't work there |
 | Linux (Cosmoe) | Not yet |
 
 ## Building
@@ -147,7 +158,7 @@ Logging in with a QR code (this one is made up).
 On Haiku or Renku OS:
 
 ```sh
-pkgman install tdlib openssl3_devel zlib_devel opus_devel libogg_devel
+pkgman install tdlib openssl3_devel zlib_devel opus_devel libogg_devel libvpx_devel
 make
 ./Powergram
 ```
@@ -170,13 +181,16 @@ needs only OpenSSL and zlib at run time. Install `noto_emoji` for emoji.
 `make test` runs the core tests (login flow, chat list, history, throttling,
 files and download progress, stickers, formatting, presence, voice, chat info,
 links and usernames, pinned messages, voice recording, mentions, profile and devices,
-QR login, secret chats) on any system with a C++17 compiler, and `make qr-check`
+QR login, secret chats, contacts and new chats, scheduled messages, polls,
+locations, Lottie animations and WebM stickers) on any system with a C++17 compiler, and `make qr-check`
 reads the login QR code back with zbarimg.
 On Haiku, `make file-saving-test` checks saving received files and
 `make voice-record-test` checks the voice message files it records and
 `make media-probe-test` what files are sent as (photo, video or document) and
 `make video-playback-test` the viewer's video playback (timing, pausing,
 seeking, the end, looping, and sound staying with the picture).
+`make lottie-render` builds a tool that draws frames of an animated sticker
+(`.tgs`, Lottie `.json` or `.webm`) into a PNG.
 
 ## Your API key
 

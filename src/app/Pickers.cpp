@@ -12,9 +12,11 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 
 #include "../core/Stickers.h"
 #include "Messages.h"
+#include "StickerPlayer.h"
 
 namespace {
 
@@ -357,6 +359,29 @@ StickerGrid::_Bitmap(const BString& path)
 }
 
 
+// An animated sticker's first frame, `side` pixels square, kept like the
+// images.
+BBitmap*
+StickerGrid::_FirstFrame(const PickerSticker& sticker, int32 side)
+{
+	std::string key = "frame:" + std::string(sticker.animationPath.String());
+	auto it = fBitmaps.find(key);
+	if (it != fBitmaps.end())
+		return it->second;
+	BBitmap* copy = nullptr;
+	if (StickerPlayer* player = StickerPlayer::Open(sticker.animationPath,
+			sticker.animationFormat)) {
+		if (const BBitmap* frame = player->Frame(side, side, system_time())) {
+			copy = new BBitmap(frame->Bounds(), B_RGBA32);
+			memcpy(copy->Bits(), frame->Bits(), std::min(copy->BitsLength(), frame->BitsLength()));
+		}
+		delete player;
+	}
+	fBitmaps[key] = copy;   // nullptr too: don't retry
+	return copy;
+}
+
+
 void
 StickerGrid::Draw(BRect updateRect)
 {
@@ -381,6 +406,8 @@ StickerGrid::Draw(BRect updateRect)
 		BRect box = frame.InsetByCopy(frame.Width() * 0.08f, frame.Height() * 0.08f);
 		const PickerSticker& s = fStickers[i];
 		BBitmap* bitmap = s.imagePath.IsEmpty() ? nullptr : _Bitmap(s.imagePath);
+		if (bitmap == nullptr && !s.animationPath.IsEmpty())
+			bitmap = _FirstFrame(s, box.IntegerWidth() + 1);
 		if (bitmap != nullptr) {
 			BRect b = bitmap->Bounds();
 			float scale = std::min(box.Width() / b.Width(), box.Height() / b.Height());
@@ -521,6 +548,8 @@ StickerWindow::MessageReceived(BMessage* message)
 				s.height = message->GetInt32("height", i, 0);
 				s.emoji = message->GetString("emoji", i, "");
 				s.imagePath = message->GetString("image", i, "");
+				s.animationPath = message->GetString("animation", i, "");
+				s.animationFormat = message->GetInt32("animation_format", i, 0);
 				stickers.push_back(s);
 			}
 			fGrid->SetStickers(stickers, message->GetBool("update", false));
