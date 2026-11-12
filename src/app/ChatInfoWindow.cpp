@@ -22,6 +22,7 @@
 #include "BitmapUtils.h"
 #include "../core/SecretChat.h"
 #include "Messages.h"
+#include "TouchScroll.h"
 
 namespace {
 
@@ -200,6 +201,7 @@ ChatInfoWindow::ChatInfoWindow(int64 chatId)
 		B_AUTO_UPDATE_SIZE_LIMITS | B_CLOSE_ON_ESCAPE),
 	fChatId(chatId)
 {
+	AddTouchScrolling(this);
 	fAvatar = new AvatarView();
 	fTitle = new BStringView("title", "");
 	BFont big(be_bold_font);

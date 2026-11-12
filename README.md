@@ -55,6 +55,10 @@ made-up data so far.
   logged in to your account, any of which you can log out
 - Settings: notifications, message text in notifications, a sound (chosen in
   the Sounds preferences), text size, and where photos and videos open
+- Touch screens: drag the chat list, chats, pickers and other lists with a
+  finger, as on a phone: they keep moving after a flick and stretch at the
+  ends (Settings > Scroll by dragging also offers it for the mouse); a tap
+  still clicks
 - Photos and videos open in their own apps (ShowImage, MediaPlayer) as
   before, or, if Settings say so, in Powergram's viewer: videos play with
   sound, Space or a click pauses, the slider or the arrow keys seek, GIFs

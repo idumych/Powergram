@@ -18,6 +18,7 @@
 #include "../core/AuthFlow.h"
 #include "../core/Contacts.h"
 #include "Messages.h"
+#include "TouchScroll.h"
 
 namespace {
 
@@ -257,6 +258,7 @@ NewChatWindow::NewChatWindow(BMessenger app, BRect parentFrame)
 	SetDefaultButton(fOpen);
 	fSearch->MakeFocus(true);
 	CenterIn(parentFrame);
+	AddTouchScrolling(this);
 }
 
 
@@ -505,6 +507,7 @@ NewGroupWindow::NewGroupWindow(BMessenger app, bool channel,
 	_Check();
 	fTitle->MakeFocus(true);
 	CenterIn(parentFrame);
+	AddTouchScrolling(this);
 }
 
 
@@ -653,6 +656,7 @@ AddContactWindow::AddContactWindow(BMessenger app, BRect parentFrame)
 	_Check();
 	fPhone->MakeFocus(true);
 	CenterIn(parentFrame);
+	AddTouchScrolling(this);
 }
 
 

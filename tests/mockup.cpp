@@ -13,6 +13,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <cstdlib>
 #include <ctime>
 #include <string>
 #include <vector>
@@ -22,6 +23,7 @@
 #include "../src/app/ProfileWindow.h"
 #include "../src/app/NewChatWindow.h"
 #include "../src/app/ComposeWindows.h"
+#include "../src/app/TouchScroll.h"
 #include "../src/app/ChatInfoWindow.h"
 #include "../src/app/LoginWindow.h"
 #include "../src/core/AuthFlow.h"
@@ -1082,6 +1084,10 @@ int
 main(int argc, char** argv)
 {
 	sScene = argc > 1 ? argv[1] : "group";
+	// POWERGRAM_DRAG_SCROLL=1: drag to scroll with the mouse too (a VM's
+	// pointer isn't a touch screen), to try touch scrolling.
+	if (const char* drag = getenv("POWERGRAM_DRAG_SCROLL"))
+		SetDragScrollMode(atoi(drag));
 	sDir = argc > 2 ? argv[2] : "/build/mock-media";
 	MockApp app;
 	app.Run();

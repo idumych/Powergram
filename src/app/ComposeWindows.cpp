@@ -25,6 +25,7 @@
 
 #include "../core/Compose.h"
 #include "Messages.h"
+#include "TouchScroll.h"
 
 namespace {
 
@@ -308,6 +309,7 @@ ScheduledWindow::ScheduledWindow(BMessenger app, int64 chatId, const char* chatT
 		.End();
 	_Selected();
 	CenterIn(parentFrame);
+	AddTouchScrolling(this);
 }
 
 

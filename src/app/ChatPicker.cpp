@@ -7,6 +7,8 @@
 #include <ScrollView.h>
 #include <TextControl.h>
 
+#include "TouchScroll.h"
+
 namespace {
 
 enum {
@@ -53,6 +55,7 @@ ChatPicker::ChatPicker(BWindow* parent, const std::vector<Entry>& chats, BMessag
 	_Filter();
 	fSearch->MakeFocus(true);
 	CenterIn(parent->Frame());
+	AddTouchScrolling(this);
 }
 
 

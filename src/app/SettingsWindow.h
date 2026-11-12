@@ -20,12 +20,14 @@ struct AppSettings {
 	// Photos and videos open in Powergram's viewer rather than in the
 	// system's apps (ShowImage, MediaPlayer), which many people prefer.
 	bool mediaInApp = false;
+	// Scrolling by dragging with a finger: DragScrollMode (TouchScroll.h).
+	int32 dragScroll = 0;
 
 	bool operator==(const AppSettings& o) const
 	{
 		return notifications == o.notifications && previews == o.previews
 			&& sound == o.sound && textSize == o.textSize && deskbar == o.deskbar
-			&& mediaInApp == o.mediaInApp;
+			&& mediaInApp == o.mediaInApp && dragScroll == o.dragScroll;
 	}
 	void ToMessage(BMessage* message) const;
 	static AppSettings FromMessage(const BMessage* message);
@@ -52,6 +54,7 @@ private:
 	BCheckBox* fDeskbar;
 	BMenuField* fTextSize;
 	BMenuField* fMediaOpen;
+	BMenuField* fDragScroll;
 	BButton* fRevertButton;
 	BButton* fDefaultsButton;
 };

@@ -22,6 +22,9 @@ enum {
 const char* kSizes[] = {"Small", "Normal", "Large"};
 // The "Open photos and videos" choices, in AppSettings::mediaInApp order.
 const char* kMediaOpen[] = {"In their own apps (ShowImage, MediaPlayer)", "In Powergram"};
+// The "Scroll by dragging" choices, in DragScrollMode order.
+const char* kDragScroll[] = {"With a touch screen", "With a touch screen or the mouse",
+	"Never"};
 
 } // namespace
 
@@ -35,6 +38,7 @@ AppSettings::ToMessage(BMessage* message) const
 	message->AddInt32("text_size", textSize);
 	message->AddBool("deskbar", deskbar);
 	message->AddBool("media_in_app", mediaInApp);
+	message->AddInt32("drag_scroll", dragScroll);
 }
 
 
@@ -48,6 +52,7 @@ AppSettings::FromMessage(const BMessage* message)
 	s.textSize = message->GetInt32("text_size", 1);
 	s.deskbar = message->GetBool("deskbar", true);
 	s.mediaInApp = message->GetBool("media_in_app", false);
+	s.dragScroll = message->GetInt32("drag_scroll", 0);
 	return s;
 }
 
@@ -75,6 +80,12 @@ SettingsWindow::SettingsWindow(BMessenger app, const AppSettings& current)
 	for (int32 i = 0; i < 2; i++)
 		mediaOpen->AddItem(new BMenuItem(kMediaOpen[i], new BMessage(kMsgChanged)));
 	fMediaOpen = new BMenuField("media open", "Open photos and videos:", mediaOpen);
+	BPopUpMenu* dragScroll = new BPopUpMenu("drag scroll");
+	for (int32 i = 0; i < 3; i++)
+		dragScroll->AddItem(new BMenuItem(kDragScroll[i], new BMessage(kMsgChanged)));
+	fDragScroll = new BMenuField("drag scroll", "Scroll by dragging:", dragScroll);
+	fDragScroll->SetToolTip("Drag lists and chats with a finger, as on a phone; a tap "
+		"still clicks");
 	BStringView* soundHint = new BStringView("sound hint",
 		"The sound is chosen in the Sounds preferences.");
 	soundHint->SetHighUIColor(B_PANEL_TEXT_COLOR, B_DARKEN_2_TINT);
@@ -97,6 +108,7 @@ SettingsWindow::SettingsWindow(BMessenger app, const AppSettings& current)
 		.AddGrid(B_USE_DEFAULT_SPACING, B_USE_SMALL_SPACING)
 			.AddMenuField(fTextSize, 0, 0)
 			.AddMenuField(fMediaOpen, 0, 1)
+			.AddMenuField(fDragScroll, 0, 2)
 		.End()
 		.AddGroup(B_HORIZONTAL)
 			.Add(fDefaultsButton)
@@ -120,6 +132,8 @@ SettingsWindow::_Show(const AppSettings& s)
 		item->SetMarked(true);
 	if (BMenuItem* item = fMediaOpen->Menu()->ItemAt(s.mediaInApp ? 1 : 0))
 		item->SetMarked(true);
+	if (BMenuItem* item = fDragScroll->Menu()->ItemAt(s.dragScroll))
+		item->SetMarked(true);
 	fRevertButton->SetEnabled(!(s == fRevert));
 	fDefaultsButton->SetEnabled(!(s == AppSettings()));
 }
@@ -137,6 +151,8 @@ SettingsWindow::_Read() const
 	s.textSize = marked != nullptr ? fTextSize->Menu()->IndexOf(marked) : 1;
 	marked = fMediaOpen->Menu()->FindMarked();
 	s.mediaInApp = marked != nullptr && fMediaOpen->Menu()->IndexOf(marked) == 1;
+	marked = fDragScroll->Menu()->FindMarked();
+	s.dragScroll = marked != nullptr ? fDragScroll->Menu()->IndexOf(marked) : 0;
 	return s;
 }
 

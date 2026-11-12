@@ -17,6 +17,7 @@
 #include "../core/Stickers.h"
 #include "Messages.h"
 #include "StickerPlayer.h"
+#include "TouchScroll.h"
 
 namespace {
 
@@ -65,6 +66,7 @@ PopoverWindow::PopoverWindow(const char* title, BMessenger target)
 	fTarget(target)
 {
 	AddCommonFilter(new EscapeHides());
+	AddTouchScrolling(this);
 }
 
 

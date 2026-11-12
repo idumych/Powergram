@@ -19,6 +19,7 @@
 #include "../core/Profile.h"
 #include "AvatarView.h"
 #include "Messages.h"
+#include "TouchScroll.h"
 
 namespace {
 
@@ -162,6 +163,7 @@ ProfileWindow::ProfileWindow(BMessenger app)
 	fBio->SetEnabled(false);
 	fUsername->SetText("Loading" B_UTF8_ELLIPSIS);
 	CenterOnScreen();
+	AddTouchScrolling(this);
 }
 
 

@@ -42,6 +42,7 @@
 #include "BitmapUtils.h"
 #include "ChatPicker.h"
 #include "ComposeWindows.h"
+#include "TouchScroll.h"
 #include "SettingsWindow.h"
 #include "Icons.h"
 #include "Pickers.h"
@@ -666,6 +667,7 @@ MainWindow::MainWindow(BRect frame, bool testDc,
 	fPinnedBar->Hide();
 	// Escape cancels a reply or an edit (window shortcuts always need Command).
 	AddCommonFilter(new EscapeFilter());
+	AddTouchScrolling(this);
 	fEntry->TextView()->AddFilter(new MentionKeyFilter(this));
 
 	// Paper Plane: a 365 px sidebar next to the chat, for 14.6 px text.
@@ -1547,6 +1549,7 @@ MainWindow::MessageReceived(BMessage* message)
 		case kMsgSettingsChanged:
 			fMessages->SetTextScale(AppSettings::Scale(message->GetInt32("text_size", 1)));
 			fMediaInApp = message->GetBool("media_in_app", false);
+			SetDragScrollMode(message->GetInt32("drag_scroll", kDragScrollTouch));
 			break;
 		case kMsgChatFilter:
 			_UpdateChats(&fLastChats);

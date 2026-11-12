@@ -14,6 +14,7 @@
 #include "../src/core/Compose.h"
 #include "../src/core/Contacts.h"
 #include "../src/core/Files.h"
+#include "../src/core/Kinetic.h"
 #include "../src/core/Format.h"
 #include "../src/core/Links.h"
 #include "../src/core/Lottie.h"
@@ -2104,6 +2105,110 @@ TestWebm()
 }
 
 
+// Scrolling with a finger: following the drag, rubber banding past the
+// ends, flicks coasting and slowing, springing back, and touch screens
+// told from pointers that only look like tablets.
+static void
+TestKinetic()
+{
+	CHECK(RubberBand(0, 500) == 0 && RubberBand(-5, 500) == 0);
+	CHECK(RubberBand(10, 500) > 5 && RubberBand(10, 500) < 10);        // almost as far at first
+	CHECK(RubberBand(1000, 500) < 500 && RubberBand(100000, 500) < 500); // never past the view
+	CHECK(RubberBand(200, 500) - RubberBand(100, 500) < RubberBand(100, 500));  // less and less
+
+	// A list of 0..1000 in a 500 pixel view, at 300: the content follows
+	// the finger (dragging up scrolls down).
+	KineticScroll k;
+	k.SetRange(0, 1000, 500);
+	k.Begin(300, 400, 0);
+	CHECK(k.Dragging());
+	CHECK(k.Drag(350, 0.016) == 350);   // finger up 50: position +50
+	CHECK(k.Drag(450, 0.032) == 250);
+	// Past the top it stretches less than the finger moves.
+	float over = k.Drag(800, 0.2);
+	CHECK(over < -40 && over > -100);   // 100 px past the top shows as about 50
+	// Released stretched, no flick: it springs back to 0 within a second,
+	// without passing it.
+	k.Release(0.25);
+	CHECK(k.Moving());
+	float pos = over;
+	bool passed = false;
+	double t = 0.25;
+	while (k.Step(t += 0.016, &pos) && t < 3)
+		passed = passed || pos > 0.5f;
+	CHECK(!passed && pos == 0 && t < 1.5);
+
+	// A flick down the list: it carries on, slows, and stops in range.
+	k.Begin(300, 400, 10);
+	for (int i = 1; i <= 6; i++)
+		k.Drag(400 - i * 20, 10 + i * 0.016);   // 20 px a frame: 1250 px/s
+	k.Release(10 + 6 * 0.016 + 0.005);
+	CHECK(k.Velocity() > 1000 && k.Velocity() < 1500);
+	t = 10.1;
+	float before = k.Position();
+	k.Step(t += 0.016, &pos);
+	CHECK(pos > before);
+	float speed1 = k.Velocity();
+	for (int i = 0; i < 10; i++)
+		k.Step(t += 0.016, &pos);
+	CHECK(k.Velocity() < speed1);       // slowing down
+	while (k.Step(t += 0.016, &pos) && t < 20) {}
+	CHECK(!k.Moving() && pos > 600 && pos <= 1000);   // about speed × 0.325 s further
+
+	// A flick that hits the end goes a little past it and comes back.
+	k.Begin(950, 400, 30);
+	for (int i = 1; i <= 6; i++)
+		k.Drag(400 - i * 40, 30 + i * 0.016);
+	k.Release(30 + 6 * 0.016 + 0.005);
+	float furthest = 0;
+	t = 30.1;
+	while (k.Step(t += 0.016, &pos) && t < 40)
+		furthest = std::max(furthest, pos);
+	CHECK(furthest > 1000 && furthest < 1250 && pos == 1000);
+
+	// A finger that stopped before lifting: no flick.
+	k.Begin(500, 400, 50);
+	k.Drag(300, 50.05);
+	k.Release(50.5);
+	CHECK(k.Velocity() == 0 && !k.Moving() && k.Position() == 600);
+
+	// Caught while springing back: the drag goes on from the stretch.
+	k.Begin(300, 400, 60);
+	k.Drag(800, 60.1);
+	float stretched = k.Position();
+	k.Release(60.2);
+	k.Step(60.216, &pos);
+	k.Begin(pos, 600, 60.22);
+	CHECK(std::fabs(k.Drag(600, 60.23) - pos) < 0.5f);   // no jump
+	CHECK(stretched < 0);
+
+	// Touch screens: a tablet-type device that never hovers.
+	TouchDetector d;
+	CHECK(!d.IsTouch());
+	d.Feed(0, 0, 10, 10, true);              // a mouse
+	CHECK(!d.IsTouch());
+	d.Feed(3, 1, 100, 100, false);           // a finger down…
+	d.Feed(3, 1, 100, 140, true);
+	d.Feed(3, 0, 100, 140, true);            // …lifted, reported once where it was
+	d.Feed(3, 1, 200, 200, false);
+	CHECK(d.IsTouch());
+	d.Feed(0, 1, 50, 50, false);             // the mouse again: not touch meanwhile
+	CHECK(!d.IsTouch());
+	d.Feed(3, 1, 60, 60, false);
+	CHECK(d.IsTouch());
+	// VirtualBox's pointer: a tablet that moves with nothing pressed.
+	TouchDetector vm;
+	vm.Feed(3, 0, 10, 10, true);
+	vm.Feed(3, 0, 20, 12, true);
+	vm.Feed(3, 0, 30, 14, true);
+	CHECK(vm.IsTouch());                     // not sure yet
+	vm.Feed(3, 0, 40, 16, true);
+	CHECK(!vm.IsTouch());
+	vm.Feed(3, 1, 40, 16, false);
+	CHECK(!vm.IsTouch());                    // and stays so
+}
+
+
 int
 main()
 {
@@ -2141,6 +2246,7 @@ main()
 	TestCompose();
 	TestLottie();
 	TestWebm();
+	TestKinetic();
 	if (sFailures) {
 		std::fprintf(stderr, "%d check(s) failed\n", sFailures);
 		return EXIT_FAILURE;
