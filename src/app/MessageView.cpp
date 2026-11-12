@@ -37,7 +37,10 @@ MessageView::MessageView()
 	fRelayouting(false),
 	fLastHeight(0)
 {
-	SetViewUIColor(B_LIST_BACKGROUND_COLOR);
+	// Draw paints the background itself: without a view colour app_server
+	// doesn't erase what's redrawn first, which made redraws (and animated
+	// stickers) blink.
+	SetViewColor(B_TRANSPARENT_COLOR);
 	SetTextScale(1.0f);
 }
 
@@ -242,6 +245,8 @@ MessageView::_DrawStickerSpot(Playing& playing, const Playing::Spot& spot, bigti
 	const BBitmap* frame = playing.player->Frame(width, height, now);
 	if (frame == nullptr)
 		return;
+	// Drawn this way it's still on screen: the tick mustn't drop it.
+	playing.lastDrawn = now;
 	if (fCompose == nullptr || fCompose->Bounds().IntegerWidth() + 1 < width
 		|| fCompose->Bounds().IntegerHeight() + 1 < height) {
 		delete fCompose;
