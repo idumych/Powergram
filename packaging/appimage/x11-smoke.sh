@@ -42,8 +42,14 @@ for i in $(seq 40); do DISPLAY=$DPY xdotool get_desktop >/dev/null 2>&1 && break
 DISPLAY=$DPY xdotool get_desktop >/dev/null 2>&1 || { echo "x11-smoke: openbox did not start"; cat "$OUT/wm.log"; exit 1; }
 
 HOME_DIR=$(mktemp -d)
+# Powergram opens my.telegram.org on a fresh start: a stand-in xdg-open
+# notes it instead of starting the runner's browser, whose own messages
+# would land in the app's log (as xtest.sh does).
+mkdir -p "$HOME_DIR/bin"
+printf '#!/bin/sh\necho "xdg-open $*" >> "%s/xdg-open.log"\n' "$OUT" > "$HOME_DIR/bin/xdg-open"
+chmod +x "$HOME_DIR/bin/xdg-open"
 env -u WAYLAND_DISPLAY DISPLAY=$DPY COSMOE_BACKEND=x11 APPIMAGE_EXTRACT_AND_RUN=1 \
-	HOME="$HOME_DIR" "$APP" ${SMOKE_ARGS:-} > "$OUT/app.log" 2>&1 &
+	HOME="$HOME_DIR" PATH="$HOME_DIR/bin:$PATH" "$APP" ${SMOKE_ARGS:-} > "$OUT/app.log" 2>&1 &
 PID=$!
 # Wait for the app's top-level window (up to 60 s; first runs build font caches).
 APPNAME=$(basename "$APP" | sed 's/-[0-9].*//')

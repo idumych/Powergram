@@ -34,8 +34,14 @@ if [ -z "$SOCK" ]; then
 fi
 
 HOME_DIR=$(mktemp -d)
+# Powergram opens my.telegram.org on a fresh start: a stand-in xdg-open
+# notes it instead of starting the runner's browser, whose own messages
+# would land in the app's log (as xtest.sh does).
+mkdir -p "$HOME_DIR/bin"
+printf '#!/bin/sh\necho "xdg-open $*" >> "%s/xdg-open.log"\n' "$OUT" > "$HOME_DIR/bin/xdg-open"
+chmod +x "$HOME_DIR/bin/xdg-open"
 env -u DISPLAY WAYLAND_DISPLAY=$SOCK COSMOE_BACKEND=wayland APPIMAGE_EXTRACT_AND_RUN=1 \
-	WAYLAND_DEBUG=client HOME="$HOME_DIR" "$APP" ${SMOKE_ARGS:-} > "$OUT/app.log" 2> "$OUT/wayland-debug.log" &
+	WAYLAND_DEBUG=client HOME="$HOME_DIR" PATH="$HOME_DIR/bin:$PATH" "$APP" ${SMOKE_ARGS:-} > "$OUT/app.log" 2> "$OUT/wayland-debug.log" &
 PID=$!
 sleep 15
 if ! kill -0 $PID 2>/dev/null; then
