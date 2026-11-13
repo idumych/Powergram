@@ -2,9 +2,11 @@
 #include "BitmapUtils.h"
 
 #include <Bitmap.h>
+#include <Font.h>
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 
 BBitmap*
 RoundBitmap(const BBitmap* source)
@@ -35,4 +37,27 @@ RoundBitmap(const BBitmap* source)
 		}
 	}
 	return round;
+}
+
+
+bool
+CanDrawEmoji(const BFont& font, const char* emoji)
+{
+#ifdef APP_COSMOE
+	// Hokku's GetHasGlyphs looks at the font alone, not at the fallbacks
+	// that draw emoji (fontconfig's): look for the emoji font itself.
+	(void)font;
+	(void)emoji;
+	int32 count = count_font_families();
+	for (int32 i = 0; i < count; i++) {
+		font_family family;
+		if (get_font_family(i, &family) == B_OK && strcmp(family, "Noto Color Emoji") == 0)
+			return true;
+	}
+	return false;
+#else
+	bool has[1] = {false};
+	font.GetHasGlyphs(emoji, 1, has);
+	return has[0];
+#endif
 }

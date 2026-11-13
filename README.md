@@ -7,12 +7,17 @@ It talks to Telegram through [TDLib](https://github.com/tdlib/td), Telegram's
 own client library, and keeps Paper Plane's layout: the chat list on the left,
 the open chat on the right.
 
-**Preview.** Version 0.2.8 is a preview for Haiku and Renku OS (x86_64):
-download the `.hpkg` from
-[Releases](https://github.com/idumych/Powergram/releases) and install it
-with `pkgman install ./powergram-0.2.8-1-x86_64.hpkg`. The app was called
-Paper Plane for Haiku up to 0.1.0; Powergram replaces that package and keeps
-your login and settings.
+**Preview.** Version 0.2.9 is a preview for Haiku and Renku OS, and the
+first for Linux. From [Releases](https://github.com/idumych/Powergram/releases):
+
+- Haiku and Renku OS (x86_64): `pkgman install ./powergram-0.2.9-1-x86_64.hpkg`
+  (an arm64 package is there too, for the Haiku arm64 nightlies)
+- Linux (x86_64 or aarch64, glibc 2.39 or newer, X11 or Wayland):
+  `chmod +x Powergram-0.2.9-x86_64.AppImage && ./Powergram-0.2.9-x86_64.AppImage`
+  (`-aarch64` on ARM)
+
+The app was called Paper Plane for Haiku up to 0.1.0; Powergram replaces
+that package and keeps your login and settings.
 
 ![Powergram with a group chat open](docs/screenshots/haiku-group.png)
 
@@ -100,7 +105,16 @@ made-up data so far.
   apps send them, and every request throttled (a few at a time, and a full
   stop when Telegram asks to wait)
 
-Not yet: calls, a Linux (Cosmoe) build.
+Not yet: calls.
+
+On Linux, Powergram is the same app built with
+[Hokku](https://github.com/idumych/hokku), the Haiku API as a library on X11
+and Wayland. What differs there: voice messages and videos open in your
+desktop's player (Hokku decodes no Opus or video yet), and videos you send
+go as files. Recording voice messages uses the default sound input. Emoji
+need the Noto Color Emoji font, which most desktops have. The unread count
+needs Hokku's Deskbar or a tray; it hasn't been tried in a desktop's tray
+yet.
 
 ## Screenshots
 
@@ -161,13 +175,16 @@ A secret chat: the padlock in the chat list, and the encryption key to compare w
 ![Logging in with a QR code](docs/screenshots/haiku-qr.png)
 Logging in with a QR code (this one is made up).
 
+![Powergram on Linux with the emoji picker open](docs/screenshots/linux-emoji.png)
+The same window on Linux (X11), with the emoji picker in Noto Color Emoji.
+
 ## Platforms
 
 | Platform | State |
 |---|---|
 | Renku OS / Haiku R1/beta6, x86_64 | Builds and runs |
 | Haiku arm64 (nightlies) | Preview: runs on the hrev60397 nightly in QEMU. Haiku arm64 has no Media Kit or image translators yet, so voice messages, the video viewer, video stickers and pictures don't work there |
-| Linux (Cosmoe) | Not yet |
+| Linux, x86_64 and aarch64 (AppImage, built with Hokku) | Preview: the login, the main window and the pickers run under X11 here, and CI starts both AppImages under X11 and Wayland. Not yet used with a real account. Voice messages and videos open in the desktop's player |
 
 ## Building
 
@@ -190,6 +207,17 @@ sh tools/haiku-arm64/make-sysroot.sh ~/.cache/haiku-arm64   # once, ~20 min
 sh tools/haiku-arm64/build-deps.sh                          # once, ~15 min
 sh packaging/build-hpkg-arm64.sh
 ```
+
+On Linux, with [Hokku](https://github.com/idumych/hokku) installed (or
+staged) and TDLib built by `packaging/appimage/build-tdlib.sh`:
+
+```sh
+make COSMOE_ROOT=/usr TD_ROOT=<TDLib prefix>
+./Powergram
+```
+
+`sh packaging/appimage/build-appimage.sh` builds the AppImage (and Hokku and
+TDLib, if not given); release AppImages are built by CI on Ubuntu 24.04.
 
 HaikuPorts' TDLib is static only, so it's linked into the app; the result
 needs only OpenSSL and zlib at run time. Install `noto_emoji` for emoji.

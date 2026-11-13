@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 
 BBitmap*
 MakeIcon(IconKind kind, float size, rgb_color color)
@@ -17,14 +18,14 @@ MakeIcon(IconKind kind, float size, rgb_color color)
 		delete bitmap;
 		return nullptr;
 	}
+	// Transparent background, cleared in memory: Hokku's B_OP_COPY paints
+	// a transparent colour opaque.
+	memset(bitmap->Bits(), 0, bitmap->BitsLength());
 	BView* view = new BView(bounds, "icon", B_FOLLOW_NONE, B_WILL_DRAW);
 	bitmap->AddChild(view);
 	bitmap->Lock();
 
-	// Transparent background, antialiased strokes.
-	view->SetDrawingMode(B_OP_COPY);
-	view->SetHighColor(0, 0, 0, 0);
-	view->FillRect(bounds);
+	// Antialiased strokes.
 	view->SetDrawingMode(B_OP_ALPHA);
 	view->SetBlendingMode(B_PIXEL_ALPHA, B_ALPHA_COMPOSITE);
 	view->SetHighColor(color);

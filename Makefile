@@ -127,7 +127,7 @@ $(BUILD)/lottie_render: $(BUILD)/tests/lottie_render.o $(BUILD)/src/app/LottieRe
 # The entry's icon buttons and a picker with made-up content.
 pickers-demo: $(BUILD)/pickers_demo
 $(BUILD)/pickers_demo: $(BUILD)/tests/pickers_demo.o $(BUILD)/src/app/Pickers.o \
-		$(BUILD)/src/app/Icons.o $(BUILD)/src/core/Stickers.o $(BUILD)/src/app/StickerPlayer.o \
+		$(BUILD)/src/app/BitmapUtils.o $(BUILD)/src/app/Icons.o $(BUILD)/src/core/Stickers.o $(BUILD)/src/app/StickerPlayer.o \
 		$(BUILD)/src/app/TouchScroll.o $(BUILD)/src/core/Kinetic.o \
 		$(BUILD)/src/app/WebmPlayer.o $(BUILD)/src/app/LottieRenderer.o \
 		$(BUILD)/src/core/Lottie.o $(BUILD)/src/core/Webm.o

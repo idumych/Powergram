@@ -397,10 +397,7 @@ MessageView::_DrawMedia(const MessageRow& row, const Layout& l, rgb_color fg,
 	bool emojiDrawable = false;
 	if (bitmap == nullptr && row.mediaKind == 2 && !row.emoji.IsEmpty()) {
 		// Without an emoji font (noto_emoji) the glyph would be an empty box.
-		bool has[8] = {};
-		int32 chars = std::min<int32>(row.emoji.CountChars(), 8);
-		(&fPlain)->GetHasGlyphs(row.emoji.String(), chars, has);
-		emojiDrawable = chars > 0 && has[0];
+		emojiDrawable = row.emoji.CountChars() > 0 && CanDrawEmoji(fPlain, row.emoji.String());
 	}
 	if (emojiDrawable) {
 		// An animated sticker Haiku can't draw: its emoji, large.

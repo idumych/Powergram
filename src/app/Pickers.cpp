@@ -15,6 +15,7 @@
 #include <cstring>
 
 #include "../core/Stickers.h"
+#include "BitmapUtils.h"
 #include "Messages.h"
 #include "StickerPlayer.h"
 #include "TouchScroll.h"
@@ -125,9 +126,7 @@ EmojiGrid::EmojiGrid(BMessenger target)
 	SetViewUIColor(B_LIST_BACKGROUND_COLOR);
 	// Without an emoji font (the noto_emoji package) every cell would be
 	// an empty box; say so instead.
-	bool has[1] = {false};
-	be_plain_font->GetHasGlyphs("\xF0\x9F\x98\x80", 1, has);
-	fHaveEmojiFont = has[0];
+	fHaveEmojiFont = CanDrawEmoji(*be_plain_font, "\xF0\x9F\x98\x80");
 }
 
 
@@ -163,6 +162,8 @@ EmojiGrid::FrameResized(float width, float height)
 {
 	BView::FrameResized(width, height);
 	_Layout();
+	// The cells moved (Hokku may have drawn the old ones at the new size).
+	Invalidate();
 }
 
 
@@ -330,6 +331,7 @@ StickerGrid::FrameResized(float width, float height)
 {
 	BView::FrameResized(width, height);
 	_Layout();
+	Invalidate();
 }
 
 
