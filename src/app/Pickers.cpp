@@ -211,7 +211,11 @@ EmojiGrid::Draw(BRect updateRect)
 
 	if (!fHaveEmojiFont) {
 		SetHighColor(fg);
+#ifdef APP_COSMOE
+		DrawString("Emoji need a font: install Noto Color Emoji (fonts-noto-color-emoji).",
+#else
 		DrawString("Emoji need a font: install the noto_emoji package.",
+#endif
 			BPoint(LineHeight() * 0.5f, LineHeight() * 1.2f));
 	}
 

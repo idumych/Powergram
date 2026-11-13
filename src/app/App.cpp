@@ -35,6 +35,9 @@
 #	include <private/interface/AboutWindow.h>
 #endif
 
+#ifdef APP_COSMOE
+extern "C" BView* instantiate_deskbar_item(float maxWidth, float maxHeight);
+#endif
 #include "../core/AuthFlow.h"
 #include "../core/SecretChat.h"
 #include "../core/ChatHistory.h"
@@ -1565,7 +1568,7 @@ App::_Launch(const std::string& path, const std::string& mimeType)
 	status_t status = be_roster->Launch(&ref);
 	if (status != B_OK && status != B_ALREADY_RUNNING) {
 		BString text("No application here opens \"");
-		text << ref.name << "\". Use Save As" B_UTF8_ELLIPSIS " from the message's menu to keep it.";
+		text << BPath(&ref).Leaf() << "\". Use Save As" B_UTF8_ELLIPSIS " from the message's menu to keep it.";
 		_ShowError(text);
 	}
 }
@@ -2973,6 +2976,20 @@ App::_UpdateDeskbar()
 			return;
 		deskbar.RemoveItem(kDeskbarItemName);
 	}
+#ifdef APP_COSMOE
+	// On Linux the item is linked into the app: Deskbar (Hokku's own, or
+	// TrayExport for the desktop's tray) gets it archived and finds its
+	// class here.
+	float side = std::max(16.0f, std::min(deskbar.MaxItemWidth(), deskbar.MaxItemHeight()));
+	BView* item = instantiate_deskbar_item(side, side);
+	status_t status = deskbar.AddItem(item);
+	delete item;
+	if (status != B_OK) {
+		fprintf(stderr, "Powergram: no Deskbar or tray for the unread count (%" B_PRId32 ")\n",
+			status);
+		return;
+	}
+#else
 	// Next to the app when it runs from where it was built, else in the
 	// package's add-ons folder.
 	app_info info;
@@ -2998,6 +3015,7 @@ App::_UpdateDeskbar()
 		return;
 	}
 	status_t status = deskbar.AddItem(&ref);
+#endif
 	if (status != B_OK)
 		fprintf(stderr, "Powergram: Deskbar item: %s\n", strerror(status));
 }

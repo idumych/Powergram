@@ -39,7 +39,7 @@ enum {
 class FileItem : public BListItem {
 public:
 	FileItem(const entry_ref& ref, float side)
-		: fName(ref.name), fSide(side)
+		: fName(BPath(&ref).Leaf()), fSide(side)
 	{
 		BEntry entry(&ref, true);
 		off_t size = 0;

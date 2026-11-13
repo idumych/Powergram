@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Stand-ins for the parts of the app that need Haiku's Media Kit, for systems
 // built without it (Haiku arm64 so far). Voice messages open in the system's
-// player, recording says why it can't, the viewer shows photos only, and
-// files to send are photos or plain files.
+// player, recording says why it can't, and files to send are photos or
+// plain files. The viewer shows photos only (NoVideoPlayback.cpp).
 #include <Beep.h>
 #include <Bitmap.h>
 #include <Entry.h>
@@ -10,7 +10,6 @@
 
 #include "MediaProbe.h"
 #include "StickerPlayer.h"
-#include "VideoPlayback.h"
 #include "VoicePlayer.h"
 #include "VoiceRecorder.h"
 
@@ -40,17 +39,6 @@ VoiceRecorder::Start(const char*, BString* problem)
 status_t VoiceRecorder::Stop(bool, int32*, std::string*) { return B_NOT_SUPPORTED; }
 double VoiceRecorder::Seconds() { return 0; }
 float VoiceRecorder::TakeLevel() { return 0; }
-
-
-VideoPlayback::VideoPlayback(BMessenger target) : fTarget(target) {}
-VideoPlayback::~VideoPlayback() {}
-status_t VideoPlayback::Open(const char*, bool, bool) { return B_NOT_SUPPORTED; }
-void VideoPlayback::Close() {}
-void VideoPlayback::Play() {}
-void VideoPlayback::Pause() {}
-void VideoPlayback::Seek(bigtime_t) {}
-bigtime_t VideoPlayback::Position() { return 0; }
-BSize VideoPlayback::VideoSize() const { return BSize(0, 0); }
 
 
 pp::OutgoingFile

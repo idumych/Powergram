@@ -208,6 +208,7 @@ VoiceRecorder::Start(const char* path, BString* problem)
 		*problem = "Could not create the recording.";
 		return status;
 	}
+#ifndef APP_COSMOE
 	BMediaRoster* roster = BMediaRoster::Roster(&status);
 	media_node input;
 	if (roster == nullptr || (status = roster->GetAudioInput(&input)) != B_OK) {
@@ -215,6 +216,7 @@ VoiceRecorder::Start(const char* path, BString* problem)
 		Stop(false);
 		return status != B_OK ? status : B_ERROR;
 	}
+#endif
 	fRecorder = new BMediaRecorder("Powergram voice message", B_MEDIA_RAW_AUDIO);
 	media_format format;
 	format.type = B_MEDIA_RAW_AUDIO;
@@ -223,7 +225,12 @@ VoiceRecorder::Start(const char* path, BString* problem)
 		status = fRecorder->SetHooks(_Process, nullptr, this);
 	if (status == B_OK) {
 		fRecorder->SetAcceptedFormat(format);
+#ifdef APP_COSMOE
+		// Hokku has no media nodes: this opens the default sound input.
+		status = fRecorder->Connect(format);
+#else
 		status = fRecorder->Connect(input, nullptr, &format);
+#endif
 	}
 	if (status == B_OK)
 		status = fRecorder->Start();
@@ -232,7 +239,9 @@ VoiceRecorder::Start(const char* path, BString* problem)
 		*problem << strerror(status);
 		Stop(false);
 	}
+#ifndef APP_COSMOE
 	roster->ReleaseNode(input);
+#endif
 	return status;
 }
 

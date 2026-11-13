@@ -1,5 +1,7 @@
 # Powergram, a Telegram client for Haiku.
-#   make          build the app (on Haiku/Renku)
+#   make          build the app (on Haiku/Renku, or on Linux with Cosmoe:
+#                 Hokku, the Haiku API as a library; COSMOE_ROOT, and TD_ROOT
+#                 for a TDLib install)
 #   make test     portable core tests (anywhere with a C++17 compiler)
 
 NAME := Powergram
@@ -30,7 +32,8 @@ APP_OBJS := $(APP_SRCS:%.cpp=$(BUILD)/%.o)
 # CMake targets give (TdStaticTargets.cmake: Td::TdJsonStatic).
 TD_LIBS := -ltdjson_static -ltdjson_private -ltdclient -ltdcore -ltdapi \
 	-ltdmtproto -ltdnet -ltddb -ltdsqlite -ltde2e -ltdactor -ltdutils \
-	-lssl -lcrypto -lz -lnetwork
+	-lssl -lcrypto -lz
+NET_LIBS := -lnetwork
 
 MIMESET := mimeset
 MEDIA_LIBS := -lmedia -lopus -logg
@@ -44,12 +47,56 @@ ifneq ($(HAIKU_CROSS),)
   MEDIA_SRCS := src/app/VoicePlayer.cpp src/app/VoiceRecorder.cpp \
 	src/app/MediaProbe.cpp src/app/VideoPlayback.cpp src/app/WebmPlayer.cpp
   APP_OBJS := $(patsubst %.cpp,$(BUILD)/%.o,$(filter-out $(MEDIA_SRCS),$(APP_SRCS)) \
-	src/app/NoMediaKit.cpp)
+	src/app/NoMediaKit.cpp src/app/NoVideoPlayback.cpp)
   MEDIA_LIBS :=
   MIMESET := :
 endif
 
-ifneq ($(HAIKU_CROSS)$(filter Haiku,$(shell uname -s)),)
+COSMOE_ROOT ?= /usr
+ifeq ($(HAIKU_CROSS)$(filter Haiku,$(shell uname -s)),)
+ifneq ($(wildcard $(COSMOE_ROOT)/include/os/app/Application.h),)
+  # Linux with Cosmoe (Hokku): the same app on X11 and Wayland.
+  COSMOE := 1
+  COSMOE_DIRS := config os os/add-ons/graphics os/app os/game os/interface \
+	os/kernel os/locale os/media os/net os/storage os/support os/translation \
+	os/be_apps/Tracker private/interface private/shared private/support posix
+  override CXXFLAGS += -I$(COSMOE_ROOT)/include \
+	$(addprefix -I$(COSMOE_ROOT)/include/,$(COSMOE_DIRS)) -DAPP_COSMOE -fPIC -Wno-deprecated-copy -Wno-multichar
+  ifneq ($(TD_ROOT),)
+    override CXXFLAGS += -I$(TD_ROOT)/include
+    override LDFLAGS += -L$(TD_ROOT)/lib
+  endif
+  # libbe finds Cosmoe's add-ons and data next to itself (the AppImage's lib/).
+  COSMOE_RPATH ?= $$ORIGIN/../lib
+  NET_LIBS := -lpthread -ldl
+  # Hokku's Arch package ships a broken liblocalestub.a: there, pass the
+  # object of hokku/src/kits/locale/CatalogStub.cpp as LOCALESTUB.
+  LOCALESTUB ?= -llocalestub
+endif
+endif
+
+ifneq ($(COSMOE),)
+all: $(NAME)
+
+# The Deskbar item is part of the app here (App.cpp's _UpdateDeskbar).
+# Hokku's Media Kit decodes no video: the viewer opens videos in the
+# system's player.
+APP_OBJS := $(patsubst %.cpp,$(BUILD)/%.o,$(filter-out src/app/VideoPlayback.cpp,$(APP_SRCS)) \
+	src/app/NoVideoPlayback.cpp src/deskbar/DeskbarItem.cpp)
+
+# Cosmoe reads resources from a .cosmoe_rsrc section linked into the app.
+$(NAME): $(CORE_OBJS) $(APP_OBJS) $(BUILD)/$(NAME).rsrc.o
+	$(CXX) -o $@ $(CORE_OBJS) $(APP_OBJS) $(BUILD)/$(NAME).rsrc.o $(LDFLAGS) \
+		-L$(COSMOE_ROOT)/lib -lbe -ltracker -lmedia $(LOCALESTUB) -lopus -logg $(TD_LIBS) \
+		$(NET_LIBS) -Wl,-rpath,'$(COSMOE_RPATH)' -Wl,--export-dynamic
+
+$(BUILD)/$(NAME).rsrc.o: src/app/Powergram.rdef
+	@mkdir -p $(BUILD)
+	LD_LIBRARY_PATH=$(COSMOE_ROOT)/lib $(COSMOE_ROOT)/bin/rc -o $(BUILD)/$(NAME).rsrc $<
+	cd $(BUILD) && ld -r -b binary $(NAME).rsrc -o $(NAME).rsrc.o
+	objcopy --rename-section .data=.cosmoe_rsrc --add-section .note.GNU-stack=/dev/null \
+		--set-section-flags .note.GNU-stack=noload,readonly $@
+else ifneq ($(HAIKU_CROSS)$(filter Haiku,$(shell uname -s)),)
 all: $(NAME) $(BUILD)/PowergramDeskbar
 
 # The Deskbar item: an add-on of its own, so Deskbar never loads the app.
@@ -59,7 +106,7 @@ $(BUILD)/PowergramDeskbar: src/deskbar/DeskbarItem.cpp src/app/Messages.h
 
 # The app at ./Powergram, resources from obj/ (packaging/build-hpkg.sh).
 $(NAME): $(CORE_OBJS) $(APP_OBJS) $(BUILD)/$(NAME).rsrc
-	$(CXX) -o $@ $(CORE_OBJS) $(APP_OBJS) $(LDFLAGS) -lbe -ltracker -ltranslation -llocalestub $(MEDIA_LIBS) $(TD_LIBS)
+	$(CXX) -o $@ $(CORE_OBJS) $(APP_OBJS) $(LDFLAGS) -lbe -ltracker -ltranslation -llocalestub $(MEDIA_LIBS) $(TD_LIBS) $(NET_LIBS)
 	xres -o $@ $(BUILD)/$(NAME).rsrc
 	$(MIMESET) -f $@
 
@@ -149,7 +196,8 @@ $(BUILD)/$(NAME).rsrc: src/app/Powergram.rdef
 	rc -o $@ $<
 else
 all:
-	@echo "The app builds on Haiku or Renku only; 'make test' runs the core tests here."
+	@echo "The app builds on Haiku or Renku, or on Linux with Cosmoe (COSMOE_ROOT=$(COSMOE_ROOT));"
+	@echo "'make test' runs the core tests anywhere."
 	@false
 endif
 
