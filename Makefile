@@ -160,6 +160,13 @@ mockup: $(BUILD)/PowergramMockup
 $(BUILD)/PowergramMockup: $(BUILD)/tests/mockup.o $(CORE_OBJS) $(MOCKUP_OBJS)
 	$(CXX) -o $@ $^ -lbe -lmedia -ltracker -ltranslation -llocalestub -lopus -logg -lz
 
+# The chat entry and the find field act on Enter only, not when the focus
+# leaves them (opens a window for a few seconds).
+entry-keys-test: $(BUILD)/entry_keys_test
+	$(BUILD)/entry_keys_test
+$(BUILD)/entry_keys_test: $(BUILD)/tests/entry_keys_test.o $(CORE_OBJS) $(MOCKUP_OBJS)
+	$(CXX) -o $@ $^ -lbe -lmedia -ltracker -ltranslation -llocalestub -lopus -logg -lz
+
 # Frames of an animated sticker (.tgs, Lottie .json or .webm) drawn into a PNG.
 lottie-render: $(BUILD)/lottie_render
 $(BUILD)/lottie_render: $(BUILD)/tests/lottie_render.o $(BUILD)/src/app/LottieRenderer.o \
@@ -269,7 +276,8 @@ clean:
 
 -include $(CORE_OBJS:.o=.d) $(APP_OBJS:.o=.d) $(BUILD)/tests/test_core.d
 
-.PHONY: all test qr-check clean bench live-scroll pickers-demo mockup voice_play video-playback-test media-viewer-demo
+.PHONY: all test qr-check clean bench live-scroll pickers-demo mockup voice_play video-playback-test media-viewer-demo \
+	entry-keys-test
 
 voice_play: $(BUILD)/voice_play
 $(BUILD)/voice_play: $(BUILD)/tests/voice_play.o $(BUILD)/src/app/VoicePlayer.o
