@@ -7,13 +7,13 @@ It talks to Telegram through [TDLib](https://github.com/tdlib/td), Telegram's
 own client library, and keeps Paper Plane's layout: the chat list on the left,
 the open chat on the right.
 
-**Preview.** Version 0.2.9 is a preview for Haiku and Renku OS, and the
-first for Linux. From [Releases](https://github.com/idumych/Powergram/releases):
+**Preview.** Version 0.2.10 is a preview for Haiku, Renku OS and Linux.
+From [Releases](https://github.com/idumych/Powergram/releases):
 
-- Haiku and Renku OS (x86_64): `pkgman install ./powergram-0.2.9-1-x86_64.hpkg`
+- Haiku and Renku OS (x86_64): `pkgman install ./powergram-0.2.10-1-x86_64.hpkg`
   (an arm64 package is there too, for the Haiku arm64 nightlies)
 - Linux (x86_64 or aarch64, glibc 2.39 or newer, X11 or Wayland):
-  `chmod +x Powergram-0.2.9-x86_64.AppImage && ./Powergram-0.2.9-x86_64.AppImage`
+  `chmod +x Powergram-0.2.10-x86_64.AppImage && ./Powergram-0.2.10-x86_64.AppImage`
   (`-aarch64` on ARM)
 
 The app was called Paper Plane for Haiku up to 0.1.0; Powergram replaces
