@@ -31,7 +31,10 @@
 #include <set>
 #include <sys/utsname.h>
 
-#if __has_include(<AboutWindow.h>)
+#if defined(APP_VOS)
+	// V\OS's libbe has BAboutWindow but vos-dev ships no header for it.
+#	include <Alert.h>
+#elif __has_include(<AboutWindow.h>)
 #	include <AboutWindow.h>
 #else
 #	include <private/interface/AboutWindow.h>
@@ -3100,12 +3103,20 @@ App::QuitRequested()
 void
 App::AboutRequested()
 {
+#ifdef APP_VOS
+	BAlert* alert = new BAlert(APP_NAME, APP_NAME "\n\n"
+		"A Telegram client for Haiku, after Paper Plane by the Paper Plane "
+		"developers. Preview.\n\n\u00a9 2026 the Powergram contributors\n"
+		"Licence: GNU GPL 3.0 or later. Uses TDLib.", "OK");
+	alert->Go(nullptr);
+#else
 	BAboutWindow* about = new BAboutWindow(APP_NAME, APP_SIGNATURE);
 	about->AddDescription("A Telegram client for Haiku, after Paper Plane by "
 		"the Paper Plane developers. Preview.");
 	about->AddCopyright(2026, "the Powergram contributors");
 	about->AddText("Licence: GNU GPL 3.0 or later. Uses TDLib.");
 	about->Show();
+#endif
 }
 
 

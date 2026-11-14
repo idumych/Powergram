@@ -60,7 +60,8 @@ ifeq ($(HAIKU_CROSS)$(filter Haiku,$(shell uname -s)),)
 VOS := $(shell pkg-config --exists vos 2>/dev/null && echo 1)
 endif
 ifneq ($(VOS),)
-  override CXXFLAGS += $(shell pkg-config --cflags vos) -DAPP_VOS -fPIC -Wno-multichar
+  override CXXFLAGS += $(shell pkg-config --cflags vos) -DAPP_VOS -fPIC \
+	-Wno-multichar -Wno-deprecated-copy
   ifneq ($(TD_ROOT),)
     override CXXFLAGS += -I$(TD_ROOT)/include
     override LDFLAGS += -L$(TD_ROOT)/lib
