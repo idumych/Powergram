@@ -177,6 +177,9 @@ private:
 	bool fTestDc;
 	std::unique_ptr<TdClient> fClient;
 	std::unique_ptr<pp::AuthFlow> fAuth;
+	// A phone number typed while TDLib showed QR codes: sent once the
+	// unfinished login is dropped and TDLib asks for a number again.
+	std::string fPendingPhone;
 	pp::ChatList fChats;
 	std::string fShownList = "main";   // the chat list on screen
 	std::set<std::string> fLoadedLists;
@@ -2182,6 +2185,21 @@ App::_HandleAuth()
 			break;
 	}
 
+	if (!fPendingPhone.empty()) {
+		// Starting over for a phone number: the window stays on the
+		// phone page, busy, until TDLib asks for the code.
+		if (s.step != AuthStep::Phone && s.step != AuthStep::Starting
+			&& s.step != AuthStep::LoggingOut && s.step != AuthStep::Closing)
+			fPendingPhone.clear();
+		else {
+			if (s.step == AuthStep::Phone) {
+				_Send(fAuth->PhoneRequest(fPendingPhone), true);
+				fPendingPhone.clear();
+			}
+			return;
+		}
+	}
+
 	BMessage state(kMsgAuthState);
 	state.AddInt32("step", (int32)s.step);
 	state.AddString("code_info", s.codeInfo.c_str());
@@ -2668,6 +2686,13 @@ App::MessageReceived(BMessage* message)
 			_Send(fAuth->SetApiKey(fSettings.apiId, fSettings.apiHash.String()), true);
 			break;
 		case kMsgSubmitPhone:
+			if (fAuth->State().step == AuthStep::OtherDevice) {
+				// TDLib takes no phone number while it shows QR codes:
+				// drop that login (no account yet) and start again.
+				fPendingPhone = message->GetString("text", "");
+				_Send(pp::AuthFlow::LogOutRequest(), true);
+				break;
+			}
 			_Send(fAuth->PhoneRequest(message->GetString("text", "")), true);
 			break;
 		case kMsgSubmitQr:

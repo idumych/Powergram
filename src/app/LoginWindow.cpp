@@ -343,6 +343,7 @@ LoginWindow::_PasteApiKey()
 void
 LoginWindow::_SetBusy(bool busy)
 {
+	fBusy = busy;
 	if (fCard != kCardMessage)
 		fNext[fCard]->SetEnabled(!busy);
 	if (fCard == kCardPhone)
@@ -363,6 +364,10 @@ LoginWindow::_SetError(const char* text)
 void
 LoginWindow::_Submit(uint32 what)
 {
+	// One at a time: TDLib refuses a second step while the first is on
+	// its way ("Call to setAuthenticationPhoneNumber unexpected").
+	if (fBusy)
+		return;
 	BMessage message(what);
 	switch (what) {
 		case kMsgSubmitApiKey:
@@ -435,7 +440,8 @@ LoginWindow::MessageReceived(BMessage* message)
 			_Submit(message->what);
 			break;
 		case kMsgUsePhone:
-			// TDLib takes a phone number while it shows QR codes too.
+			// TDLib takes no phone number while it shows QR codes: the app
+			// starts the login over when one is entered.
 			fPreferPhone = true;
 			_SetError("");
 			_ShowCard(kCardPhone);

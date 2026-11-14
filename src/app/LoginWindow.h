@@ -52,6 +52,7 @@ private:
 	// The QR code was left for the phone number: TDLib keeps sending new
 	// codes, which then mustn't take the window back to it.
 	bool fPreferPhone = false;
+	bool fBusy = false;   // a step sent to Telegram, not answered yet
 
 	BButton* fNext[kCardMessage];
 	bool fApiSiteOpened = false;   // once by itself, then by the button
