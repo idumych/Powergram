@@ -48,29 +48,46 @@ jobs:
           EXTRA="$DEB_APT_EXTRA"
           if [ -n "$EXTRA" ]; then DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $EXTRA; fi
 
-      - name: Cache V\OS SDK
-        uses: actions/cache@v4
+      # Restored and saved separately, so a failure in a later step keeps them.
+      - name: Restore V\OS SDK
+        id: sdk
+        uses: actions/cache/restore@v4
         with:
           path: /opt/vos-sdk
           key: vos-sdk-0.6.2-${{ matrix.arch }}-${{ hashFiles('tools/vos-sdk/*') }}-debian-trixie
 
       - name: Build V\OS SDK
-        run: |
-          [ -f /opt/vos-sdk/sdk/env.sh ] || sh tools/vos-sdk/make-sdk.sh /opt/vos-sdk
+        if: steps.sdk.outputs.cache-hit != 'true'
+        run: sh tools/vos-sdk/make-sdk.sh /opt/vos-sdk
+
+      - name: Save V\OS SDK
+        if: steps.sdk.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: /opt/vos-sdk
+          key: ${{ steps.sdk.outputs.cache-primary-key }}
 
       - name: TDLib revision
         id: td
         run: echo "rev=$(sed -n 's/^TD_REV=//p' packaging/appimage/build-tdlib.sh)" >> "$GITHUB_OUTPUT"
 
-      - name: Cache TDLib build
-        uses: actions/cache@v4
+      - name: Restore TDLib
+        id: tdcache
+        uses: actions/cache/restore@v4
         with:
           path: /opt/tdlib
           key: tdlib-${{ steps.td.outputs.rev }}-debian-trixie-${{ matrix.arch }}
 
       - name: Build TDLib
-        run: |
-          [ -f /opt/tdlib/lib/libtdcore.a ] || JOBS=$(nproc) sh packaging/appimage/build-tdlib.sh /opt/tdlib
+        if: steps.tdcache.outputs.cache-hit != 'true'
+        run: JOBS=$(nproc) sh packaging/appimage/build-tdlib.sh /opt/tdlib
+
+      - name: Save TDLib
+        if: steps.tdcache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: /opt/tdlib
+          key: ${{ steps.tdcache.outputs.cache-primary-key }}
 
       - name: Build .deb
         run: |
