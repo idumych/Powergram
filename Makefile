@@ -52,8 +52,28 @@ ifneq ($(HAIKU_CROSS),)
   MIMESET := :
 endif
 
-COSMOE_ROOT ?= /usr
+# VitruvianOS (V\OS: the Haiku API on Linux, Debian trixie userland), with
+# vos-dev's pkg-config file or the link-time SDK's env.sh
+# (tools/vos-sdk/make-sdk.sh). V\OS has its own media kit (media2), not
+# Haiku's: the stand-ins replace the sound and video parts, as on arm64.
 ifeq ($(HAIKU_CROSS)$(filter Haiku,$(shell uname -s)),)
+VOS := $(shell pkg-config --exists vos 2>/dev/null && echo 1)
+endif
+ifneq ($(VOS),)
+  override CXXFLAGS += $(shell pkg-config --cflags vos) -DAPP_VOS -fPIC -Wno-multichar
+  ifneq ($(TD_ROOT),)
+    override CXXFLAGS += -I$(TD_ROOT)/include
+    override LDFLAGS += -L$(TD_ROOT)/lib
+  endif
+  MEDIA_SRCS := src/app/VoicePlayer.cpp src/app/VoiceRecorder.cpp \
+	src/app/MediaProbe.cpp src/app/VideoPlayback.cpp src/app/WebmPlayer.cpp
+  APP_OBJS := $(patsubst %.cpp,$(BUILD)/%.o,$(filter-out $(MEDIA_SRCS),$(APP_SRCS)) \
+	src/app/NoMediaKit.cpp src/app/NoVideoPlayback.cpp)
+  NET_LIBS := -lpthread -ldl
+endif
+
+COSMOE_ROOT ?= /usr
+ifeq ($(HAIKU_CROSS)$(filter Haiku,$(shell uname -s))$(VOS),)
 ifneq ($(wildcard $(COSMOE_ROOT)/include/os/app/Application.h),)
   # Linux with Cosmoe (Hokku): the same app on X11 and Wayland.
   COSMOE := 1
@@ -75,7 +95,29 @@ ifneq ($(wildcard $(COSMOE_ROOT)/include/os/app/Application.h),)
 endif
 endif
 
-ifneq ($(COSMOE),)
+ifneq ($(VOS),)
+all: $(NAME) $(BUILD)/PowergramDeskbar
+
+# The Deskbar item, an add-on of its own (/system/add-ons/Powergram).
+# --no-undefined: a missing symbol fails here, not in Deskbar.
+$(BUILD)/PowergramDeskbar: src/deskbar/DeskbarItem.cpp src/app/Messages.h
+	@mkdir -p $(BUILD)
+	$(CXX) $(CXXFLAGS) -shared -o $@ src/deskbar/DeskbarItem.cpp $(LDFLAGS) \
+		-Wl,--no-undefined $(shell pkg-config --libs vos)
+
+# V\OS keeps the signature both as resources and as attributes; its
+# resource tools need absolute paths (packaging/build-deb.sh ships the
+# attributes, which dpkg doesn't keep).
+$(NAME): $(CORE_OBJS) $(APP_OBJS) $(BUILD)/$(NAME).rsrc
+	$(CXX) -o $@ $(CORE_OBJS) $(APP_OBJS) $(LDFLAGS) $(shell pkg-config --libs vos) \
+		-ltracker -ltranslation $(TD_LIBS) $(NET_LIBS)
+	xres -o $(CURDIR)/$@ $(CURDIR)/$(BUILD)/$(NAME).rsrc
+	resattr -O -o $(CURDIR)/$@ $(CURDIR)/$(BUILD)/$(NAME).rsrc
+
+$(BUILD)/$(NAME).rsrc: src/app/Powergram.rdef
+	@mkdir -p $(dir $@)
+	rc -o $(CURDIR)/$@ $(CURDIR)/$<
+else ifneq ($(COSMOE),)
 all: $(NAME)
 
 # The Deskbar item is part of the app here (App.cpp's _UpdateDeskbar).
@@ -196,7 +238,8 @@ $(BUILD)/$(NAME).rsrc: src/app/Powergram.rdef
 	rc -o $@ $<
 else
 all:
-	@echo "The app builds on Haiku or Renku, or on Linux with Cosmoe (COSMOE_ROOT=$(COSMOE_ROOT));"
+	@echo "The app builds on Haiku or Renku, on VitruvianOS (pkg-config vos), or on Linux"
+	@echo "with Cosmoe (COSMOE_ROOT=$(COSMOE_ROOT));"
 	@echo "'make test' runs the core tests anywhere."
 	@false
 endif

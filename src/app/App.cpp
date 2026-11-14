@@ -8,7 +8,9 @@
 #include <Beep.h>
 #include <Bitmap.h>
 #include <Entry.h>
+#ifndef APP_VOS
 #include <PathFinder.h>
+#endif
 #include <Deskbar.h>
 #include <FindDirectory.h>
 #include <Directory.h>
@@ -3014,6 +3016,21 @@ App::_UpdateDeskbar()
 			status);
 		return;
 	}
+#elif defined(APP_VOS)
+	// The .deb's add-on (packaging/build-deb.sh), or next to the app when it
+	// runs from where it was built. V\OS has no BPathFinder.
+	app_info info;
+	BPath path;
+	if (GetAppInfo(&info) == B_OK && BPath(&info.ref).GetParent(&path) == B_OK)
+		path.Append("obj/PowergramDeskbar");
+	if (!BEntry(path.Path()).Exists())
+		path.SetTo("/system/add-ons/Powergram/PowergramDeskbar");
+	entry_ref ref;
+	if (get_ref_for_path(path.Path(), &ref) != B_OK) {
+		fprintf(stderr, "Powergram: no Deskbar item add-on at %s\n", path.Path());
+		return;
+	}
+	status_t status = deskbar.AddItem(&ref);
 #else
 	// Next to the app when it runs from where it was built, else in the
 	// package's add-ons folder.
