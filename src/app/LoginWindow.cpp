@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <cstring>
 
 #include "../core/AuthFlow.h"
 #include "../core/QrCode.h"
@@ -140,12 +141,12 @@ LoginWindow::LoginWindow(bool testDc)
 	fFirstName = new BTextControl("First name:", "", nullptr);
 	fLastName = new BTextControl("Last name:", "", nullptr);
 
-	// Digits only where only digits make sense.
-	for (BTextControl* control : {fCode}) {
-		for (uint32 c = 0; c < 256; c++)
-			if (c < '0' || c > '9')
-				control->TextView()->DisallowChar(c);
-	}
+	// The code field takes any printable text (other layouts, a pasted
+	// "Login code: 12345"): only its digits are sent (AuthFlow::CodeRequest).
+	// Control characters stay out: Hokku (Wayland) types a NUL for a keypad
+	// key with NumLock off, which hid everything typed after it.
+	for (uint32 c = 0; c < 0x20; c++)
+		fCode->TextView()->DisallowChar(c);
 
 	auto fields = [](std::initializer_list<BTextControl*> controls) {
 		BGridView* grid = new BGridView(B_USE_SMALL_SPACING, B_USE_SMALL_SPACING);
@@ -392,8 +393,10 @@ LoginWindow::_Submit(uint32 what)
 			message.AddString("text", fPhone->Text());
 			break;
 		case kMsgSubmitCode:
-			if (fCode->Text()[0] == '\0')
+			if (strpbrk(fCode->Text(), "0123456789") == nullptr) {
+				_SetError("Enter the code's digits.");
 				return;
+			}
 			message.AddString("text", fCode->Text());
 			break;
 		case kMsgSubmitPassword:
