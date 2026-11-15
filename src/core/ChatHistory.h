@@ -25,6 +25,7 @@ struct Media {
 	std::string minithumbnail; // tiny inline JPEG (decoded), shown blurred first
 	bool spoiler = false;      // hidden until clicked
 	bool secret = false;       // self-destructing: hidden until opened
+	bool captionAbove = false; // the caption goes above it (kept when edited)
 	std::string emoji;         // stickers: shown when there's no image
 	// Animated stickers: the .tgs (Lottie) or .webm file that plays.
 	int32_t animationFileId = 0;
@@ -224,7 +225,8 @@ json HistoryNewer(int64_t chatId, int64_t messageId, int count);
 json ViewMessages(int64_t chatId, const std::vector<int64_t>& ids);
 json SendText(int64_t chatId, const std::string& text, int64_t replyTo = 0,
 	const json& entities = json());
-json EditText(int64_t chatId, int64_t messageId, const std::string& text);
+json EditText(int64_t chatId, int64_t messageId, const std::string& text,
+	const json& entities = json());
 json Delete(int64_t chatId, const std::vector<int64_t>& ids, bool forEveryone);
 json GetMessage(int64_t chatId, int64_t messageId, const std::string& extra);
 json GetMessages(int64_t chatId, const std::vector<int64_t>& ids, const std::string& extra);
@@ -274,6 +276,9 @@ namespace request {
 // message.
 std::vector<json> SendFiles(int64_t chatId, const std::vector<OutgoingFile>& files,
 	const std::string& caption, int64_t replyTo = 0);
+// The same with a formatted caption (a formattedText).
+std::vector<json> SendFilesFormatted(int64_t chatId, const std::vector<OutgoingFile>& files,
+	const json& caption, int64_t replyTo = 0);
 
 } // namespace request
 

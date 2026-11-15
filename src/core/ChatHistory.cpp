@@ -347,6 +347,7 @@ ParseMedia(const json& content, Message& m)
 		return;
 	m.media.spoiler = Bool(content, "has_spoiler");
 	m.media.secret = Bool(content, "is_secret");
+	m.media.captionAbove = Bool(content, "show_caption_above_media");
 }
 
 
@@ -916,10 +917,10 @@ SendText(int64_t chatId, const std::string& text, int64_t replyTo, const json& e
 
 
 json
-EditText(int64_t chatId, int64_t messageId, const std::string& text)
+EditText(int64_t chatId, int64_t messageId, const std::string& text, const json& entities)
 {
 	return {{"@type", "editMessageText"}, {"chat_id", chatId},
-		{"message_id", messageId}, {"input_message_content", TextContent(text)},
+		{"message_id", messageId}, {"input_message_content", TextContent(text, entities)},
 		{"@extra", "edit"}};
 }
 
@@ -1044,7 +1045,7 @@ SendDocument(int64_t chatId, const std::string& path, const std::string& caption
 
 // What goes inside sendMessage or sendMessageAlbum for one file.
 static json
-FileContent(const OutgoingFile& file, const std::string& caption)
+FileContent(const OutgoingFile& file, const json& caption)
 {
 	json input = {{"@type", "inputFileLocal"}, {"path", file.path}};
 	switch (file.kind) {
@@ -1052,23 +1053,23 @@ FileContent(const OutgoingFile& file, const std::string& caption)
 			return {{"@type", "inputMessagePhoto"},
 				{"photo", {{"@type", "inputPhoto"}, {"photo", input},
 					{"width", file.width}, {"height", file.height}}},
-				{"caption", Caption(caption)}};
+				{"caption", caption}};
 		case OutgoingFile::kVideo:
 			return {{"@type", "inputMessageVideo"},
 				{"video", {{"@type", "inputVideo"}, {"video", input},
 					{"duration", file.duration}, {"width", file.width},
 					{"height", file.height}, {"supports_streaming", true}}},
-				{"caption", Caption(caption)}};
+				{"caption", caption}};
 		case OutgoingFile::kAnimation:
 			return {{"@type", "inputMessageAnimation"},
 				{"animation", {{"@type", "inputAnimation"}, {"animation", input},
 					{"duration", file.duration}, {"width", file.width},
 					{"height", file.height}}},
-				{"caption", Caption(caption)}};
+				{"caption", caption}};
 		default:
 			return {{"@type", "inputMessageDocument"},
 				{"document", {{"@type", "inputDocument"}, {"document", input}}},
-				{"caption", Caption(caption)}};
+				{"caption", caption}};
 	}
 }
 
@@ -1077,8 +1078,16 @@ std::vector<json>
 SendFiles(int64_t chatId, const std::vector<OutgoingFile>& files, const std::string& caption,
 	int64_t replyTo)
 {
+	return SendFilesFormatted(chatId, files, Caption(caption), replyTo);
+}
+
+
+std::vector<json>
+SendFilesFormatted(int64_t chatId, const std::vector<OutgoingFile>& files, const json& caption,
+	int64_t replyTo)
+{
 	std::vector<json> requests;
-	std::string text = caption;
+	json text = caption;
 	for (size_t i = 0; i < files.size(); ) {
 		// A run of photos and videos, up to ten: one album.
 		auto inAlbum = [](const OutgoingFile& f) {
@@ -1096,13 +1105,13 @@ SendFiles(int64_t chatId, const std::vector<OutgoingFile>& files, const std::str
 		} else {
 			json contents = json::array();
 			for (size_t k = i; k < end; k++)
-				contents.push_back(FileContent(files[k], k == i ? text : std::string()));
+				contents.push_back(FileContent(files[k], k == i ? text : Caption(std::string())));
 			request = {{"@type", "sendMessageAlbum"}, {"chat_id", chatId},
 				{"input_message_contents", contents}};
 		}
 		AddReply(request, requests.empty() ? replyTo : 0);
 		requests.push_back(request);
-		text.clear();
+		text = Caption(std::string());   // the caption goes with the first only
 		i = end;
 	}
 	return requests;

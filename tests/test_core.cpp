@@ -20,6 +20,7 @@
 #include "../src/core/Lottie.h"
 #include "../src/core/Pinned.h"
 #include "../src/core/VoiceNote.h"
+#include "../src/core/Markdown.h"
 #include "../src/core/Mentions.h"
 #include "../src/core/Profile.h"
 #include "../src/core/QrCode.h"
@@ -1274,6 +1275,85 @@ TestMentions()
 
 
 static void
+TestSendingFormatting()
+{
+	// TDLib's parseMarkdown answer is the text sent; without one (an error),
+	// the text goes as typed, with the mentions.
+	json mention = {{"@type", "textEntity"}, {"offset", 0}, {"length", 3},
+		{"type", {{"@type", "textEntityTypeMentionName"}, {"user_id", 5}}}};
+	json parsed = {{"@type", "formattedText"}, {"text", "Ann bold"}, {"entities", json::array({mention,
+		{{"@type", "textEntity"}, {"offset", 4}, {"length", 4},
+			{"type", {{"@type", "textEntityTypeBold"}}}}})}};
+	CHECK(ParsedText(parsed, "Ann **bold**", json::array({mention})) == parsed);
+	json fallback = ParsedText({{"@type", "error"}, {"code", 400}}, "Ann **bold", json::array({mention}));
+	CHECK(fallback["text"] == "Ann **bold" && fallback["entities"].size() == 1
+		&& fallback["entities"][0] == mention);
+	CHECK(ParsedText(json(), "plain", json())["entities"] == json::array());
+
+	json request = request::ParseMarkdown("**hi**", json());
+	CHECK(request["@type"] == "parseMarkdown" && request["text"]["text"] == "**hi**"
+		&& request["text"]["entities"] == json::array());
+	CHECK(request::MarkdownText(parsed)["@type"] == "getMarkdownText"
+		&& request::MarkdownText(parsed)["text"] == parsed);
+
+	// Editing: the mentions by name come back as (text, user); offsets
+	// count UTF-16 units (the emoji is two).
+	json markdown = {{"@type", "formattedText"}, {"text", "\xF0\x9F\x98\x80 Ann and **Bo**"},
+		{"entities", json::array({
+			{{"@type", "textEntity"}, {"offset", 3}, {"length", 3},
+				{"type", {{"@type", "textEntityTypeMentionName"}, {"user_id", 5}}}},
+			{{"@type", "textEntity"}, {"offset", 13}, {"length", 2},
+				{"type", {{"@type", "textEntityTypeMentionName"}, {"user_id", 7}}}},
+			{{"@type", "textEntity"}, {"offset", 0}, {"length", 2},
+				{"type", {{"@type", "textEntityTypeUnderline"}}}}})}};
+	EditDraft draft = EditDraftFrom(markdown);
+	CHECK(draft.text == "\xF0\x9F\x98\x80 Ann and **Bo**");
+	CHECK(draft.mentions == Mentions({{"Ann", 5}, {"Bo", 7}}));
+	CHECK(Utf8Offset("\xF0\x9F\x98\x80 A", 2) == 4 && Utf8Offset("ab", 9) == 2);
+	CHECK(EditDraftFrom({{"@type", "formattedText"}, {"text", "x"}}).mentions.empty());
+	// The mentions found again in the edited text are where TDLib puts them.
+	CHECK(MentionEntities(draft.text, draft.mentions).size() == 2);
+
+	// The text of a message, or the caption of one with media.
+	json text = {{"@type", "formattedText"}, {"text", "hello"}};
+	CHECK(ContentText({{"@type", "messageText"}, {"text", text}}) == text);
+	CHECK(ContentText({{"@type", "messagePhoto"}, {"caption", text}}) == text);
+	CHECK(ContentText({{"@type", "messageVoiceNote"}, {"caption", text}}) == text);
+	CHECK(ContentText({{"@type", "messageSticker"}}).is_null());
+
+	// Edits carry the entities; captions keep their place above the media.
+	json edit = request::EditText(1, 2, "Ann bold", parsed["entities"]);
+	CHECK(edit["@type"] == "editMessageText"
+		&& edit["input_message_content"]["text"]["entities"].size() == 2);
+	CHECK(!request::EditText(1, 2, "plain")["input_message_content"]["text"].contains("entities"));
+	json caption = request::EditCaption(1, 2, parsed, true);
+	CHECK(caption["@type"] == "editMessageCaption" && caption["caption"] == parsed
+		&& caption["show_caption_above_media"] == true && caption["@extra"] == "edit");
+	CHECK(request::EditCaption(1, 2, parsed, false)["show_caption_above_media"] == false);
+	json message = Msg(1, 3, "");
+	message["content"] = {{"@type", "messagePhoto"}, {"caption", text},
+		{"show_caption_above_media", true}, {"photo", {{"sizes", json::array({
+			{{"type", "x"}, {"width", 10}, {"height", 10}, {"photo", File(9)}}})}}}};
+	CHECK(ParseMessage(message).media.captionAbove);
+	message["content"].erase("show_caption_above_media");
+	CHECK(!ParseMessage(message).media.captionAbove);
+
+	// Files: a formatted caption goes with the first message only.
+	OutgoingFile photo;
+	photo.kind = OutgoingFile::kPhoto;
+	photo.path = "/p.jpg";
+	OutgoingFile document;
+	document.kind = OutgoingFile::kDocument;
+	document.path = "/d.pdf";
+	std::vector<json> r = request::SendFilesFormatted(42, {photo, photo, document}, parsed, 7);
+	CHECK(r.size() == 2 && r[0]["input_message_contents"][0]["caption"] == parsed);
+	CHECK(r[0]["input_message_contents"][1]["caption"]["text"] == "");
+	CHECK(r[1]["input_message_content"]["caption"]["text"] == ""
+		&& !r[1]["input_message_content"]["caption"].contains("entities"));
+}
+
+
+static void
 TestSendingFiles()
 {
 	CHECK(IsPlayableVideo("video/mp4", "/a/b") && IsPlayableVideo("", "/a/Clip.MOV"));
@@ -2244,6 +2324,7 @@ main()
 	TestPinned();
 	TestVoiceRecording();
 	TestMentions();
+	TestSendingFormatting();
 	TestSendingFiles();
 	TestUnreadChats();
 	TestProfile();
