@@ -42,6 +42,7 @@ enum {
 };
 
 const int64 kGroup = -1001, kPrivate = 2002, kChannel = -1003;
+const int64 kSponsoredId = 1048577;   // the "sponsored" scene's ad
 // A secret chat with Mira ("secret", "secretwait" scenes only).
 const int64 kSecret = -2000000012LL;
 
@@ -98,6 +99,8 @@ struct Row {
 	std::string waveform;
 	BString fileName, fileTitle, fileType;
 	int64 fileSize = 0, fileDone = -1;
+	bool sponsored = false, canReport = false;
+	BString button, about;
 };
 
 
@@ -141,6 +144,10 @@ Add(BMessage& list, const Row& r)
 	list.AddString("file_type", r.fileType);
 	list.AddInt64("file_size", r.fileSize);
 	list.AddInt64("file_done", r.fileDone);
+	list.AddBool("sponsored", r.sponsored);
+	list.AddString("button", r.button);
+	list.AddBool("can_report", r.canReport);
+	list.AddString("about", r.about);
 }
 
 
@@ -179,7 +186,8 @@ public:
 		BMessage select(kMsgSelectChat);
 		bool secretScene = sScene == "secret" || sScene == "secretwait";
 		select.AddInt64("id", secretScene ? kSecret
-			: sScene == "media" || sScene == "media2" || sScene == "stickers" ? kPrivate : kGroup);
+			: sScene == "media" || sScene == "media2" || sScene == "stickers" ? kPrivate
+			: sScene == "sponsored" ? kChannel : kGroup);
 		fMain->PostMessage(&select);
 		BMessage next(kMsgNextStep);
 		BMessageRunner::StartSending(this, &next, 1200000, 1);
@@ -642,6 +650,40 @@ public:
 				printf("link %s\n", message->GetString("url", ""));
 				fflush(stdout);
 				break;
+			case kMsgSponsoredClick:
+				printf("sponsored click %lld in %lld url \"%s\"%s\n",
+					(long long)message->GetInt64("message_id", 0),
+					(long long)message->GetInt64("chat_id", 0), message->GetString("url", ""),
+					message->GetBool("media", false) ? " media" : "");
+				fflush(stdout);
+				break;
+			case kMsgSponsoredViewed:
+				printf("sponsored viewed %lld in %lld\n",
+					(long long)message->GetInt64("message_id", 0),
+					(long long)message->GetInt64("chat_id", 0));
+				fflush(stdout);
+				break;
+			case kMsgSponsoredReport:
+			{
+				// As Telegram answers: first a question, then done.
+				BString option = message->GetString("option", "");
+				printf("sponsored report %lld option \"%s\"\n",
+					(long long)message->GetInt64("message_id", 0), option.String());
+				fflush(stdout);
+				if (!option.IsEmpty())
+					break;
+				BMessage options(kMsgSponsoredOptions);
+				options.AddInt64("chat_id", message->GetInt64("chat_id", 0));
+				options.AddInt64("message_id", message->GetInt64("message_id", 0));
+				options.AddString("title", "What's wrong with this ad?");
+				const char* texts[] = {"I don't like it", "It's misleading", "Something else"};
+				for (int i = 0; i < 3; i++) {
+					options.AddString("option", BString() << "AQ" << i << "=");
+					options.AddString("text", texts[i]);
+				}
+				fMain->PostMessage(&options);
+				break;
+			}
 			case kMsgJoinChat:
 				printf("join chat %lld\n", (long long)message->GetInt64("chat_id", 0));
 				fflush(stdout);
@@ -999,6 +1041,36 @@ private:
 				r.waveform = wave(100, 4);
 				Add(list, r);
 			}
+		} else if (chatId == kChannel && sScene == "sponsored") {
+			// A channel's posts and, below the newest, its sponsored message.
+			Add(list, _Date("Today"));
+			const char* posts[] = {
+				"Powergram 0.3 is out: stickers, emoji and voice messages.",
+				"Thanks to everyone who sent crash reports this week.",
+				"Next up: link previews and bot buttons."};
+			for (int i = 0; i < 3; i++) {
+				Row r;
+				r.id = 301 + i;
+				r.text = posts[i];
+				r.time = Clock(now - 7200 + i * 1800);
+				Add(list, r);
+			}
+			Row ad;
+			ad.id = kSponsoredId;
+			ad.sponsored = true;
+			ad.sender = "Haiku app makers";
+			ad.time = "Sponsored";
+			ad.text = "Native apps for Haiku and Renku, built together. Join us at t.me/haiku_apps";
+			pp::Span link;
+			link.start = (int32_t)std::string(ad.text.String()).find("t.me/haiku_apps");
+			link.length = 15;
+			link.style = pp::kLink;
+			link.url = "https://t.me/haiku_apps";
+			ad.spans.push_back(link);
+			ad.button = "Join channel";
+			ad.canReport = true;
+			ad.about = "Haiku app makers, t.me/haiku_apps\n\nAd placed through Telegram Ads";
+			Add(list, ad);
 		} else if (chatId == kSecret) {
 			// A secret chat: what's said stays on the two devices.
 			Add(list, _Date("Today"));

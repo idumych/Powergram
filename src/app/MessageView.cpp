@@ -911,6 +911,13 @@ MessageView::SetMessages(const std::vector<MessageRow>& rows, bool scrollToEnd,
 	if (scrollToEnd)
 		anchor.atEnd = true;
 	fRows = rows;
+	// A sponsored message's view is reported once while it stays; opening
+	// a chat empties the view first, so its next one counts again.
+	std::set<int64> viewed;
+	for (const MessageRow& row : fRows)
+		if (row.sponsored && fSponsoredViewed.count(row.id))
+			viewed.insert(row.id);
+	fSponsoredViewed.swap(viewed);
 	_Relayout();
 	_RestoreAnchor(anchor);
 	// The selection stays with its message while that's there (an edit
@@ -1227,6 +1234,13 @@ MessageView::_Relayout()
 			l.lines.clear();  // no caption
 			l.lineChars.clear();
 		}
+		// A sponsored message's button, the bubble's width, below the text.
+		float buttonH = 0;
+		if (row.sponsored && !row.buttonText.IsEmpty()) {
+			buttonH = roundf(line * 1.6f);
+			bubbleWidth = std::max(bubbleWidth, std::min(maxBubble,
+				_Width(row.buttonText, true) + line * 2 + 2 * pad));
+		}
 		float pillRows = 0;
 		if (!pillW.empty()) {
 			float rowX = 0, maxRow = std::max(bubbleWidth - 2 * pad, maxBubble - 2 * pad);
@@ -1244,6 +1258,9 @@ MessageView::_Relayout()
 		float pillsTop = y0 + line * l.lines.size() + (pillRows > 0 ? pad * 0.4f : 0);
 		float height = (y0 - y) + line * l.lines.size()
 			+ pillRows * (pillH + 4) + (pillRows > 0 ? pad * 0.4f : 0) + line + pad * 0.5f;
+		float buttonTop = pillsTop + pillRows * (pillH + 4) + pad * 0.5f;
+		if (buttonH > 0)
+			height += buttonH + pad * 0.5f;
 		if (row.service) {
 			bubbleWidth = std::min(width - 2 * pad, widest + 2 * pad);
 			height = line * l.lines.size() + pad;
@@ -1252,6 +1269,10 @@ MessageView::_Relayout()
 		float left = row.service ? (width - bubbleWidth) / 2
 			: row.outgoing ? width - pad * 2 - bubbleWidth : pad * 2 + avatarColumn;
 		l.bubble.Set(left, y, left + bubbleWidth, y + height);
+		if (row.sponsored && !row.sender.IsEmpty())
+			l.title.Set(left + pad, y + pad, left + pad + nameWidth, y + pad + line - 1);
+		if (buttonH > 0)
+			l.button.Set(left + pad, buttonTop, left + bubbleWidth - pad, buttonTop + buttonH - 1);
 		if (row.service)
 			l.textTop = y + pad * 0.5f;
 		if (row.mediaKind != 0)
@@ -1424,6 +1445,14 @@ MessageView::ScrollToMessage(int64 id)
 }
 
 
+BRect
+MessageView::Frame(int64 id) const
+{
+	int32 i = _IndexOf(id);
+	return i >= 0 && id != 0 ? fLayout[i].bubble : BRect();
+}
+
+
 const MessageRow*
 MessageView::Row(int64 id) const
 {
@@ -1453,6 +1482,12 @@ MessageView::MouseDown(BPoint where)
 		for (size_t i = 0; i < fLayout.size(); i++) {
 			if (!fLayout[i].bubble.Contains(where))
 				continue;
+			// A sponsored message's button and title open its link.
+			if (fRows[i].sponsored && (fLayout[i].button.Contains(where)
+					|| fLayout[i].title.Contains(where))) {
+				_SponsoredClick(fRows[i].id, "", false);
+				return;
+			}
 			for (size_t k = 0; k < fLayout[i].reactions.size()
 					&& k < fRows[i].reactions.size(); k++) {
 				if (fLayout[i].reactions[k].Contains(where)) {
@@ -1471,6 +1506,7 @@ MessageView::MouseDown(BPoint where)
 			for (const Layout::Link& link : fLayout[i].links)
 				if (link.frame.Contains(where))
 					fPendingLink = link.url;
+			fPendingSponsored = fRows[i].sponsored ? fRows[i].id : 0;
 			// A spoiler in the text: clicking it shows it.
 			bool spoiler = false;
 			for (const BRect& frame : fLayout[i].spoilers)
@@ -1532,6 +1568,10 @@ MessageView::MouseDown(BPoint where)
 				Invalidate(fLayout[i].media);
 				return;
 			}
+			if (row.sponsored) {
+				_SponsoredClick(row.id, "", true);
+				return;
+			}
 			BMessage open(kMsgOpenMedia);
 			open.AddInt64("message_id", row.id);
 			Window()->PostMessage(&open);
@@ -1544,7 +1584,9 @@ MessageView::MouseDown(BPoint where)
 	for (size_t i = 0; i < fRows.size(); i++) {
 		if (fRows[i].id == 0 || fRows[i].service || !fLayout[i].bubble.Contains(where))
 			continue;
+		// A sponsored message isn't one of the chat's: the window's own menu.
 		BMessage menu(kMsgMessageMenu);
+		menu.AddBool("sponsored", fRows[i].sponsored);
 		menu.AddInt64("message_id", fRows[i].id);
 		menu.AddPoint("where", ConvertToScreen(where));
 		Window()->PostMessage(&menu);
@@ -1647,12 +1689,29 @@ MessageView::MouseUp(BPoint where)
 		_SetSelection(0, 0, 0);  // a plain click
 	fSelecting = false;
 	if (!fPendingLink.empty() && !dragged) {
-		BMessage open(kMsgOpenUrl);
-		open.AddString("url", fPendingLink.c_str());
-		Window()->PostMessage(&open);
+		if (fPendingSponsored != 0)
+			_SponsoredClick(fPendingSponsored, fPendingLink, false);
+		else {
+			BMessage open(kMsgOpenUrl);
+			open.AddString("url", fPendingLink.c_str());
+			Window()->PostMessage(&open);
+		}
 	}
 	fPendingLink.clear();
+	fPendingSponsored = 0;
 	BView::MouseUp(where);
+}
+
+
+void
+MessageView::_SponsoredClick(int64 id, const std::string& url, bool media)
+{
+	// Telegram counts the click before its link opens.
+	BMessage click(kMsgSponsoredClick);
+	click.AddInt64("message_id", id);
+	click.AddString("url", url.c_str());
+	click.AddBool("media", media);
+	Window()->PostMessage(&click);
 }
 
 
@@ -1919,6 +1978,34 @@ MessageView::Draw(BRect updateRect)
 					pill.top + (pill.Height() + pfh.ascent - pfh.descent) / 2));
 				SetFont((&fPlain));
 				SetLowColor(fill);
+			}
+		}
+
+		if (row.sponsored) {
+			// Its button, outlined in the accent colour like a link.
+			if (l.button.IsValid()) {
+				float r = l.button.Height() / 4;
+				SetHighColor(mix_color(fill, accent, 40));
+				FillRoundRect(l.button, r, r);
+				SetHighColor(accent);
+				StrokeRoundRect(l.button, r, r);
+				BString label(row.buttonText);
+				fBold.TruncateString(&label, B_TRUNCATE_END, l.button.Width() - pad);
+				SetFont(&fBold);
+				SetLowColor(mix_color(fill, accent, 40));
+				DrawString(label.String(), BPoint(
+					l.button.left + (l.button.Width() - fBold.StringWidth(label.String())) / 2,
+					l.button.top + (l.button.Height() + fh.ascent - fh.descent) / 2));
+				SetFont(&fPlain);
+				SetLowColor(fill);
+			}
+			// Viewed once all of it but the button is on screen.
+			BRect seen(l.bubble.left, l.bubble.top, l.bubble.right,
+				std::max(l.textTop + line * l.lines.size(), l.media.bottom));
+			if (Bounds().Contains(seen) && fSponsoredViewed.insert(row.id).second) {
+				BMessage viewed(kMsgSponsoredViewed);
+				viewed.AddInt64("message_id", row.id);
+				Window()->PostMessage(&viewed);
 			}
 		}
 

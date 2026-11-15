@@ -916,6 +916,10 @@ MainWindow::_UpdateHistory(const BMessage* history)
 		row.avatarPreview = FindBytes(history, "avatar_mini", i);
 		row.avatarInitials = history->GetString("initials", i, "");
 		row.spans = pp::DecodeSpans(history->GetString("spans", i, ""));
+		row.sponsored = history->GetBool("sponsored", i, false);
+		row.buttonText = history->GetString("button", i, "");
+		row.canReport = history->GetBool("can_report", i, false);
+		row.about = history->GetString("about", i, "");
 		// "emoji\tcount\tchosen" per line
 		BString reactions = history->GetString("reactions", i, "");
 		int32 start = 0;
@@ -1051,6 +1055,61 @@ MainWindow::_ChooseMention(int32 index)
 	fEntry->SetText(text.c_str());   // posts kMsgEntryModified: no "@" left before the cursor
 	fEntry->TextView()->Select((int32)cursor, (int32)cursor);
 	fEntry->MakeFocus(true);
+}
+
+
+void
+MainWindow::_ShowSponsoredMenu(int64 id)
+{
+	const MessageRow* row = fMessages->Row(id);
+	if (row == nullptr || !row->sponsored)
+		return;
+	BPopUpMenu* menu = new BPopUpMenu("sponsored", false, false);
+	auto item = [&](const char* label, uint32 what, bool enabled) {
+		BMessage* message = new BMessage(what);
+		message->AddInt64("message_id", id);
+		BMenuItem* menuItem = new BMenuItem(label, message);
+		menuItem->SetEnabled(enabled);
+		menu->AddItem(menuItem);
+		return message;
+	};
+	item(fMessages->SelectedText(id).IsEmpty() ? "Copy" : "Copy selection", kMsgCopy,
+		!row->text.IsEmpty());
+	if (!row->about.IsEmpty())
+		item("About this ad" B_UTF8_ELLIPSIS, kMsgSponsoredAbout, true);
+	if (row->canReport) {
+		menu->AddSeparatorItem();
+		item("Report ad" B_UTF8_ELLIPSIS, kMsgSponsoredReport, true)->AddString("option", "");
+	}
+	menu->SetTargetForItems(this);
+	menu->SetAsyncAutoDestruct(true);
+	menu->Go(fMenuWhere, true, false, true);
+}
+
+
+void
+MainWindow::_ShowSponsoredOptions(const BMessage* options)
+{
+	// Telegram asks why, with answers of its own; the question heads the
+	// menu, where the report was started.
+	if (options->GetInt64("chat_id", 0) != fOpenChat)
+		return;
+	int64 id = options->GetInt64("message_id", 0);
+	BPopUpMenu* menu = new BPopUpMenu("report", false, false);
+	BMenuItem* title = new BMenuItem(options->GetString("title", "Report ad"), nullptr);
+	title->SetEnabled(false);
+	menu->AddItem(title);
+	menu->AddSeparatorItem();
+	const char* option;
+	for (int32 i = 0; options->FindString("option", i, &option) == B_OK; i++) {
+		BMessage* message = new BMessage(kMsgSponsoredReport);
+		message->AddInt64("message_id", id);
+		message->AddString("option", option);
+		menu->AddItem(new BMenuItem(options->GetString("text", i, option), message));
+	}
+	menu->SetTargetForItems(this);
+	menu->SetAsyncAutoDestruct(true);
+	menu->Go(fMenuWhere, true, false, true);
 }
 
 
@@ -1739,6 +1798,10 @@ MainWindow::MessageReceived(BMessage* message)
 		case kMsgMessageMenu:
 		{
 			fMenuWhere = message->GetPoint("where", BPoint());
+			if (message->GetBool("sponsored", false)) {
+				_ShowSponsoredMenu(message->GetInt64("message_id", 0));
+				break;
+			}
 			BMessage ask(kMsgMessageProperties);
 			ask.AddInt64("chat_id", fOpenChat);
 			ask.AddInt64("message_id", message->GetInt64("message_id", 0));
@@ -1748,6 +1811,26 @@ MainWindow::MessageReceived(BMessage* message)
 		case kMsgMessageProperties:
 			_ShowMessageMenu(message);
 			break;
+		case kMsgSponsoredClick:
+		case kMsgSponsoredViewed:
+		case kMsgSponsoredReport:
+			message->RemoveName("chat_id");
+			message->AddInt64("chat_id", fOpenChat);
+			be_app->PostMessage(message);
+			break;
+		case kMsgSponsoredOptions:
+			_ShowSponsoredOptions(message);
+			break;
+		case kMsgSponsoredAbout:
+		{
+			const MessageRow* row = fMessages->Row(message->GetInt64("message_id", 0));
+			if (row == nullptr || !row->sponsored)
+				break;
+			BAlert* alert = new BAlert("About this ad", row->about.String(), "OK");
+			alert->SetFlags(alert->Flags() | B_CLOSE_ON_ESCAPE);
+			alert->Go(nullptr);
+			break;
+		}
 		case kMsgPinned:
 			if (message->GetInt64("chat_id", 0) != fOpenChat)
 				break;

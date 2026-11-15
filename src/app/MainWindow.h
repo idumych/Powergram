@@ -40,6 +40,9 @@ private:
 	void _SelectionChanged();
 	void _Send(bool silent = false, int64 sendAt = 0, bool whenOnline = false);
 	void _ShowMessageMenu(const BMessage* properties);
+	// A sponsored message's menu, and the question a report may ask.
+	void _ShowSponsoredMenu(int64 id);
+	void _ShowSponsoredOptions(const BMessage* options);
 	void _StartReply(int64 messageId);
 	void _StartEdit(int64 messageId);
 	void _CancelCompose();

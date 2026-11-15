@@ -50,6 +50,10 @@ made-up data so far.
 - Typing, online and "last seen" status and group sizes in the chat header
 - Pinned messages: a bar under the chat's name (click to jump, and again for
   the next one); pin and unpin from the message's menu
+- Sponsored messages in channels, as Telegram's API terms require: below the
+  newest post, marked "Sponsored" (or "Recommended"), with their button; links
+  outside Telegram ask before opening; right-click for who's behind it, or to
+  report it
 - Reactions (shown and added), forwarding, polls, locations, places and contacts
 - Voice messages, played in the app with a waveform, and recorded: click the
   microphone, then Send (or the microphone again); Escape cancels
@@ -148,6 +152,9 @@ Mentions and t.me links open in the app; Cmd+O opens a typed username or link. I
 ![A pinned message](docs/screenshots/haiku-pinned.png)
 The pinned bar: click to jump to the message, and again for the next one.
 
+![A channel's sponsored message](docs/screenshots/haiku-sponsored.png)
+A channel's sponsored message below its newest post, with its button and its menu.
+
 ![The chat info window](docs/screenshots/haiku-info.png)
 Chat info: the description, members and shared photos.
 
@@ -224,7 +231,7 @@ needs only OpenSSL and zlib at run time. Install `noto_emoji` for emoji.
 
 `make test` runs the core tests (login flow, chat list, history, throttling,
 files and download progress, stickers, formatting, presence, voice, chat info,
-links and usernames, pinned messages, voice recording, mentions, profile and devices,
+links and usernames, pinned messages, sponsored messages, voice recording, mentions, profile and devices,
 QR login, secret chats, contacts and new chats, scheduled messages, polls,
 locations, Lottie animations and WebM stickers) on any system with a C++17 compiler, and `make qr-check`
 reads the login QR code back with zbarimg.
@@ -233,6 +240,8 @@ On Haiku, `make file-saving-test` checks saving received files and
 `make media-probe-test` what files are sent as (photo, video or document) and
 `make video-playback-test` the viewer's video playback (timing, pausing,
 seeking, the end, looping, and sound staying with the picture).
+`make sponsored-test` checks a channel's sponsored message in the main window
+(its view reported once, clicks on it, its menu and reporting it).
 `make lottie-render` builds a tool that draws frames of an animated sticker
 (`.tgs`, Lottie `.json` or `.webm`) into a PNG.
 

@@ -121,6 +121,26 @@ enum {
 	// message menu → main window → app: "message_id" (int64), "pin" (bool),
 	// plus "chat_id" (int64) on the way to the app
 	kMsgPin = 'pin ',
+
+	// A channel's sponsored message, the last row of its history (fields
+	// "sponsored", "button", "can_report" and "about" in kMsgHistory).
+	// message view → main window → app: it was clicked: "message_id"
+	// (int64), "url" (string: a link in its text, "" for its own link),
+	// "media" (bool: on its photo or video); plus "chat_id" on the way on
+	kMsgSponsoredClick = 'spcl',
+	// message view → main window → app: all of its text was on screen,
+	// "message_id" (int64); plus "chat_id" on the way on
+	kMsgSponsoredViewed = 'spvw',
+	// message menu → main window → app: report it, "message_id" (int64),
+	// "option" (string: "" at first, then the answer chosen); plus "chat_id"
+	kMsgSponsoredReport = 'sprp',
+	// app → main window: the report needs an answer: "chat_id",
+	// "message_id" (int64), "title", and arrays "option" and "text"
+	kMsgSponsoredOptions = 'spop',
+	// link question → app: open "url" if "which" (int32) is 1
+	kMsgSponsoredOpen = 'spln',
+	// its menu → main window: show who's behind it, "message_id" (int64)
+	kMsgSponsoredAbout = 'spab',
 	// main window → app: "action" (string: "start", "send" or "cancel"),
 	// "chat_id" and "reply_to" (int64)
 	kMsgVoiceRecord = 'vrec',
