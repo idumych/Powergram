@@ -11,7 +11,7 @@ override CXXFLAGS += -std=c++17 -Wall -Wextra -O2
 CORE_SRCS := src/core/AuthFlow.cpp src/core/ChatList.cpp src/core/ChatHistory.cpp \
 	src/core/SendQueue.cpp src/core/Files.cpp src/core/Stickers.cpp \
 	src/core/Format.cpp src/core/Presence.cpp src/core/ChatInfo.cpp \
-	src/core/Links.cpp src/core/Pinned.cpp src/core/VoiceNote.cpp src/core/Mentions.cpp \
+	src/core/Links.cpp src/core/Pinned.cpp src/core/Sponsored.cpp src/core/VoiceNote.cpp src/core/Mentions.cpp \
 	src/core/Profile.cpp src/core/QrCode.cpp src/core/SecretChat.cpp src/core/Contacts.cpp src/core/Compose.cpp src/core/Lottie.cpp src/core/Webm.cpp src/core/Kinetic.cpp \
 	src/third_party/qrcodegen/qrcodegen.cpp
 APP_SRCS := src/app/App.cpp src/app/TdClient.cpp src/app/Settings.cpp \
@@ -160,6 +160,12 @@ mockup: $(BUILD)/PowergramMockup
 $(BUILD)/PowergramMockup: $(BUILD)/tests/mockup.o $(CORE_OBJS) $(MOCKUP_OBJS)
 	$(CXX) -o $@ $^ -lbe -lmedia -ltracker -ltranslation -llocalestub -lopus -logg -lz
 
+# A channel's sponsored message in the real main window: views, clicks, menu.
+sponsored-test: $(BUILD)/sponsored_test
+	$(BUILD)/sponsored_test
+$(BUILD)/sponsored_test: $(BUILD)/tests/sponsored_test.o $(CORE_OBJS) $(MOCKUP_OBJS)
+	$(CXX) -o $@ $^ -lbe -lmedia -ltracker -ltranslation -llocalestub -lopus -logg -lz
+
 # Frames of an animated sticker (.tgs, Lottie .json or .webm) drawn into a PNG.
 lottie-render: $(BUILD)/lottie_render
 $(BUILD)/lottie_render: $(BUILD)/tests/lottie_render.o $(BUILD)/src/app/LottieRenderer.o \
@@ -269,7 +275,8 @@ clean:
 
 -include $(CORE_OBJS:.o=.d) $(APP_OBJS:.o=.d) $(BUILD)/tests/test_core.d
 
-.PHONY: all test qr-check clean bench live-scroll pickers-demo mockup voice_play video-playback-test media-viewer-demo
+.PHONY: all test qr-check clean bench live-scroll pickers-demo mockup voice_play video-playback-test media-viewer-demo \
+	sponsored-test
 
 voice_play: $(BUILD)/voice_play
 $(BUILD)/voice_play: $(BUILD)/tests/voice_play.o $(BUILD)/src/app/VoicePlayer.o

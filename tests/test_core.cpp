@@ -26,6 +26,7 @@
 #include "../src/core/SecretChat.h"
 #include "../src/core/Presence.h"
 #include "../src/core/SendQueue.h"
+#include "../src/core/Sponsored.h"
 #include "../src/core/Stickers.h"
 #include "../src/core/Webm.h"
 
@@ -1168,6 +1169,95 @@ TestPinned()
 
 
 static void
+TestSponsored()
+{
+	// A channel's sponsored message as getChatSponsoredMessages gives it.
+	json reply = {{"@type", "sponsoredMessages"}, {"messages_between", 0},
+		{"messages", json::array({{{"@type", "sponsoredMessage"}, {"message_id", -1048576},
+			{"is_recommended", false}, {"can_be_reported", true},
+			{"content", {{"@type", "messageText"}, {"text", {{"@type", "formattedText"},
+				{"text", "Fast builds. See example.com"}, {"entities", {
+					{{"@type", "textEntity"}, {"offset", 0}, {"length", 4},
+					{"type", {{"@type", "textEntityTypeBold"}}}}}}}}}},
+			{"sponsor", {{"@type", "advertisementSponsor"}, {"url", "https://example.com/x"},
+				{"info", "Example Ltd, example.com"}}},
+			{"title", "Example Builds"}, {"button_text", "Open link"},
+			{"accent_color_id", 3}, {"background_custom_emoji_id", "0"},
+			{"additional_info", "Ad by Example"}}})}};
+
+	SponsoredMessages ads(-1003);
+	CHECK(ads.Shown() == nullptr);
+	ads.Set(reply);
+	const SponsoredMessage* ad = ads.Shown();
+	CHECK(ad != nullptr && ad->message.id == -1048576);
+	CHECK(ad->message.text == "Fast builds. See example.com");
+	CHECK(!ad->message.spans.empty());  // the bold word, at least
+	CHECK(std::string(ad->Label()) == "Sponsored" && ad->canReport);
+	CHECK(ad->title == "Example Builds" && ad->buttonText == "Open link");
+	CHECK(ad->url == "https://example.com/x");
+	CHECK(ad->AboutText() == "Example Ltd, example.com\n\nAd by Example");
+	CHECK(ads.Find(-1048576) == ad && ads.Find(5) == nullptr);
+
+	// A view is reported once, and only for a message that's there.
+	CHECK(ads.MarkViewed(-1048576));
+	CHECK(!ads.MarkViewed(-1048576));
+	CHECK(!ads.MarkViewed(5));
+	ads.Remove(-1048576);
+	CHECK(ads.Shown() == nullptr);
+
+	reply["messages"][0]["is_recommended"] = true;
+	reply["messages"][0].erase("additional_info");
+	ads.Set(reply);
+	CHECK(std::string(ads.Shown()->Label()) == "Recommended");
+	CHECK(ads.Shown()->AboutText() == "Example Ltd, example.com");
+	ads.Set({{"@type", "sponsoredMessages"}, {"messages", json::array()}});
+	CHECK(ads.Shown() == nullptr);
+
+	// Telegram's own sites open straight away; anything else asks first.
+	for (const char* url : {"https://t.me/durov", "tg://resolve?domain=x",
+			"https://telegram.org/blog", "http://www.telegram.me", "https://telegra.ph/a",
+			"https://te.legra.ph/a", "https://graph.org/x", "https://fragment.com/",
+			"https://telesco.pe/x", "https://TELEGRAM.DOG", "https://a.b.t.me:443/x",
+			"https://t.me./x", "https://user@t.me/x"})
+		CHECK(OpensWithoutConfirming(url));
+	for (const char* url : {"https://example.com", "https://t.me.example.com/",
+			"https://nott.me/x", "https://example.com/t.me", "https://example.com?u=t.me",
+			"https://t.me@example.com/", "ftp://t.me/x", "t.me/x", "",
+			"https://fragment.com.evil.org"})
+		CHECK(!OpensWithoutConfirming(url));
+
+	// Reports: done, a question with options, or ads hidden.
+	CHECK(ParseSponsoredReport({{"@type", "reportSponsoredResultOk"}}).kind
+		== SponsoredReport::kReported);
+	CHECK(ParseSponsoredReport({{"@type", "reportSponsoredResultAdsHidden"}}).kind
+		== SponsoredReport::kAdsHidden);
+	CHECK(ParseSponsoredReport({{"@type", "reportSponsoredResultPremiumRequired"}}).kind
+		== SponsoredReport::kPremiumRequired);
+	CHECK(ParseSponsoredReport({{"@type", "error"}, {"code", 400}}).kind
+		== SponsoredReport::kFailed);
+	SponsoredReport question = ParseSponsoredReport({{"@type",
+		"reportSponsoredResultOptionRequired"}, {"title", "What's wrong with this ad?"},
+		{"options", {{{"@type", "reportOption"}, {"id", "AQI="}, {"text", "I don't like it"}},
+			{{"@type", "reportOption"}, {"id", "AwQ="}, {"text", "Misleading"}}}}});
+	CHECK(question.kind == SponsoredReport::kChooseOption);
+	CHECK(question.title == "What's wrong with this ad?" && question.options.size() == 2);
+	CHECK(question.options[1].id == "AwQ=" && question.options[1].text == "Misleading");
+	CHECK(ParseSponsoredReport({{"@type", "reportSponsoredResultOptionRequired"},
+		{"title", "?"}, {"options", json::array()}}).kind == SponsoredReport::kFailed);
+
+	json get = request::Sponsored(-1003);
+	CHECK(get["@type"] == "getChatSponsoredMessages" && get["chat_id"] == -1003);
+	CHECK(get["@extra"] == "sponsored:-1003");
+	json click = request::ClickSponsored(-1003, -1048576, true);
+	CHECK(click["@type"] == "clickChatSponsoredMessage" && click["message_id"] == -1048576);
+	CHECK(click["is_media_click"] == true && click["from_fullscreen"] == false);
+	json report = request::ReportSponsored(-1003, -1048576, "AwQ=");
+	CHECK(report["@type"] == "reportChatSponsoredMessage" && report["option_id"] == "AwQ=");
+	CHECK(report["@extra"] == "sponsored_report:-1003:-1048576");
+}
+
+
+static void
 TestVoiceRecording()
 {
 	// Packing is the inverse of Telegram's unpacking.
@@ -2242,6 +2332,7 @@ main()
 	TestHaikuIcons();
 	TestLinks();
 	TestPinned();
+	TestSponsored();
 	TestVoiceRecording();
 	TestMentions();
 	TestSendingFiles();

@@ -69,6 +69,13 @@ struct MessageRow {
 		bool chosen;
 	};
 	std::vector<Reaction> reactions;
+
+	// A channel's sponsored message: `sender` is its title, `time` its
+	// label ("Sponsored"); clicks and views go to kMsgSponsored*.
+	bool sponsored = false;
+	BString buttonText;         // drawn as a button below the text
+	bool canReport = false;     // its menu: "Report ad…"
+	BString about;              // and "About this ad…", if not empty
 };
 
 class BBitmap;
@@ -116,6 +123,9 @@ public:
 	// The last message visible at the bottom and its distance from the
 	// bottom edge (0 when at the end); for tests.
 	int64 BottomMessage(float* fromBottom, bool* atEnd) const;
+	// Message `id`'s bubble in view coordinates, invalid if it isn't
+	// there; for tests.
+	BRect Frame(int64 id) const;
 
 private:
 	struct Layout {
@@ -133,6 +143,8 @@ private:
 		std::vector<Link> links;       // clickable, in view coordinates
 		std::vector<BRect> spoilers;   // hidden text, shown when clicked
 		std::vector<BRect> reactions;  // a pill per reaction, view coordinates
+		BRect title;       // sponsored messages: the title, and the button
+		BRect button;      // (invalid when there's none)
 	};
 
 	// Character widths of a string, measured once with one app_server call
@@ -228,6 +240,9 @@ private:
 	int32 fSelEnd = 0;
 	bool fSelecting = false;
 	std::string fPendingLink;   // pressed; opened on release unless dragged
+	int64 fPendingSponsored = 0; // the sponsored message fPendingLink is in
+	std::set<int64> fSponsoredViewed;  // views reported
+	void _SponsoredClick(int64 id, const std::string& url, bool media);
 	BPoint fPressPoint;
 	int fCursor = 0;            // 0 default, 1 text, 2 link
 	bool fDropTarget;           // files are being dragged over us

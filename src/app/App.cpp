@@ -53,6 +53,7 @@ extern "C" BView* instantiate_deskbar_item(float maxWidth, float maxHeight);
 #include "../core/Files.h"
 #include "../core/Links.h"
 #include "../core/Pinned.h"
+#include "../core/Sponsored.h"
 #include "../core/VoiceNote.h"
 #include "../core/Mentions.h"
 #include "../core/Profile.h"
@@ -157,6 +158,10 @@ private:
 	// The open chat's pinned messages, for the bar over it.
 	pp::PinnedMessages fPinned;
 	void _SendPinned();
+	// The open channel's sponsored message, below its newest post.
+	pp::SponsoredMessages fSponsored;
+	void _SponsoredClick(const BMessage* message);
+	void _SponsoredReported(const json& result, const std::string& extra);
 	int64 fPendingChat = 0;
 	int64 fPendingMessage = 0;
 
@@ -547,6 +552,20 @@ App::_HandleObject(const json& object)
 		return;
 	if (_HandleContactsReply(object, extra))
 		return;
+	if (extra.rfind("sponsored:", 0) == 0) {
+		int64 chatId = atoll(extra.c_str() + strlen("sponsored:"));
+		if (type == "sponsoredMessages" && chatId == fSponsored.ChatId() && chatId != 0) {
+			fSponsored.Set(object);
+			_FlushHistory();
+		}
+		return;
+	}
+	if (extra.rfind("sponsored_report:", 0) == 0) {
+		_SponsoredReported(object, extra);
+		return;
+	}
+	if (extra == "sponsored_click")
+		return;
 	if (extra.rfind("pinned:", 0) == 0) {
 		if (type == "foundChatMessages" && atoll(extra.c_str() + 7) == fPinned.ChatId()) {
 			fPinned.SetFound(object);
@@ -729,6 +748,7 @@ App::_OpenChat(int64 id, bool latest)
 		_StopRecording(false);
 	fHistory.reset();
 	fPinned = pp::PinnedMessages();
+	fSponsored = pp::SponsoredMessages();
 	fTyping.Reset();
 	fLoadingHistory = false;
 	fFiles.ForgetWanted();  // the old chat's photos that haven't started
@@ -740,6 +760,14 @@ App::_OpenChat(int64 id, bool latest)
 	fPinned = pp::PinnedMessages(id);
 	_SendPinned();   // none until they come
 	_Send(pp::request::Pinned(id));
+	// Channels may carry a sponsored message, asked for each time one
+	// opens (TDLib caches it), as Telegram's API terms require.
+	if (const pp::Chat* chat = fChats.Find(id)) {
+		if (chat->kind == pp::Chat::kChannel) {
+			fSponsored = pp::SponsoredMessages(id);
+			_Send(pp::request::Sponsored(id));
+		}
+	}
 	fFirstUnread = 0;
 	fScrollTo = 0;
 	fFound.clear();
@@ -882,6 +910,8 @@ App::_SendHistory()
 		std::string waveform;
 		BString fileName, fileTitle, fileType;
 		int64 fileSize = 0, fileDone = -1;
+		bool sponsored = false, canReport = false;
+		BString button, about;
 	};
 	auto add = [&](const Row& r) {
 		list.AddInt64("id", r.id);
@@ -921,6 +951,54 @@ App::_SendHistory()
 		list.AddString("file_type", r.fileType);
 		list.AddInt64("file_size", r.fileSize);
 		list.AddInt64("file_done", r.fileDone);
+		list.AddBool("sponsored", r.sponsored);
+		list.AddString("button", r.button);
+		list.AddBool("can_report", r.canReport);
+		list.AddString("about", r.about);
+	};
+
+	// A message's photo, video or file; `priority` for fetching what's shown.
+	auto fillMedia = [&](const pp::Media& media, Row& r, int priority) {
+		r.mediaKind = (int32)media.kind;
+		if (media.kind == pp::Media::kNone)
+			return;
+		r.mediaWidth = media.width;
+		r.mediaHeight = media.height;
+		r.mini = media.minithumbnail;
+		r.spoiler = media.spoiler;
+		r.secret = media.secret;
+		r.emoji = media.emoji.c_str();
+		r.duration = media.duration;
+		r.waveform = media.waveform;
+		r.image = fFiles.Path(media.fileId).c_str();
+		// Fetch what's shown, newest first; a self-destructing photo
+		// only when it's opened.
+		if (!media.secret && r.image.IsEmpty())
+			fFiles.Want(media.fileId, priority);
+		// Animated stickers play once their file is here.
+		if (media.animationFileId != 0) {
+			r.animation = fFiles.Path(media.animationFileId).c_str();
+			r.animationFormat = media.animationFormat;
+			if (r.animation.IsEmpty())
+				fFiles.Want(media.animationFileId, priority);
+		}
+		// The file that's opened or saved: its name and, for a
+		// document's card, how much of it is here.
+		int32 file = media.fullFileId != 0 ? media.fullFileId : media.fileId;
+		std::string path = fFiles.Path(file);
+		r.fileName = media.fileName.c_str();
+		if (r.fileName.IsEmpty() && !path.empty())
+			r.fileName = BPath(path.c_str()).Leaf();
+		r.fileTitle = media.title.empty() ? media.fileName.c_str() : media.title.c_str();
+		r.fileType = media.mimeType.c_str();
+		r.fileSize = media.fileSize;
+		if (!path.empty())
+			r.fileDone = media.fileSize;
+		else if (fFiles.Downloading(file)) {
+			r.fileDone = fFiles.Downloaded(file);
+			if (media.kind == pp::Media::kDocument)
+				fProgressFiles.insert(file);
+		}
 	};
 
 	BTimeFormat timeFormat;
@@ -1008,48 +1086,25 @@ App::_SendHistory()
 				r.replyText = m.replyQuote.c_str();
 		}
 
-		const pp::Media& media = m.media;
-		r.mediaKind = (int32)media.kind;
-		if (media.kind != pp::Media::kNone) {
-			r.mediaWidth = media.width;
-			r.mediaHeight = media.height;
-			r.mini = media.minithumbnail;
-			r.spoiler = media.spoiler;
-			r.secret = media.secret;
-			r.emoji = media.emoji.c_str();
-			r.duration = media.duration;
-			r.waveform = media.waveform;
-			r.image = fFiles.Path(media.fileId).c_str();
-			// Fetch what's shown, newest first; a self-destructing photo
-			// only when it's opened.
-			if (!media.secret && r.image.IsEmpty())
-				fFiles.Want(media.fileId, 1 + (int)std::min<size_t>(30, 30 * i / messages.size()));
-			// Animated stickers play once their file is here.
-			if (media.animationFileId != 0) {
-				r.animation = fFiles.Path(media.animationFileId).c_str();
-				r.animationFormat = media.animationFormat;
-				if (r.animation.IsEmpty())
-					fFiles.Want(media.animationFileId,
-						1 + (int)std::min<size_t>(30, 30 * i / messages.size()));
-			}
-			// The file that's opened or saved: its name and, for a
-			// document's card, how much of it is here.
-			int32 file = media.fullFileId != 0 ? media.fullFileId : media.fileId;
-			std::string path = fFiles.Path(file);
-			r.fileName = media.fileName.c_str();
-			if (r.fileName.IsEmpty() && !path.empty())
-				r.fileName = BPath(path.c_str()).Leaf();
-			r.fileTitle = media.title.empty() ? media.fileName.c_str() : media.title.c_str();
-			r.fileType = media.mimeType.c_str();
-			r.fileSize = media.fileSize;
-			if (!path.empty())
-				r.fileDone = media.fileSize;
-			else if (fFiles.Downloading(file)) {
-				r.fileDone = fFiles.Downloaded(file);
-				if (media.kind == pp::Media::kDocument)
-					fProgressFiles.insert(file);
-			}
-		}
+		fillMedia(m.media, r, 1 + (int)std::min<size_t>(30, 30 * i / messages.size()));
+		add(r);
+	}
+
+	// A channel's sponsored message comes after its newest post.
+	const pp::SponsoredMessage* ad = fSponsored.ChatId() == chatId && fHistory->AtLatest()
+		? fSponsored.Shown() : nullptr;
+	if (ad != nullptr) {
+		Row r;
+		r.id = ad->message.id;
+		r.sponsored = true;
+		r.sender = ad->title.c_str();
+		r.time = ad->Label();
+		r.text = ad->message.text.c_str();
+		r.spans = ad->message.spans;
+		r.button = ad->buttonText.c_str();
+		r.canReport = ad->canReport;
+		r.about = ad->AboutText().c_str();
+		fillMedia(ad->message.media, r, 1);
 		add(r);
 	}
 	fMain->PostMessage(&list);
@@ -1641,6 +1696,88 @@ App::_ShowError(const char* text)
 	BAlert* alert = new BAlert(APP_NAME, text, "OK", nullptr, nullptr,
 		B_WIDTH_AS_USUAL, B_WARNING_ALERT);
 	alert->Go(nullptr);
+}
+
+
+void
+App::_SponsoredClick(const BMessage* message)
+{
+	int64 chatId = message->GetInt64("chat_id", 0);
+	int64 id = message->GetInt64("message_id", 0);
+	const pp::SponsoredMessage* ad = chatId == fSponsored.ChatId() ? fSponsored.Find(id) : nullptr;
+	if (ad == nullptr)
+		return;
+	// Telegram counts the click first; then a link in its text, or its own.
+	_Send(pp::request::ClickSponsored(chatId, id, message->GetBool("media", false)));
+	std::string url = message->GetString("url", "");
+	if (url.empty())
+		url = ad->url;
+	if (url.empty())
+		return;
+	if (pp::OpensWithoutConfirming(url)) {
+		_OpenLink(url);
+		return;
+	}
+	// Anywhere else is asked about first, showing where it goes.
+	BString text;
+	text << "Open this link?\n\n" << url.c_str();
+	BAlert* alert = new BAlert(APP_NAME, text.String(), "Cancel", "Open", nullptr,
+		B_WIDTH_AS_USUAL, B_INFO_ALERT);
+	alert->SetShortcut(0, B_ESCAPE);
+	BMessage* open = new BMessage(kMsgSponsoredOpen);
+	open->AddString("url", url.c_str());
+	alert->Go(new BInvoker(open, this));
+}
+
+
+void
+App::_SponsoredReported(const json& result, const std::string& extra)
+{
+	// "sponsored_report:<chat id>:<message id>"
+	std::string ids = extra.substr(strlen("sponsored_report:"));
+	size_t colon = ids.find(':');
+	if (colon == std::string::npos)
+		return;
+	int64 chatId = atoll(ids.substr(0, colon).c_str());
+	int64 id = atoll(ids.substr(colon + 1).c_str());
+	pp::SponsoredReport report = pp::ParseSponsoredReport(result);
+	switch (report.kind) {
+		case pp::SponsoredReport::kChooseOption:
+		{
+			BMessage options(kMsgSponsoredOptions);
+			options.AddInt64("chat_id", chatId);
+			options.AddInt64("message_id", id);
+			options.AddString("title", report.title.c_str());
+			for (const pp::SponsoredReport::Option& o : report.options) {
+				options.AddString("option", o.id.c_str());
+				options.AddString("text", o.text.c_str());
+			}
+			fMain->PostMessage(&options);
+			return;
+		}
+		case pp::SponsoredReport::kReported:
+		case pp::SponsoredReport::kAdsHidden:
+		{
+			// Gone from the channel either way.
+			if (chatId == fSponsored.ChatId()) {
+				fSponsored.Remove(id);
+				_FlushHistory();
+			}
+			BAlert* alert = new BAlert(APP_NAME, report.kind == pp::SponsoredReport::kReported
+				? "Thanks, the ad was reported." : "Ads are hidden for you now.", "OK");
+			alert->Go(nullptr);
+			return;
+		}
+		case pp::SponsoredReport::kPremiumRequired:
+			_ShowError("Hiding ads needs Telegram Premium.");
+			return;
+		case pp::SponsoredReport::kFailed:
+		{
+			std::string why = pp::Str(result, "message");
+			_ShowError(("Could not report the ad" + (why.empty() ? "." : ": " + why)).c_str());
+			return;
+		}
+	}
 }
 
 
@@ -2791,6 +2928,32 @@ App::MessageReceived(BMessage* message)
 		case kMsgPin:
 			_Send(pp::request::Pin(message->GetInt64("chat_id", 0),
 				message->GetInt64("message_id", 0), message->GetBool("pin", true)));
+			break;
+
+		case kMsgSponsoredClick:
+			_SponsoredClick(message);
+			break;
+		case kMsgSponsoredViewed:
+		{
+			// Reported once: the view posts it when all of it was drawn on
+			// screen (an inactive window's too, unlike read receipts).
+			int64 chatId = message->GetInt64("chat_id", 0);
+			int64 id = message->GetInt64("message_id", 0);
+			if (chatId == fSponsored.ChatId() && fSponsored.MarkViewed(id))
+				_Send(pp::request::ViewMessages(chatId, {id}));
+			break;
+		}
+		case kMsgSponsoredReport:
+		{
+			int64 chatId = message->GetInt64("chat_id", 0);
+			int64 id = message->GetInt64("message_id", 0);
+			if (chatId == fSponsored.ChatId() && fSponsored.Find(id) != nullptr)
+				_Send(pp::request::ReportSponsored(chatId, id, message->GetString("option", "")));
+			break;
+		}
+		case kMsgSponsoredOpen:
+			if (message->GetInt32("which", 0) == 1)
+				_OpenLink(message->GetString("url", ""));
 			break;
 
 		case kMsgJoinChat:
