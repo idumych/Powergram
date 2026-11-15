@@ -42,6 +42,7 @@ private:
 	void _ShowMessageMenu(const BMessage* properties);
 	void _StartReply(int64 messageId);
 	void _StartEdit(int64 messageId);
+	void _SetEditDraft(const BMessage* draft);
 	void _CancelCompose();
 	void _AskDelete(int64 messageId, bool canSelf, bool canAll);
 	void _SelectChat(int64 chatId);

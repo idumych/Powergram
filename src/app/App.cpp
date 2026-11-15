@@ -61,6 +61,7 @@ extern "C" BView* instantiate_deskbar_item(float maxWidth, float maxHeight);
 #include "ChatInfoWindow.h"
 #include "ComposeWindows.h"
 #include "SendFilesWindow.h"
+#include "Formatting.h"
 #include "ProfileWindow.h"
 #include "FileSaving.h"
 #include "MediaProbe.h"
@@ -547,6 +548,15 @@ App::_HandleObject(const json& object)
 		return;
 	if (_HandleContactsReply(object, extra))
 		return;
+	if (extra == "editdraft") {
+		// A message being edited, its formatting as Markdown for the box;
+		// on an error the box keeps the plain text it shows.
+		if (type == "message") {
+			BMessage draft = EditDraftMessage(object);
+			fMain->PostMessage(&draft);
+		}
+		return;
+	}
 	if (extra.rfind("pinned:", 0) == 0) {
 		if (type == "foundChatMessages" && atoll(extra.c_str() + 7) == fPinned.ChatId()) {
 			fPinned.SetFound(object);
@@ -1193,7 +1203,8 @@ App::_SendFiles(const BMessage* message)
 			continue;  // folders aren't sent
 		files.push_back(ProbeFile(path.Path()));
 	}
-	for (const json& request : pp::request::SendFiles(chatId, files, caption, replyTo))
+	for (const json& request : pp::request::SendFilesFormatted(chatId, files,
+			TypedText(caption, {}), replyTo))
 		_Send(request);
 	if (open)
 		fTyping.Reset();
@@ -2874,8 +2885,18 @@ App::MessageReceived(BMessage* message)
 			break;
 
 		case kMsgEditText:
-			_Send(pp::request::EditText(message->GetInt64("chat_id", 0),
-				message->GetInt64("message_id", 0), message->GetString("text", "")));
+		{
+			// A photo's, video's or file's caption, or a message's text.
+			const pp::Message* edited = _FindMessage(message->GetInt64("chat_id", 0),
+				message->GetInt64("message_id", 0));
+			bool media = edited != nullptr && edited->media.kind != pp::Media::kNone;
+			_Send(OutgoingEdit(message, media, media && edited->media.captionAbove));
+			break;
+		}
+		case kMsgEditMarkdown:
+			// The message as TDLib has it, for its formatting.
+			_Send(pp::request::GetMessage(message->GetInt64("chat_id", 0),
+				message->GetInt64("message_id", 0), "editdraft"), true);
 			break;
 
 		case kMsgDeleteMessage:
@@ -2889,21 +2910,9 @@ App::MessageReceived(BMessage* message)
 			int64 chatId = message->GetInt64("chat_id", 0);
 			if (fHistory == nullptr || fHistory->ChatId() != chatId)
 				break;
-			// People without a username picked from the suggestions.
-			std::vector<std::pair<std::string, int64_t>> mentioned;
-			const char* name;
-			for (int32 i = 0; message->FindString("mention_name", i, &name) == B_OK; i++)
-				mentioned.push_back({name, message->GetInt64("mention_user", i, 0)});
-			std::string text = message->GetString("text", "");
-			pp::SendOptions options;
-			options.silent = message->GetBool("silent", false);
-			options.sendAt = message->GetInt64("send_at", 0);
-			options.whenOnline = message->GetBool("when_online", false);
-			json send = pp::request::SendTextWith(chatId, text, message->GetInt64("reply_to", 0),
-				pp::MentionEntities(text, mentioned), options);
-			if (options.Scheduled())
-				send["@extra"] = "send_scheduled";
-			_Send(send);
+			// Its Markdown read, and people without a username picked from
+			// the suggestions mentioned.
+			_Send(OutgoingText(message));
 			fTyping.Reset();  // sending ends "typing" on Telegram's side
 			break;
 		}

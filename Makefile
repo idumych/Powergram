@@ -12,9 +12,10 @@ CORE_SRCS := src/core/AuthFlow.cpp src/core/ChatList.cpp src/core/ChatHistory.cp
 	src/core/SendQueue.cpp src/core/Files.cpp src/core/Stickers.cpp \
 	src/core/Format.cpp src/core/Presence.cpp src/core/ChatInfo.cpp \
 	src/core/Links.cpp src/core/Pinned.cpp src/core/VoiceNote.cpp src/core/Mentions.cpp \
+	src/core/Markdown.cpp \
 	src/core/Profile.cpp src/core/QrCode.cpp src/core/SecretChat.cpp src/core/Contacts.cpp src/core/Compose.cpp src/core/Lottie.cpp src/core/Webm.cpp src/core/Kinetic.cpp \
 	src/third_party/qrcodegen/qrcodegen.cpp
-APP_SRCS := src/app/App.cpp src/app/TdClient.cpp src/app/Settings.cpp \
+APP_SRCS := src/app/App.cpp src/app/TdClient.cpp src/app/Formatting.cpp src/app/Settings.cpp \
 	src/app/LoginWindow.cpp src/app/MainWindow.cpp src/app/MessageView.cpp \
 	src/app/BitmapUtils.cpp src/app/Icons.cpp src/app/Pickers.cpp src/app/ChatPicker.cpp \
 	src/app/SettingsWindow.cpp src/app/VoicePlayer.cpp \
@@ -155,10 +156,18 @@ $(NAME): $(CORE_OBJS) $(APP_OBJS) $(BUILD)/$(NAME).rsrc
 
 # The real main window with made-up chats, for screenshots.
 MOCKUP_OBJS := $(filter-out $(BUILD)/src/app/App.o $(BUILD)/src/app/TdClient.o \
-	$(BUILD)/src/app/Settings.o, $(APP_OBJS))
+	$(BUILD)/src/app/Formatting.o $(BUILD)/src/app/Settings.o, $(APP_OBJS))
 mockup: $(BUILD)/PowergramMockup
 $(BUILD)/PowergramMockup: $(BUILD)/tests/mockup.o $(CORE_OBJS) $(MOCKUP_OBJS)
 	$(CXX) -o $@ $^ -lbe -lmedia -ltracker -ltranslation -llocalestub -lopus -logg -lz
+
+# Markdown in sent and edited messages, through TDLib and the main window.
+formatting-test: $(BUILD)/formatting_test
+	$(BUILD)/formatting_test
+$(BUILD)/formatting_test: $(BUILD)/tests/formatting_test.o $(CORE_OBJS) $(MOCKUP_OBJS) \
+		$(BUILD)/src/app/Formatting.o
+	$(CXX) -o $@ $^ $(LDFLAGS) -lbe -lmedia -ltracker -ltranslation -llocalestub -lopus -logg \
+		$(TD_LIBS) $(NET_LIBS)
 
 # Frames of an animated sticker (.tgs, Lottie .json or .webm) drawn into a PNG.
 lottie-render: $(BUILD)/lottie_render
@@ -269,7 +278,8 @@ clean:
 
 -include $(CORE_OBJS:.o=.d) $(APP_OBJS:.o=.d) $(BUILD)/tests/test_core.d
 
-.PHONY: all test qr-check clean bench live-scroll pickers-demo mockup voice_play video-playback-test media-viewer-demo
+.PHONY: all test qr-check clean bench live-scroll pickers-demo mockup voice_play video-playback-test media-viewer-demo \
+	formatting-test
 
 voice_play: $(BUILD)/voice_play
 $(BUILD)/voice_play: $(BUILD)/tests/voice_play.o $(BUILD)/src/app/VoicePlayer.o

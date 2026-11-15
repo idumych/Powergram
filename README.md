@@ -81,6 +81,11 @@ made-up data so far.
   length), GIFs (as GIFs, which keep moving), files (file panel or drag and
   drop from Tracker) and stickers; several photos and videos at once go as
   an album; replying, editing, deleting, copying
+- Formatting what you send, in the official apps' Markdown: `**bold**`,
+  `__italic__`, `~~strikethrough~~`, `||spoiler||`, `` `code` ``, ```` ```code
+  blocks``` ```` (with a language after the first three backticks) and
+  `[text](link)`, in messages and captions; editing a message shows its
+  formatting that way again
 - Before files go, a Send window shows them (pictures as thumbnails) with a
   caption field; pasting a picture (Alt+V, e.g. copied in ShowImage or a web
   page) or files copied in Tracker into the message box sends them the same way
@@ -232,7 +237,10 @@ On Haiku, `make file-saving-test` checks saving received files and
 `make voice-record-test` checks the voice message files it records and
 `make media-probe-test` what files are sent as (photo, video or document) and
 `make video-playback-test` the viewer's video playback (timing, pausing,
-seeking, the end, looping, and sound staying with the picture).
+seeking, the end, looping, and sound staying with the picture), and
+`make formatting-test` the Markdown in sent and edited messages, read by
+TDLib, with the main window's Edit and Save (it opens a window for a few
+seconds).
 `make lottie-render` builds a tool that draws frames of an animated sticker
 (`.tgs`, Lottie `.json` or `.webm`) into a PNG.
 

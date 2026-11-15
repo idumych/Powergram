@@ -956,6 +956,10 @@ MainWindow::_Send(bool silent, int64 sendAt, bool whenOnline)
 		edit.AddInt64("chat_id", fOpenChat);
 		edit.AddInt64("message_id", fEditing);
 		edit.AddString("text", fEntry->Text());
+		for (const auto& mention : fMentioned) {
+			edit.AddString("mention_name", mention.first.c_str());
+			edit.AddInt64("mention_user", mention.second);
+		}
 		be_app->PostMessage(&edit);
 	} else {
 		BMessage send(kMsgSendText);
@@ -1166,6 +1170,31 @@ MainWindow::_StartEdit(int64 messageId)
 	fEntry->SetText(row->text);
 	fEntry->MakeFocus(true);
 	fEntry->TextView()->SelectAll();
+	fMentioned.clear();
+	// The text shows at once; its formatting, as Markdown, comes from the
+	// app (kMsgEditDraft).
+	BMessage ask(kMsgEditMarkdown);
+	ask.AddInt64("chat_id", fOpenChat);
+	ask.AddInt64("message_id", messageId);
+	be_app->PostMessage(&ask);
+}
+
+
+void
+MainWindow::_SetEditDraft(const BMessage* draft)
+{
+	// Still editing that message, and nothing typed into it yet.
+	int64 id = draft->GetInt64("message_id", 0);
+	const MessageRow* row = fMessages->Row(id);
+	if (draft->GetInt64("chat_id", 0) != fOpenChat || fEditing != id || row == nullptr
+		|| row->text != fEntry->Text())
+		return;
+	fEntry->SetText(draft->GetString("text", ""));
+	fEntry->TextView()->SelectAll();
+	fMentioned.clear();
+	const char* name;
+	for (int32 i = 0; draft->FindString("mention_name", i, &name) == B_OK; i++)
+		fMentioned.push_back({name, draft->GetInt64("mention_user", i, 0)});
 }
 
 
@@ -1178,8 +1207,10 @@ MainWindow::_CancelCompose()
 	if (!fComposeBar->IsHidden())
 		fComposeBar->Hide();
 	fSendButton->SetLabel(fCanJoin ? "Join" : "Send");
-	if (wasEditing)
+	if (wasEditing) {
 		fEntry->SetText("");
+		fMentioned.clear();   // the edited message's
+	}
 }
 
 
@@ -1795,6 +1826,9 @@ MainWindow::MessageReceived(BMessage* message)
 			break;
 		case kMsgReply:
 			_StartReply(message->GetInt64("message_id", 0));
+			break;
+		case kMsgEditDraft:
+			_SetEditDraft(message);
 			break;
 		case kMsgEdit:
 			_StartEdit(message->GetInt64("message_id", 0));

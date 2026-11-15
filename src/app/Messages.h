@@ -68,8 +68,10 @@ enum {
 	// parallel arrays "id" (int64), "sender", "text", "time", "outgoing",
 	// "read", "pending", "failed", "edited", "service" (bools)
 	kMsgHistory = 'hist',
-	// main window → app: "chat_id" (int64), "text"; "silent" (bool, no
-	// sound), "send_at" (int64, scheduled) or "when_online" (bool)
+	// main window → app: "chat_id" (int64), "text" (with Markdown, which
+	// the app reads: Formatting.h), "reply_to" (int64), "mention_name" and
+	// "mention_user" arrays; "silent" (bool, no sound), "send_at" (int64,
+	// scheduled) or "when_online" (bool)
 	kMsgSendText = 'stxt',
 	// main window → app: the entry changed; "chat_id" (int64), "empty" (bool)
 	kMsgEntryChanged = 'entc',
@@ -87,8 +89,16 @@ enum {
 	// same plus bools "can_reply", "can_edit", "can_delete_self",
 	// "can_delete_all", "can_copy"
 	kMsgMessageProperties = 'mprp',
-	// main window → app: "chat_id", "message_id", "text"
+	// main window → app: "chat_id", "message_id", "text" (Markdown, as
+	// kMsgSendText's), and "mention_name"/"mention_user" arrays
 	kMsgEditText = 'etxt',
+	// main window → app: editing started, "chat_id", "message_id"; the app
+	// answers with kMsgEditDraft
+	kMsgEditMarkdown = 'edmd',
+	// app → main window: the message as the box shows it for editing:
+	// "chat_id", "message_id", "text" (its formatting as Markdown), and
+	// "mention_name"/"mention_user" arrays (people mentioned by name)
+	kMsgEditDraft = 'eddr',
 	// main window → app: "chat_id", "message_id", "for_everyone" (bool)
 	kMsgDeleteMessage = 'dmsg',
 	// app → main window: "id" (int64) of a chat to select (notification click)
