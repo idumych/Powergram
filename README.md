@@ -7,13 +7,13 @@ It talks to Telegram through [TDLib](https://github.com/tdlib/td), Telegram's
 own client library, and keeps Paper Plane's layout: the chat list on the left,
 the open chat on the right.
 
-**Preview.** Version 0.2.11 is a preview for Haiku, Renku OS and Linux.
+**Preview.** Version 0.2.12 is a preview for Haiku, Renku OS and Linux.
 From [Releases](https://github.com/idumych/Powergram/releases):
 
-- Haiku and Renku OS (x86_64): `pkgman install ./powergram-0.2.11-1-x86_64.hpkg`
+- Haiku and Renku OS (x86_64): `pkgman install ./powergram-0.2.12-1-x86_64.hpkg`
   (an arm64 package is there too, for the Haiku arm64 nightlies)
 - Linux (x86_64 or aarch64, glibc 2.39 or newer, X11 or Wayland):
-  `chmod +x Powergram-0.2.11-x86_64.AppImage && ./Powergram-0.2.11-x86_64.AppImage`
+  `chmod +x Powergram-0.2.12-x86_64.AppImage && ./Powergram-0.2.12-x86_64.AppImage`
   (`-aarch64` on ARM)
 
 The app was called Paper Plane for Haiku up to 0.1.0; Powergram replaces
@@ -80,7 +80,8 @@ made-up data so far.
 - Sending text, photos, videos (MP4 and QuickTime, with their size and
   length), GIFs (as GIFs, which keep moving), files (file panel or drag and
   drop from Tracker) and stickers; several photos and videos at once go as
-  an album; replying, editing, deleting, copying
+  an album; replying, editing (a file attached while editing a photo, video
+  or file replaces it), deleting, copying
 - Before files go, a Send window shows them (pictures as thumbnails) with a
   caption field; pasting a picture (Alt+V, e.g. copied in ShowImage or a web
   page) or files copied in Tracker into the message box sends them the same way
@@ -99,8 +100,8 @@ made-up data so far.
 - Emoji and sticker pickers
 - Notifications that follow each chat's mute settings
 - A Deskbar icon with the number of unread chats: click it to bring Powergram
-  forward, drop files on it to send them to a chat you pick (Settings can
-  turn it off)
+  forward, drop files on it to send them to a chat you pick. It stays after
+  quitting, to start Powergram; Settings can turn that, or the icon, off
 - Read receipts, typing status and online status sent the way the official
   apps send them, and every request throttled (a few at a time, and a full
   stop when Telegram asks to wait)
