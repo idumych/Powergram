@@ -301,8 +301,11 @@ App::~App()
 	delete fVoiceRunner;
 	delete fRecordRunner;
 	// The item stays in Deskbar as a launcher (a click starts the app), so
-	// it's left there, without a count that would go stale.
-	if (fDeskbarItem.IsValid()) {
+	// it's left there, without a count that would go stale; or it goes, if
+	// the user would rather.
+	if (fPrefs.deskbar && !fPrefs.deskbarStay)
+		BDeskbar().RemoveItem(kDeskbarItemName);
+	else if (fDeskbarItem.IsValid()) {
 		BMessage count(kMsgDeskbarUnread);
 		count.AddInt32("unread", 0);
 		fDeskbarItem.SendMessage(&count);
@@ -1203,6 +1206,12 @@ App::_SendFiles(const BMessage* message)
 		if (!entry.IsFile() || entry.GetPath(&path) != B_OK)
 			continue;  // folders aren't sent
 		files.push_back(ProbeFile(path.Path()));
+	}
+	// A photo, video or file being edited: the one file replaces it.
+	if (int64 editId = message->GetInt64("edit_id", 0)) {
+		if (files.size() == 1)
+			_Send(pp::request::EditMedia(chatId, editId, files[0], caption));
+		return;
 	}
 	for (const json& request : pp::request::SendFiles(chatId, files, caption, replyTo))
 		_Send(request);
@@ -2901,9 +2910,15 @@ App::MessageReceived(BMessage* message)
 			break;
 
 		case kMsgEditText:
-			_Send(pp::request::EditText(message->GetInt64("chat_id", 0),
-				message->GetInt64("message_id", 0), message->GetString("text", "")));
+		{
+			int64 chatId = message->GetInt64("chat_id", 0);
+			int64 messageId = message->GetInt64("message_id", 0);
+			const char* text = message->GetString("text", "");
+			_Send(message->GetBool("caption", false)
+				? pp::request::EditCaption(chatId, messageId, text)
+				: pp::request::EditText(chatId, messageId, text));
 			break;
+		}
 
 		case kMsgDeleteMessage:
 			_Send(pp::request::Delete(message->GetInt64("chat_id", 0),

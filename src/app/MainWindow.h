@@ -43,6 +43,8 @@ private:
 	void _StartReply(int64 messageId);
 	void _StartEdit(int64 messageId);
 	void _CancelCompose();
+	// Whether a file can replace this message's photo, video or file.
+	bool _CanReplaceMedia(int64 messageId) const;
 	void _AskDelete(int64 messageId, bool canSelf, bool canAll);
 	void _SelectChat(int64 chatId);
 	void _SaveDraft();

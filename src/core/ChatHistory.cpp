@@ -924,6 +924,17 @@ EditText(int64_t chatId, int64_t messageId, const std::string& text)
 }
 
 
+static json Caption(const std::string& text);
+
+
+json
+EditCaption(int64_t chatId, int64_t messageId, const std::string& caption)
+{
+	return {{"@type", "editMessageCaption"}, {"chat_id", chatId},
+		{"message_id", messageId}, {"caption", Caption(caption)}, {"@extra", "edit"}};
+}
+
+
 json
 Delete(int64_t chatId, const std::vector<int64_t>& ids, bool forEveryone)
 {
@@ -1106,6 +1117,16 @@ SendFiles(int64_t chatId, const std::vector<OutgoingFile>& files, const std::str
 		i = end;
 	}
 	return requests;
+}
+
+
+json
+EditMedia(int64_t chatId, int64_t messageId, const OutgoingFile& file,
+	const std::string& caption)
+{
+	return {{"@type", "editMessageMedia"}, {"chat_id", chatId},
+		{"message_id", messageId}, {"input_message_content", FileContent(file, caption)},
+		{"@extra", "edit"}};
 }
 
 

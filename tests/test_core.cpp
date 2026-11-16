@@ -1364,6 +1364,14 @@ TestSendingFiles()
 		&& r[0]["input_message_content"]["caption"]["text"] == "Look");
 	CHECK(IsGif("image/gif", "/x") && IsGif("", "/a/Cat.GIF") && !IsGif("image/png", "/a.png")
 		&& !IsGif("", "/gif"));
+	// Replacing a sent photo edits that message rather than sending one.
+	json edit = request::EditMedia(42, 9, file(OutgoingFile::kPhoto, "/new.jpg"), "Better");
+	CHECK(edit["@type"] == "editMessageMedia" && edit["message_id"] == 9
+		&& edit["input_message_content"]["@type"] == "inputMessagePhoto"
+		&& edit["input_message_content"]["photo"]["photo"]["path"] == "/new.jpg"
+		&& edit["input_message_content"]["caption"]["text"] == "Better");
+	edit = request::EditCaption(42, 9, "");
+	CHECK(edit["@type"] == "editMessageCaption" && edit["caption"]["text"] == "");
 }
 
 

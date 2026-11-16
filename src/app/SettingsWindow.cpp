@@ -37,6 +37,7 @@ AppSettings::ToMessage(BMessage* message) const
 	message->AddBool("sound", sound);
 	message->AddInt32("text_size", textSize);
 	message->AddBool("deskbar", deskbar);
+	message->AddBool("deskbar_stay", deskbarStay);
 	message->AddBool("media_in_app", mediaInApp);
 	message->AddInt32("drag_scroll", dragScroll);
 }
@@ -51,6 +52,7 @@ AppSettings::FromMessage(const BMessage* message)
 	s.sound = message->GetBool("sound", true);
 	s.textSize = message->GetInt32("text_size", 1);
 	s.deskbar = message->GetBool("deskbar", true);
+	s.deskbarStay = message->GetBool("deskbar_stay", true);
 	s.mediaInApp = message->GetBool("media_in_app", false);
 	s.dragScroll = message->GetInt32("drag_scroll", 0);
 	return s;
@@ -72,6 +74,9 @@ SettingsWindow::SettingsWindow(BMessenger app, const AppSettings& current)
 		new BMessage(kMsgChanged));
 	fDeskbar = new BCheckBox("deskbar", "Show Powergram in the Deskbar with the unread count",
 		new BMessage(kMsgChanged));
+	fDeskbarStay = new BCheckBox("deskbar stay", "Keep it there after quitting",
+		new BMessage(kMsgChanged));
+	fDeskbarStay->SetToolTip("A click on it starts Powergram");
 	BPopUpMenu* sizes = new BPopUpMenu("sizes");
 	for (int32 i = 0; i < 3; i++)
 		sizes->AddItem(new BMenuItem(kSizes[i], new BMessage(kMsgChanged)));
@@ -105,6 +110,10 @@ SettingsWindow::SettingsWindow(BMessenger app, const AppSettings& current)
 			.Add(soundHint)
 		.End()
 		.Add(fDeskbar)
+		.AddGroup(B_VERTICAL, 0)
+			.SetInsets(B_USE_ITEM_INSETS, 0, 0, 0)
+			.Add(fDeskbarStay)
+		.End()
 		.AddGrid(B_USE_DEFAULT_SPACING, B_USE_SMALL_SPACING)
 			.AddMenuField(fTextSize, 0, 0)
 			.AddMenuField(fMediaOpen, 0, 1)
@@ -115,6 +124,10 @@ SettingsWindow::SettingsWindow(BMessenger app, const AppSettings& current)
 			.Add(fRevertButton)
 			.AddGlue()
 		.End();
+#ifdef APP_COSMOE
+	// On Linux the tray icon is part of the app and goes when it quits.
+	fDeskbarStay->Hide();
+#endif
 	_Show(current);
 	CenterOnScreen();
 }
@@ -128,6 +141,8 @@ SettingsWindow::_Show(const AppSettings& s)
 	fPreviews->SetEnabled(s.notifications);
 	fSound->SetValue(s.sound);
 	fDeskbar->SetValue(s.deskbar);
+	fDeskbarStay->SetValue(s.deskbarStay);
+	fDeskbarStay->SetEnabled(s.deskbar);
 	if (BMenuItem* item = fTextSize->Menu()->ItemAt(s.textSize))
 		item->SetMarked(true);
 	if (BMenuItem* item = fMediaOpen->Menu()->ItemAt(s.mediaInApp ? 1 : 0))
@@ -147,6 +162,7 @@ SettingsWindow::_Read() const
 	s.previews = fPreviews->Value() == B_CONTROL_ON;
 	s.sound = fSound->Value() == B_CONTROL_ON;
 	s.deskbar = fDeskbar->Value() == B_CONTROL_ON;
+	s.deskbarStay = fDeskbarStay->Value() == B_CONTROL_ON;
 	BMenuItem* marked = fTextSize->Menu()->FindMarked();
 	s.textSize = marked != nullptr ? fTextSize->Menu()->IndexOf(marked) : 1;
 	marked = fMediaOpen->Menu()->FindMarked();

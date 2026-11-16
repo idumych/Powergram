@@ -247,7 +247,10 @@ SendFilesWindow::SendFilesWindow(BMessenger target, BMessage* send, const char* 
 		fList->AddItem(new FileItem(ref, roundf(em * 3.5f)));
 	}
 	BString title;
-	if (pictures == count)
+	bool replace = send->HasInt64("edit_id");
+	if (replace)
+		title = "Replace with this file";
+	else if (pictures == count)
 		title << "Send " << count << (count == 1 ? " picture" : " pictures");
 	else
 		title << "Send " << count << (count == 1 ? " file" : " files");
@@ -260,7 +263,7 @@ SendFilesWindow::SendFilesWindow(BMessenger target, BMessage* send, const char* 
 	fCaption->SetToolTip(count > 1 ? "Goes with the first file" : nullptr);
 	fProblem = new BStringView("problem", "");
 	fProblem->SetHighUIColor(B_FAILURE_COLOR);
-	fSendButton = new BButton("send", "Send", new BMessage(kMsgSend));
+	fSendButton = new BButton("send", replace ? "Replace" : "Send", new BMessage(kMsgSend));
 
 	BLayoutBuilder::Group<>(this, B_VERTICAL)
 		.SetInsets(B_USE_WINDOW_INSETS)

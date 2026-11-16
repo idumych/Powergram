@@ -227,6 +227,8 @@ void AddReply(json& request, int64_t replyTo);
 json SendText(int64_t chatId, const std::string& text, int64_t replyTo = 0,
 	const json& entities = json());
 json EditText(int64_t chatId, int64_t messageId, const std::string& text);
+// A photo's, video's or file's caption (editMessageText is for text only).
+json EditCaption(int64_t chatId, int64_t messageId, const std::string& caption);
 json Delete(int64_t chatId, const std::vector<int64_t>& ids, bool forEveryone);
 json GetMessage(int64_t chatId, int64_t messageId, const std::string& extra);
 json GetMessages(int64_t chatId, const std::vector<int64_t>& ids, const std::string& extra);
@@ -276,6 +278,9 @@ namespace request {
 // message.
 std::vector<json> SendFiles(int64_t chatId, const std::vector<OutgoingFile>& files,
 	const std::string& caption, int64_t replyTo = 0);
+// Replaces a sent photo, video or file with `file`, keeping the message.
+json EditMedia(int64_t chatId, int64_t messageId, const OutgoingFile& file,
+	const std::string& caption);
 
 } // namespace request
 

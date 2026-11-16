@@ -17,6 +17,8 @@ struct AppSettings {
 	bool sound = true;          // the "Powergram new message" system sound
 	int32 textSize = 1;         // 0 small, 1 normal, 2 large
 	bool deskbar = true;        // the icon with the unread count in the Deskbar
+	// It stays there after quitting, as a launcher (a click starts the app).
+	bool deskbarStay = true;
 	// Photos and videos open in Powergram's viewer rather than in the
 	// system's apps (ShowImage, MediaPlayer), which many people prefer.
 	bool mediaInApp = false;
@@ -27,6 +29,7 @@ struct AppSettings {
 	{
 		return notifications == o.notifications && previews == o.previews
 			&& sound == o.sound && textSize == o.textSize && deskbar == o.deskbar
+			&& deskbarStay == o.deskbarStay
 			&& mediaInApp == o.mediaInApp && dragScroll == o.dragScroll;
 	}
 	void ToMessage(BMessage* message) const;
@@ -52,6 +55,7 @@ private:
 	BCheckBox* fPreviews;
 	BCheckBox* fSound;
 	BCheckBox* fDeskbar;
+	BCheckBox* fDeskbarStay;
 	BMenuField* fTextSize;
 	BMenuField* fMediaOpen;
 	BMenuField* fDragScroll;

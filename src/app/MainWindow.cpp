@@ -954,13 +954,16 @@ void
 MainWindow::_Send(bool silent, int64 sendAt, bool whenOnline)
 {
 	BString text(fEntry->Text());
-	if (fOpenChat == 0 || text.Trim().IsEmpty())
+	const MessageRow* edited = fEditing != 0 ? fMessages->Row(fEditing) : nullptr;
+	bool caption = edited != nullptr && edited->mediaKind != 0;
+	if (fOpenChat == 0 || (text.Trim().IsEmpty() && !caption))
 		return;
 	if (fEditing != 0) {
 		BMessage edit(kMsgEditText);
 		edit.AddInt64("chat_id", fOpenChat);
 		edit.AddInt64("message_id", fEditing);
 		edit.AddString("text", fEntry->Text());
+		edit.AddBool("caption", caption);
 		be_app->PostMessage(&edit);
 	} else {
 		BMessage send(kMsgSendText);
@@ -1178,6 +1181,27 @@ MainWindow::_StartEdit(int64 messageId)
 }
 
 
+bool
+MainWindow::_CanReplaceMedia(int64 messageId) const
+{
+	// Telegram replaces photos, videos, GIFs and files; not stickers or
+	// voice and round video messages.
+	const MessageRow* row = fMessages->Row(messageId);
+	if (row == nullptr)
+		return false;
+	switch (row->mediaKind) {
+		case pp::Media::kPhoto:
+		case pp::Media::kVideo:
+		case pp::Media::kAnimation:
+		case pp::Media::kIcon:
+		case pp::Media::kDocument:
+			return true;
+		default:
+			return false;
+	}
+}
+
+
 void
 MainWindow::_CancelCompose()
 {
@@ -1334,12 +1358,27 @@ MainWindow::_SendFiles(const BMessage* message)
 	if (fOpenChat == 0 || !message->HasRef("refs"))
 		return;
 	// The Send window asks for a caption first: what's typed in the entry
-	// starts it; a pending reply applies.
+	// starts it; a pending reply applies. While a photo, video or file is
+	// being edited, one file replaces it instead.
 	BMessage* send = new BMessage(kMsgSendFiles);
 	send->AddInt64("chat_id", fOpenChat);
 	entry_ref ref;
 	for (int32 i = 0; message->FindRef("refs", i, &ref) == B_OK; i++)
 		send->AddRef("refs", &ref);
+	if (fEditing != 0) {
+		const char* problem = nullptr;
+		if (!_CanReplaceMedia(fEditing))
+			problem = "Only a photo, video or file can be replaced. Cancel the edit to "
+				"send this as a new message.";
+		else if (message->HasRef("refs", 1))
+			problem = "Choose one file to replace it with.";
+		if (problem != nullptr) {
+			delete send;
+			(new BAlert("replace", problem, "OK"))->Go(nullptr);
+			return;
+		}
+		send->AddInt64("edit_id", fEditing);
+	}
 	send->AddBool("pasted", message->GetBool("pasted", false));
 	send->AddInt64("reply_to", fReplyTo);
 	send->AddString("entry_text", fEntry->Text());
