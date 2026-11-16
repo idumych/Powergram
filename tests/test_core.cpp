@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Host tests for the portable core: `make test`.
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -84,6 +85,10 @@ TestAuthFlow()
 	CHECK(flow.State().codeInfo == "by SMS");
 	CHECK(flow.State().codeLength == 5);
 	CHECK(flow.CodeRequest("22 222")["code"] == "22222");
+	AuthFlow word(params);
+	word.Handle(AuthUpdate({{"@type", "authorizationStateWaitCode"},
+		{"code_info", {{"type", {{"@type", "authenticationCodeTypeSmsWord"}}}}}}), out);
+	CHECK(word.CodeRequest(" plane ")["code"] == "plane");
 
 	flow.Handle(AuthUpdate({{"@type", "authorizationStateWaitPassword"},
 		{"password_hint", "cat"}}), out);
@@ -147,6 +152,16 @@ TestChatList()
 	CHECK(sorted[1].lastText == "this is the way!");
 	CHECK(sorted[1].lastSender == "You");
 	CHECK(sorted[1].lastDate == 1700000000);
+
+	// "Read" ticks only when the outbox has read up to our last message.
+	CHECK(!list.Find(2)->outgoingRead);
+	list.Apply({{"@type", "updateChatReadOutbox"}, {"chat_id", 2}, {"last_read_outbox_message_id", 5}});
+	CHECK(!list.Find(2)->outgoingRead);
+	list.Apply({{"@type", "updateChatReadOutbox"}, {"chat_id", 2}, {"last_read_outbox_message_id", 7}});
+	CHECK(list.Find(2)->outgoingRead);
+	list.Apply({{"@type", "updateChatLastMessage"}, {"chat_id", 2},
+		{"last_message", {{"id", 6}, {"is_outgoing", true}}}});
+	CHECK(list.Find(2)->outgoingRead);
 
 	// A new message moves Kevin to the top.
 	CHECK(list.Apply({{"@type", "updateChatLastMessage"}, {"chat_id", 1},
@@ -544,6 +559,9 @@ TestMedia()
 	files.DownloadFailed(8);
 	requests = files.TakeDownloads();
 	CHECK(requests.size() == 1 && requests[0]["file_id"] == 6);
+	// A download that stopped (network error) frees its slot too.
+	files.Apply({{"@type", "updateFile"}, {"file", File(6)}});
+	CHECK(files.Active() == 0);
 	CHECK(request::Download(1, 99)["priority"] == 32);
 	CHECK(request::OpenContent(42, 1)["@type"] == "openMessageContent");
 	json info = {{"reactions", {{"reactions", json::array({
@@ -853,6 +871,9 @@ TestUnreadAndNewer()
 	CHECK(h.NewestId() == 41 && h.OldestId() == 40);
 	h.SetAtLatest(false);
 	CHECK(!h.Apply({{"@type", "updateNewMessage"}, {"message", Msg(1, 60, "far")}}));
+	CHECK(!h.Apply({{"@type", "updateMessageSendSucceeded"}, {"old_message_id", 1000},
+		{"message", Msg(1, 62, "sent", true)}}));
+	CHECK(h.Size() == 2);
 	h.SetAtLatest(true);
 	CHECK(h.Apply({{"@type", "updateNewMessage"}, {"message", Msg(1, 61, "here")}}));
 	CHECK(h.NewestId() == 61);
@@ -1252,6 +1273,14 @@ TestMentions()
 	CHECK(entities[0]["offset"] == 3 && entities[0]["length"] == 3
 		&& entities[0]["type"]["user_id"] == 5);
 	CHECK(entities[1]["offset"] == 11 && entities[1]["type"]["@type"] == "textEntityTypeMentionName");
+	// A whole word, nearest where it was put, even after edits before it.
+	CHECK(MentionEntities("Annual report for Ann", {{"Ann", 5}})[0]["offset"] == 18);
+	entities = MentionEntities("Hey Alex and Alex", {{"Alex", 1}, {"Alex", 2}}, {0, 9});
+	CHECK(entities[0]["offset"] == 4 && entities[1]["offset"] == 13);
+	// Where it was put wins, even beside non-ASCII text; a stale offset past
+	// the end falls back to searching.
+	CHECK(MentionEntities("Ann\xE2\x80\x99s file", {{"Ann", 5}}, {0})[0]["offset"] == 0);
+	CHECK(MentionEntities("for Ann", {{"Ann", 5}}, {50})[0]["offset"] == 4);
 	json send = request::SendText(42, text, 0, entities);
 	CHECK(send["input_message_content"]["text"]["entities"].size() == 2);
 	CHECK(!request::SendText(42, "plain")["input_message_content"]["text"].contains("entities"));
@@ -1391,6 +1420,8 @@ TestProfile()
 	for (int i = 0; i < 70; i++)
 		bio += "\xC3\xA9";   // é: 70 characters, 140 bytes
 	CHECK(CharacterCount(bio) == 70 && ProfileProblem("Ian", "", bio).empty());
+	// Telegram counts UTF-16 units: an emoji outside the BMP is two.
+	CHECK(CharacterCount("\xF0\x9F\x98\x80") == 2 && CharacterCount("\xC3\xA9") == 1);
 	CHECK(!ProfileProblem("Ian", "", bio + "x").empty());
 
 	json reply = {{"@type", "sessions"}, {"sessions", json::array({
@@ -1885,6 +1916,28 @@ TestLottie()
 	LottieAnimation bad;
 	CHECK(!bad.Load("{}") && !bad.Load("not json") && !bad.Load("{\"layers\":[],\"w\":0}"));
 
+	// Stickers from strangers: groups nested 200,000 deep load without
+	// overflowing the stack, and a precomp that uses itself four times
+	// draws in bounded time (4^16 draws a frame before).
+	std::string head = "{\"v\":\"5\",\"fr\":30,\"ip\":0,\"op\":30,\"w\":100,\"h\":100,";
+	std::string deep = head + "\"layers\":[{\"ty\":4,\"ip\":0,\"op\":30,\"st\":0,\"shapes\":[";
+	for (int i = 0; i < 200000; i++)
+		deep += "{\"ty\":\"gr\",\"it\":[";
+	for (int i = 0; i < 200000; i++)
+		deep += "]}";
+	deep += "]}]}";
+	LottieAnimation nested;
+	CHECK(nested.Load(deep));
+	nested.Render(0, 100, 100);
+	std::string self = "{\"ty\":0,\"refId\":\"a\",\"ip\":0,\"op\":30,\"st\":0}";
+	std::string fan = head + "\"assets\":[{\"id\":\"a\",\"layers\":[" + self + "," + self + ","
+		+ self + "," + self + "]}],\"layers\":[" + self + "]}";
+	LottieAnimation fanned;
+	CHECK(fanned.Load(fan));
+	auto started = std::chrono::steady_clock::now();
+	fanned.Render(0, 100, 100);
+	CHECK(std::chrono::steady_clock::now() - started < std::chrono::seconds(1));
+
 	// A 100 × 100 animation: a red square moving right over 30 frames
 	// (linear), with a blue circle above it drawn half transparent.
 	json linear = {{"x", {1}}, {"y", {1}}};
@@ -2110,6 +2163,13 @@ TestWebm()
 		&& !part.frames.empty());
 	CHECK(!ParseWebm("not a webm file", &part) && !ParseWebm("", &part));
 	CHECK(!ParseWebm(file.substr(0, 30), &part));
+	// Clusters of unknown size nested 300,000 deep: read, not a stack overflow.
+	// (the file's index names the cluster id too: look after the tracks)
+	std::string bomb = file.substr(0, file.find("\x1F\x43\xB6\x75", file.find("\x16\x54\xAE\x6B")));
+	bomb.replace(bomb.find("\x18\x53\x80\x67") + 4, 8, std::string(1, '\x01') + std::string(7, '\xFF'));
+	for (int i = 0; i < 300000; i++)   // and a segment of unknown size to hold them
+		bomb += "\x1F\x43\xB6\x75\xFF";
+	CHECK(!ParseWebm(bomb, &part));
 }
 
 

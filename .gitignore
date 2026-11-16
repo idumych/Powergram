@@ -22,3 +22,5 @@ dist/
 *.AppImage
 .cosmoe/
 .haiku-headers/
+.haiku-arm64/
+.vos-sdk/

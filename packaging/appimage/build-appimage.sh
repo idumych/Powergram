@@ -19,15 +19,20 @@ ROOT=$(pwd)
 . ./haiku-app.env
 
 # Which Cosmoe to build: Hokku, the fork with fixes for freestanding Haiku/Renku app ports
-# (pointer events, tooltips, font styles). haiku-app.env may override COSMOE_REPO (owner/name
-# on GitHub) and COSMOE_TAG (a tag or branch), e.g. to try upstream haydentech/cosmoe.
+# (pointer events, tooltips, font styles), at a pinned commit of its hokku branch.
+# haiku-app.env may override COSMOE_REPO (owner/name on GitHub) and COSMOE_TAG (a commit,
+# tag or branch), e.g. to try upstream haydentech/cosmoe.
 COSMOE_REPO=${COSMOE_REPO:-idumych/hokku}
-COSMOE_TAG=${COSMOE_TAG:-hokku}
+COSMOE_TAG=${COSMOE_TAG:-517999b3ab8263c8ed49a492558f8ef0749fa515}
 LINUXDEPLOY_TAG=1-alpha-20251107-1
 APPIMAGETOOL_TAG=1.9.1
 case "$(uname -m)" in
-	x86_64) ARCH=x86_64 ;;
-	aarch64|arm64) ARCH=aarch64 ;;
+	x86_64) ARCH=x86_64
+		LINUXDEPLOY_SHA=c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d
+		APPIMAGETOOL_SHA=ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0 ;;
+	aarch64|arm64) ARCH=aarch64
+		LINUXDEPLOY_SHA=620095110d693282b8ebeb244a95b5e911cf8f65f76c88b4b47d16ae6346fcff
+		APPIMAGETOOL_SHA=f0837e7448a0c1e4e650a93bb3e85802546e60654ef287576f46c71c126a9158 ;;
 	*) echo "build-appimage: unsupported architecture $(uname -m)" >&2; exit 1 ;;
 esac
 
@@ -35,20 +40,27 @@ WORK="$ROOT/.cosmoe"
 OUT="$ROOT/${APP_NAME}-${VERSION}-${ARCH}.AppImage"
 mkdir -p "$WORK/tools"
 
-# 1. Cosmoe
+# 1. Cosmoe. The stage records what it was built from, so a new COSMOE_TAG rebuilds it.
 if [ -z "${COSMOE_STAGE:-}" ]; then
 	COSMOE_STAGE="$WORK/stage"
-	if [ ! -f "$COSMOE_STAGE/usr/lib/libbe.so" ]; then
-		[ -d "$WORK/src" ] || git clone --depth 1 --branch "$COSMOE_TAG" \
-			"https://github.com/$COSMOE_REPO.git" "$WORK/src"
+	if [ ! -f "$COSMOE_STAGE/usr/lib/libbe.so" ] \
+			|| [ "$(cat "$COSMOE_STAGE/.source" 2>/dev/null)" != "$COSMOE_REPO@$COSMOE_TAG" ]; then
+		[ -d "$WORK/src/.git" ] || git init -q "$WORK/src"
+		git -C "$WORK/src" fetch -q --depth 1 "https://github.com/$COSMOE_REPO.git" "$COSMOE_TAG"
+		git -C "$WORK/src" checkout -q --force FETCH_HEAD
 		# Hokku's enable_apps=false leaves out its own apps and their catalogs:
 		# the AppImage needs only the libraries, add-ons and data.
 		NOAPPS=""
 		grep -q enable_apps "$WORK/src/meson_options.txt" 2>/dev/null && NOAPPS="-Denable_apps=false"
-		meson setup "$WORK/build" "$WORK/src" --prefix=/usr --libdir=lib \
+		# --reconfigure: a re-run after a failed build finds the build dir already set up
+		RECONF=""
+		[ ! -f "$WORK/build/meson-private/coredata.dat" ] || RECONF=--reconfigure
+		meson setup $RECONF "$WORK/build" "$WORK/src" --prefix=/usr --libdir=lib \
 			--buildtype=release -Denable_unit_test_compile=false $NOAPPS
 		ninja -C "$WORK/build"
+		rm -rf "$COSMOE_STAGE"
 		DESTDIR="$COSMOE_STAGE" meson install -C "$WORK/build" --no-rebuild
+		echo "$COSMOE_REPO@$COSMOE_TAG" > "$COSMOE_STAGE/.source"
 	fi
 fi
 CROOT="$COSMOE_STAGE/usr"
@@ -156,11 +168,12 @@ chmod +x "$GEN/AppRun"
 #    codecs, the app's own -l libraries), leaving out the ones every desktop
 #    has (glibc, X11, fontconfig, GL...). NO_STRIP: linuxdeploy's strip is
 #    older than some distros' libraries.
-fetch() {
+fetch() {   # name url sha256
 	[ -x "$WORK/tools/$1" ] || { curl -fsSL "$2" -o "$WORK/tools/$1"; chmod +x "$WORK/tools/$1"; }
+	echo "$3  $WORK/tools/$1" | sha256sum -c --quiet
 }
-fetch linuxdeploy "https://github.com/linuxdeploy/linuxdeploy/releases/download/$LINUXDEPLOY_TAG/linuxdeploy-$ARCH.AppImage"
-fetch appimagetool "https://github.com/AppImage/appimagetool/releases/download/$APPIMAGETOOL_TAG/appimagetool-$ARCH.AppImage"
+fetch linuxdeploy "https://github.com/linuxdeploy/linuxdeploy/releases/download/$LINUXDEPLOY_TAG/linuxdeploy-$ARCH.AppImage" "$LINUXDEPLOY_SHA"
+fetch appimagetool "https://github.com/AppImage/appimagetool/releases/download/$APPIMAGETOOL_TAG/appimagetool-$ARCH.AppImage" "$APPIMAGETOOL_SHA"
 export APPIMAGE_EXTRACT_AND_RUN=1	# no FUSE needed (CI containers)
 
 # linuxdeploy appends $ORIGIN to a RUNPATH but keeps what is there, and

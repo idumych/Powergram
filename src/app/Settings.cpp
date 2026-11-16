@@ -7,7 +7,10 @@
 #include <FindDirectory.h>
 #include <Message.h>
 
+#include <cerrno>
+#include <cstdio>
 #include <cstdlib>
+#include <unistd.h>
 #include <sys/stat.h>
 
 Settings::Settings()
@@ -125,13 +128,25 @@ Settings::Save() const
 	for (const std::string& emoji : recentEmoji)
 		archive.AddString("recent_emoji", emoji.c_str());
 
+	// Written beside it, then renamed over it: a crash or a full disk
+	// leaves the old file (and its API key), not half a new one.
 	BPath path = Directory();
 	path.Append("settings");
-	BFile file(path.Path(), B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
+	BString temp(path.Path());
+	temp << ".new";
+	BFile file(temp.String(), B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
 	status_t status = file.InitCheck();
 	if (status != B_OK)
 		return status;
 	// The API hash is a secret of its own; keep the file private.
 	file.SetPermissions(S_IRUSR | S_IWUSR);
-	return archive.Flatten(&file);
+	status = archive.Flatten(&file);
+	if (status == B_OK)
+		status = file.Sync();
+	file.Unset();
+	if (status == B_OK && rename(temp.String(), path.Path()) != 0)
+		status = errno;
+	if (status != B_OK)
+		unlink(temp.String());
+	return status;
 }

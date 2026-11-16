@@ -6,14 +6,14 @@ name: appimage
 # (Xvfb) and Wayland (headless sway). Run it by hand before a release
 # (gh workflow run appimage.yml --ref <branch>) and test those artifacts; on a v* tag it
 # attaches each AppImage to the release only if that file isn't attached yet, so the tested
-# ones that SHA256SUMS describes are kept.
+# ones that SHA256SUMS describes are kept. Only that last job can write to the repository.
 on:
   workflow_dispatch:
   push:
     tags: ['v*']
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   appimage:
@@ -28,6 +28,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: App settings
         id: app
@@ -40,7 +42,9 @@ jobs:
           REPO=${COSMOE_REPO:-$(sed -n 's/^COSMOE_REPO=\${COSMOE_REPO:-\(.*\)}$/\1/p' packaging/appimage/build-appimage.sh)}
           TAG=${COSMOE_TAG:-$(sed -n 's/^COSMOE_TAG=\${COSMOE_TAG:-\(.*\)}$/\1/p' packaging/appimage/build-appimage.sh)}
           echo "tdlib=$(sed -n 's/^TD_REV=//p' packaging/appimage/build-tdlib.sh)" >> "$GITHUB_OUTPUT"
-          echo "cosmoe=$(echo $REPO | tr / -)-$(git ls-remote https://github.com/$REPO.git "$TAG" | cut -c1-12)" >> "$GITHUB_OUTPUT"
+          # COSMOE_TAG may be a commit, which ls-remote doesn't list
+          REV=$(git ls-remote https://github.com/$REPO.git "$TAG" | cut -c1-12)
+          echo "cosmoe=$(echo $REPO | tr / -)-${REV:-$(echo $TAG | cut -c1-12)}" >> "$GITHUB_OUTPUT"
 
       - name: Install build dependencies
         run: |
@@ -55,22 +59,40 @@ jobs:
             wayland-protocols libfuse3-dev desktop-file-utils \
             ${{ steps.app.outputs.apt }}
 
-      - name: Cache Cosmoe build
-        uses: actions/cache@v4
+      # Restored and saved separately, so a failure in a later step keeps them.
+      - name: Restore Cosmoe build
+        id: cosmoe
+        uses: actions/cache/restore@v4
         with:
           path: .cosmoe/stage
           key: cosmoe-${{ steps.app.outputs.cosmoe }}-ubuntu-24.04-${{ matrix.arch }}-release
 
-      - name: Cache TDLib build
-        uses: actions/cache@v4
+      - name: Restore TDLib build
+        id: tdcache
+        uses: actions/cache/restore@v4
         with:
           path: .cosmoe/tdlib
-          key: tdlib-${{ steps.app.outputs.tdlib }}-ubuntu-24.04-${{ matrix.arch }}
+          key: tdlib-${{ steps.app.outputs.tdlib }}-${{ hashFiles('packaging/appimage/build-tdlib.sh') }}-ubuntu-24.04-${{ matrix.arch }}
 
       - name: Build AppImage
         run: |
           JOBS=$(nproc) sh packaging/appimage/build-appimage.sh
           file ${{ steps.app.outputs.file }}
+
+      # Even when the app's build failed, once Cosmoe or TDLib got built
+      - name: Save Cosmoe build
+        if: ${{ !cancelled() && steps.cosmoe.outputs.cache-hit != 'true' && hashFiles('.cosmoe/stage/usr/lib/libbe.so') != '' }}
+        uses: actions/cache/save@v4
+        with:
+          path: .cosmoe/stage
+          key: ${{ steps.cosmoe.outputs.cache-primary-key }}
+
+      - name: Save TDLib build
+        if: ${{ !cancelled() && steps.tdcache.outputs.cache-hit != 'true' && hashFiles('.cosmoe/tdlib/lib/libtdcore.a') != '' }}
+        uses: actions/cache/save@v4
+        with:
+          path: .cosmoe/tdlib
+          key: ${{ steps.tdcache.outputs.cache-primary-key }}
 
       - name: Smoke-test tools
         run: |
@@ -103,14 +125,29 @@ jobs:
           name: AppImage-${{ matrix.arch }}
           path: ${{ steps.app.outputs.file }}
 
+  # Whichever architectures built, as before when each job attached its own.
+  release:
+    needs: appimage
+    if: ${{ !cancelled() && startsWith(github.ref, 'refs/tags/v') }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: AppImage-*
+          merge-multiple: true
+
       - name: Attach to release
-        if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          F=${{ steps.app.outputs.file }}
-          if gh release view "${GITHUB_REF_NAME}" --json assets --jq '.assets[].name' | grep -qx "$F"; then
-            echo "Release already has $F; leaving it."
-          else
-            gh release upload "${GITHUB_REF_NAME}" "$F"
-          fi
+          for F in *.AppImage; do
+            [ -e "$F" ] || continue
+            if gh release view "${GITHUB_REF_NAME}" --json assets --jq '.assets[].name' | grep -qx "$F"; then
+              echo "Release already has $F; leaving it."
+            else
+              gh release upload "${GITHUB_REF_NAME}" "$F"
+            fi
+          done

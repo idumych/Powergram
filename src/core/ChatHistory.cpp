@@ -682,7 +682,9 @@ ChatHistory::Apply(const json& object)
 		if (Int(message, "chat_id") != fChatId
 			|| Field(message, "scheduling_state").is_object())
 			return false;
-		fMessages.erase(Int(object, "old_message_id"));
+		// Not loaded and not at the latest: adding it would skip a gap.
+		if (fMessages.erase(Int(object, "old_message_id")) == 0 && !fAtLatest)
+			return false;
 		_Add(message);
 		return true;
 	}
@@ -908,9 +910,7 @@ SendText(int64_t chatId, const std::string& text, int64_t replyTo, const json& e
 {
 	json request = {{"@type", "sendMessage"}, {"chat_id", chatId},
 		{"input_message_content", TextContent(text, entities)}};
-	if (replyTo != 0)
-		request["reply_to"] = {{"@type", "inputMessageReplyToMessage"},
-			{"message_id", replyTo}};
+	AddReply(request, replyTo);
 	return request;
 }
 
@@ -1004,7 +1004,7 @@ Caption(const std::string& text)
 }
 
 
-static void
+void
 AddReply(json& request, int64_t replyTo)
 {
 	if (replyTo != 0)

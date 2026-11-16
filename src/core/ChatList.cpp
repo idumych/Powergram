@@ -2,6 +2,7 @@
 #include "ChatList.h"
 
 #include "ChatHistory.h"  // DecodeBase64
+#include "Format.h"
 
 #include <algorithm>
 #include <cctype>
@@ -106,7 +107,7 @@ Initials(const std::string& title)
 	int words = 0;
 	for (size_t i = 0; i < title.size() && words < 2;) {
 		unsigned char c = title[i];
-		size_t len = c < 0x80 ? 1 : (c >> 5) == 6 ? 2 : (c >> 4) == 14 ? 3 : 4;
+		size_t len = Utf8Length(c);
 		if (c == ' ') {
 			atWordStart = true;
 			i++;
@@ -210,6 +211,7 @@ ChatList::ApplyLastMessage(Chat& chat, const json& message)
 		chat.lastSender.clear();
 		chat.lastDate = 0;
 		chat.outgoing = false;
+		chat.outgoingRead = false;
 		return;
 	}
 	chat.lastMessageId = Int(message, "id");
@@ -217,6 +219,7 @@ ChatList::ApplyLastMessage(Chat& chat, const json& message)
 	chat.lastDate = Int(message, "date");
 	chat.outgoing = Bool(message, "is_outgoing");
 	chat.lastSender = chat.outgoing ? "You" : "";
+	chat.outgoingRead = chat.outgoing && chat.lastMessageId <= chat.lastReadOutbox;
 }
 
 
@@ -246,11 +249,8 @@ ChatList::Apply(const json& object)
 		chat.lastReadInbox = Int(c, "last_read_inbox_message_id");
 		chat.unreadMentions = Int(c, "unread_mention_count");
 		ApplyPositions(chat, Field(c, "positions"));
-		const json& last = Field(c, "last_message");
-		ApplyLastMessage(chat, last);
 		chat.lastReadOutbox = Int(c, "last_read_outbox_message_id");
-		if (chat.outgoing)
-			chat.outgoingRead = Int(last, "id") <= chat.lastReadOutbox;
+		ApplyLastMessage(chat, Field(c, "last_message"));
 		fChats[chat.id] = chat;
 		for (const auto& [key, pos] : chat.lists)
 			if (pos.order != 0)
@@ -301,14 +301,13 @@ ChatList::Apply(const json& object)
 	} else if (type == "updateChatLastMessage") {
 		// No "last_message" field means the chat has none now.
 		ApplyLastMessage(chat, Field(object, "last_message"));
-		chat.outgoingRead = false;
 		ApplyPositions(chat, Field(object, "positions"));
 	} else if (type == "updateChatReadInbox") {
 		chat.unread = Int(object, "unread_count");
 		chat.lastReadInbox = Int(object, "last_read_inbox_message_id");
 	} else if (type == "updateChatReadOutbox") {
 		chat.lastReadOutbox = Int(object, "last_read_outbox_message_id");
-		chat.outgoingRead = chat.outgoing;
+		chat.outgoingRead = chat.outgoing && chat.lastMessageId <= chat.lastReadOutbox;
 	} else if (type == "updateChatIsMarkedAsUnread") {
 		chat.markedUnread = Bool(object, "is_marked_as_unread");
 	} else if (type == "updateChatDraftMessage") {
@@ -492,9 +491,7 @@ ChatList::DeleteRequests(const Chat& chat)
 			deleteHistory};
 	if (chat.kind == Chat::kPrivate)
 		return {deleteHistory};
-	return {{{"@type", "leaveChat"}, {"chat_id", chat.id}},
-		{{"@type", "deleteChatHistory"}, {"chat_id", chat.id},
-			{"remove_from_chat_list", true}, {"revoke", false}}};
+	return {{{"@type", "leaveChat"}, {"chat_id", chat.id}}, deleteHistory};
 }
 
 

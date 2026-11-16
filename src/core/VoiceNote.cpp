@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "ChatHistory.h"  // AddReply
 
 namespace pp {
 
@@ -142,9 +143,7 @@ SendVoice(int64_t chatId, const std::string& path, int32_t duration,
 				{"voice_note", {{"@type", "inputFileLocal"}, {"path", path}}},
 				{"duration", duration},
 				{"waveform", EncodeBase64(PackWaveform(levels))}}}}}};
-	if (replyTo != 0)
-		request["reply_to"] = {{"@type", "inputMessageReplyToMessage"},
-			{"message_id", replyTo}};
+	AddReply(request, replyTo);
 	return request;
 }
 

@@ -393,8 +393,9 @@ LoginWindow::_Submit(uint32 what)
 			message.AddString("text", fPhone->Text());
 			break;
 		case kMsgSubmitCode:
-			if (strpbrk(fCode->Text(), "0123456789") == nullptr) {
-				_SetError("Enter the code's digits.");
+			// SMS word and phrase codes have no digits (AuthFlow sorts it out).
+			if (BString(fCode->Text()).Trim().IsEmpty()) {
+				_SetError("Enter the code.");
 				return;
 			}
 			message.AddString("text", fCode->Text());

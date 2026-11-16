@@ -288,9 +288,10 @@ struct Parser {
 				BlockGroup(Reader(data, r.Pos(), r.EndOf(size)), clusterTime);
 				r.Skip(size);
 			} else if (id == kCluster) {
-				// A cluster of unknown size ends where the next one starts.
-				Cluster(Reader(data, r.Pos(), r.EndOf(size)));
-				r.Skip(size);
+				// A cluster of unknown size ends where the next one starts:
+				// read on into it here, since recursing lets a file nest
+				// clusters until the stack runs out.
+				clusterTime = 0;
 			} else
 				r.Skip(size);
 		}

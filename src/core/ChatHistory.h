@@ -222,6 +222,8 @@ json HistoryAround(int64_t chatId, int64_t messageId, int before, int after);
 // Up to `count` messages newer than `messageId`.
 json HistoryNewer(int64_t chatId, int64_t messageId, int count);
 json ViewMessages(int64_t chatId, const std::vector<int64_t>& ids);
+// Makes `request` a reply to `replyTo` (0: not a reply).
+void AddReply(json& request, int64_t replyTo);
 json SendText(int64_t chatId, const std::string& text, int64_t replyTo = 0,
 	const json& entities = json());
 json EditText(int64_t chatId, int64_t messageId, const std::string& text);

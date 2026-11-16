@@ -81,6 +81,7 @@ private:
 	int32 fMentionSeq = 0;
 	size_t fMentionAt = 0;
 	std::vector<std::pair<std::string, int64>> fMentioned;
+	std::vector<size_t> fMentionedAt;   // where each was inserted
 	void _UpdateMentionQuery();
 	void _ChooseMention(int32 index);
 	void _CloseMentions();

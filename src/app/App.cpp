@@ -203,6 +203,7 @@ private:
 	std::multimap<int32_t, std::string> fSaveWhenDownloaded;  // file → where
 	std::map<int32_t, std::string> fFileTypes;  // documents' MIME types
 	std::set<int32_t> fProgressFiles;  // documents downloading in the open chat
+	std::set<int32_t> fHistoryFiles;   // files the open chat's rows show
 	bigtime_t fLastProgress = 0;
 
 	// Voice messages play here rather than in MediaPlayer.
@@ -261,6 +262,7 @@ private:
 	BMessageRunner* fFlushRunner;
 	bool fQuitting;
 	bool fClosed;
+	BMessage fPendingFiles;   // dropped before there were chats to pick from
 };
 
 
@@ -340,7 +342,10 @@ App::_Params() const
 		p.systemVersion = std::string(u.sysname) + " " + u.release;
 		p.deviceModel = u.machine;
 	}
-	p.appVersion = "0.1";
+#ifndef APP_VERSION
+#define APP_VERSION "0.2"   // the Makefile passes haiku-app.env's VERSION
+#endif
+	p.appVersion = APP_VERSION;
 	return p;
 }
 
@@ -390,7 +395,9 @@ App::_HandleObject(const json& object)
 	std::vector<int32_t> completed = fFiles.Apply(object);
 	if (!completed.empty()) {
 		bool shown = false;
+		bool inHistory = false;
 		for (int32_t id : completed) {
+			inHistory |= fHistoryFiles.count(id) > 0;
 			auto open = fOpenWhenDownloaded.find(id);
 			if (open != fOpenWhenDownloaded.end()) {
 				_ShowMedia(open->second, fFiles.Path(id));
@@ -407,7 +414,8 @@ App::_HandleObject(const json& object)
 			}
 			shown = true;
 		}
-		if (shown && fHistory != nullptr)
+		// Only when the open chat shows it: a rebuild is the whole history.
+		if (inHistory && fHistory != nullptr)
 			_FlushHistory();
 		if (shown)
 			_ScheduleChatFlush();
@@ -930,6 +938,7 @@ App::_SendHistory()
 	bool unreadMarked = false;
 	std::vector<pp::Message> messages = fHistory->Sorted();
 	fProgressFiles.clear();
+	fHistoryFiles.clear();
 	for (size_t i = 0; i < messages.size(); i++) {
 		const pp::Message& m = messages[i];
 		// A centred date between days, as Paper Plane shows.
@@ -968,6 +977,7 @@ App::_SendHistory()
 			r.avatar = fFiles.Path(photo.fileId).c_str();
 			r.avatarMini = photo.preview;
 			r.initials = pp::Initials(r.sender.String()).c_str();
+			fHistoryFiles.insert(photo.fileId);
 			if (r.avatar.IsEmpty() && photo.fileId != 0)
 				fFiles.Want(photo.fileId, 3);
 		}
@@ -1035,6 +1045,7 @@ App::_SendHistory()
 			// The file that's opened or saved: its name and, for a
 			// document's card, how much of it is here.
 			int32 file = media.fullFileId != 0 ? media.fullFileId : media.fileId;
+			fHistoryFiles.insert({media.fileId, media.animationFileId, file});
 			std::string path = fFiles.Path(file);
 			r.fileName = media.fileName.c_str();
 			if (r.fileName.IsEmpty() && !path.empty())
@@ -2166,7 +2177,18 @@ App::_HandleAuth()
 			fFiles.Clear();
 			fOpenWhenDownloaded.clear();
 			fPlayWhenDownloaded.clear();
+			// File ids start over with the new instance: nothing may keep old ones.
+			fSaveWhenDownloaded.clear();
+			fFileTypes.clear();
+			fProgressFiles.clear();
+			fHistoryFiles.clear();
+			fStickers.clear();
+			fStickerSets.clear();
+			fPickerSet = -1;
 			fMediaWindow.SendMessage(B_QUIT_REQUESTED);   // the old account's
+			fInfoMessenger.SendMessage(B_QUIT_REQUESTED);
+			fProfileWindow.SendMessage(B_QUIT_REQUESTED);
+			fMain->PostMessage(kMsgLogOutConfirmed);   // its avatars and sticker picker
 			_StopVoice();
 			fHistory.reset();
 			fOnline = -1;
@@ -2278,6 +2300,11 @@ App::_FlushChats()
 	}
 	fMain->PostMessage(&list);
 	_StartDownloads();
+	if (!fPendingFiles.IsEmpty() && !chats.empty()) {
+		BMessage files(fPendingFiles);
+		fPendingFiles.MakeEmpty();
+		RefsReceived(&files);
+	}
 }
 
 
@@ -2891,16 +2918,19 @@ App::MessageReceived(BMessage* message)
 				break;
 			// People without a username picked from the suggestions.
 			std::vector<std::pair<std::string, int64_t>> mentioned;
+			std::vector<size_t> mentionedAt;
 			const char* name;
-			for (int32 i = 0; message->FindString("mention_name", i, &name) == B_OK; i++)
+			for (int32 i = 0; message->FindString("mention_name", i, &name) == B_OK; i++) {
 				mentioned.push_back({name, message->GetInt64("mention_user", i, 0)});
+				mentionedAt.push_back((size_t)message->GetInt64("mention_at", i, 0));
+			}
 			std::string text = message->GetString("text", "");
 			pp::SendOptions options;
 			options.silent = message->GetBool("silent", false);
 			options.sendAt = message->GetInt64("send_at", 0);
 			options.whenOnline = message->GetBool("when_online", false);
 			json send = pp::request::SendTextWith(chatId, text, message->GetInt64("reply_to", 0),
-				pp::MentionEntities(text, mentioned), options);
+				pp::MentionEntities(text, mentioned, mentionedAt), options);
 			if (options.Scheduled())
 				send["@extra"] = "send_scheduled";
 			_Send(send);
@@ -2979,8 +3009,13 @@ App::_CloseWindows()
 void
 App::RefsReceived(BMessage* message)
 {
-	if (fMain == nullptr || !message->HasRef("refs"))
+	if (!message->HasRef("refs"))
 		return;
+	// Starting up or logging in: once the chats are there (_FlushChats).
+	if (fMain == nullptr || fAuth == nullptr || fAuth->State().step != AuthStep::Ready) {
+		fPendingFiles = *message;
+		return;
+	}
 	BMessage pick(*message);
 	pick.what = kMsgDeskbarFiles;
 	fMain->PostMessage(&pick);

@@ -110,6 +110,10 @@ TdClient::_Run()
 		}
 		BMessage message(kMsgTdObject);
 		message.AddString("json", text);
-		fTarget.SendMessage(&message);
+		// Waits for room in the app's port, but not past quitting: a quitting
+		// app stops reading it, and the destructor waits for this thread.
+		while (!fQuit && fTarget.SendMessage(&message, (BHandler*)nullptr, 100000)
+				== B_TIMED_OUT) {
+		}
 	}
 }

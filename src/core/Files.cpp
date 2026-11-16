@@ -25,8 +25,8 @@ FileStore::_Record(const json& file, std::vector<int32_t>& completed)
 		fActive.erase(id);
 		if (!wasComplete)
 			completed.push_back(id);
-	} else if (!active && fActive.count(id) && !Bool(local, "can_be_downloaded", true)) {
-		fActive.erase(id);  // gave up: free the slot
+	} else if (!active) {
+		fActive.erase(id);  // stopped (gave up, network error): free the slot
 	}
 }
 

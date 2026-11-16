@@ -21,7 +21,7 @@ SRC=$W/src; B=$W/build; DEPS=$W/deps; HOST=$W/host
 JOBS=$(nproc 2>/dev/null || echo 4)
 export TMPDIR=${TMPDIR:-$W/tmp}; mkdir -p "$TMPDIR" "$SRC/recipes" "$B" "$DEPS" "$HOST"
 TARGET=aarch64-unknown-haiku
-HP=https://raw.githubusercontent.com/haikuports/haikuports/master
+HP=https://raw.githubusercontent.com/haikuports/haikuports/08e57dd6f64df6474c893c2faa3fb2085a3be700
 say() { printf '\n== %s\n' "$*"; }
 
 TD_REV=022d60202e446ad1287b9fb68e687c8a0760788b
@@ -37,10 +37,10 @@ fetch https://zlib.net/fossils/zlib-1.3.1.tar.gz zlib.tar.gz \
 	9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23
 fetch https://ftp.gnu.org/gnu/gperf/gperf-3.1.tar.gz gperf.tar.gz \
 	588546b945bba4b70b6a3a616e80b4ab466e3f33024a352fc2198112cdbb3ae2
-for p in net-libs/tdlib/patches/tdlib-0.0.20260718.patchset \
-		dev-libs/openssl/patches/openssl3-3.5.9.patchset; do
-	[ -s "$SRC/recipes/${p##*/}" ] || curl -fsSL -o "$SRC/recipes/${p##*/}" "$HP/$p"
-done
+fetch $HP/net-libs/tdlib/patches/tdlib-0.0.20260718.patchset recipes/tdlib-0.0.20260718.patchset \
+	dbdc1224eadca391049febe5ab037900027270df2c19f8061f77ba724ea85dcc
+fetch $HP/dev-libs/openssl/patches/openssl3-3.5.9.patchset recipes/openssl3-3.5.9.patchset \
+	a39e80b77736c7bb34807e9444b443903beef21b163baa3d94d8438263ea9de9
 
 unpack() {  # archive dir [patchset]
 	rm -rf "$B/$2"; mkdir -p "$B/$2"

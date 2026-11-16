@@ -2,10 +2,13 @@
 #include "BitmapUtils.h"
 
 #include <Bitmap.h>
+#include <DataIO.h>
 #include <Font.h>
+#include <TranslationUtils.h>
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 
 BBitmap*
@@ -37,6 +40,38 @@ RoundBitmap(const BBitmap* source)
 		}
 	}
 	return round;
+}
+
+
+BBitmap*
+RoundAvatar(const char* path, const std::string& preview)
+{
+	BBitmap* square = nullptr;
+	if (path != nullptr && path[0] != '\0')
+		square = BTranslationUtils::GetBitmap(path);
+	else if (!preview.empty()) {
+		BMemoryIO io(preview.data(), preview.size());
+		square = BTranslationUtils::GetBitmap(&io);
+	}
+	BBitmap* round = RoundBitmap(square);
+	delete square;
+	return round;
+}
+
+
+BString
+SizeText(int64 bytes)
+{
+	char text[32];
+	if (bytes < 1024)
+		snprintf(text, sizeof(text), "%d bytes", (int)bytes);
+	else if (bytes < 1024 * 1024)
+		snprintf(text, sizeof(text), "%.0f KB", bytes / 1024.0);
+	else if (bytes < 1024LL * 1024 * 1024)
+		snprintf(text, sizeof(text), "%.1f MB", bytes / (1024.0 * 1024));
+	else
+		snprintf(text, sizeof(text), "%.2f GB", bytes / (1024.0 * 1024 * 1024));
+	return text;
 }
 
 

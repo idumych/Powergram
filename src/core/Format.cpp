@@ -13,12 +13,24 @@ Utf16ToUtf8(const std::string& text, int32_t units)
 	int32_t count = 0;
 	size_t i = 0;
 	while (i < text.size() && count < units) {
-		unsigned char c = text[i];
-		size_t len = c < 0x80 ? 1 : (c >> 5) == 6 ? 2 : (c >> 4) == 14 ? 3 : 4;
+		size_t len = Utf8Length(text[i]);
 		count += len == 4 ? 2 : 1;  // outside the BMP: a surrogate pair
 		i += len;
 	}
 	return (int32_t)std::min(i, text.size());
+}
+
+
+int32_t
+Utf8ToUtf16(const std::string& text, size_t bytes)
+{
+	int32_t units = 0;
+	for (size_t i = 0; i < bytes && i < text.size(); ) {
+		size_t length = Utf8Length(text[i]);
+		units += length == 4 ? 2 : 1;
+		i += length;
+	}
+	return units;
 }
 
 

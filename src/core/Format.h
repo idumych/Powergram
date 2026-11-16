@@ -33,8 +33,18 @@ struct Span {
 // Spans for a formattedText's entities (unknown types are skipped).
 std::vector<Span> ParseEntities(const json& formattedText);
 
+// Bytes in the UTF-8 character starting with `lead`; a stray continuation
+// byte counts as one.
+inline size_t Utf8Length(unsigned char lead)
+{
+	return lead < 0xC0 ? 1 : lead < 0xE0 ? 2 : lead < 0xF0 ? 3 : 4;
+}
+
 // Byte offset in `text` of the UTF-16 offset `units`.
 int32_t Utf16ToUtf8(const std::string& text, int32_t units);
+
+// UTF-16 units in the first `bytes` bytes of UTF-8 text.
+int32_t Utf8ToUtf16(const std::string& text, size_t bytes);
 
 // One line per span, "start,length,style,url", for passing in a BMessage.
 std::string EncodeSpans(const std::vector<Span>& spans);

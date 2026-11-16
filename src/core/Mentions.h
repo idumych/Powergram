@@ -9,6 +9,7 @@
 #include <utility>
 #include <vector>
 
+#include "Format.h"
 #include "Json.h"
 
 namespace pp {
@@ -24,12 +25,11 @@ std::string InsertMention(const std::string& text, size_t at, size_t cursor,
 	const std::string& name, const std::string& username, size_t* newCursor);
 
 // textEntityTypeMentionName entities for each (name, user id) still in the
-// text, in UTF-16 offsets as TDLib wants; each name's first occurrence.
+// text, in UTF-16 offsets as TDLib wants: the name as a whole word nearest
+// the byte offset in `at` where it was inserted (the first without one).
 json MentionEntities(const std::string& text,
-	const std::vector<std::pair<std::string, int64_t>>& mentions);
-
-// UTF-16 units in the first `bytes` bytes of UTF-8 text.
-int32_t Utf8ToUtf16(const std::string& text, size_t bytes);
+	const std::vector<std::pair<std::string, int64_t>>& mentions,
+	const std::vector<size_t>& at = {});
 
 // The user ids in a chatMembers reply, in its order.
 std::vector<int64_t> MemberUserIds(const json& chatMembers);

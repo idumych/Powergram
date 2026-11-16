@@ -30,7 +30,7 @@ jobs:
           # VitruvianOS's own build deps (its ccpp-arm64.yml), minus image tooling and the
           # kits the link-only patch leaves out; plus packaging tools.
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            ca-certificates git curl file python3 attr dpkg-dev gh \
+            ca-certificates git curl file python3 attr dpkg-dev \
             cmake ninja-build build-essential bison flex libfl-dev m4 pkg-config \
             zlib1g-dev libicu-dev libfreetype6-dev libpng-dev libjpeg-dev libgif-dev \
             libtiff-dev libwebp-dev libicns-dev libopenexr-dev libdrm-dev libinput-dev \
@@ -76,7 +76,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: /opt/tdlib
-          key: tdlib-${{ steps.td.outputs.rev }}-debian-trixie-${{ matrix.arch }}
+          key: tdlib-${{ steps.td.outputs.rev }}-${{ hashFiles('packaging/appimage/build-tdlib.sh') }}-debian-trixie-${{ matrix.arch }}
 
       - name: Build TDLib
         if: steps.tdcache.outputs.cache-hit != 'true'

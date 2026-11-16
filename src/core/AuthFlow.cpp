@@ -62,6 +62,8 @@ AuthFlow::Handle(const json& object, std::vector<json>& out)
 		const json& codeType = Field(Field(s, "code_info"), "type");
 		next.codeInfo = CodeTypeText(codeType);
 		next.codeLength = Int(codeType, "length");
+		next.codeIsText = Type(codeType) == "authenticationCodeTypeSmsWord"
+			|| Type(codeType) == "authenticationCodeTypeSmsPhrase";
 	} else if (type == "authorizationStateWaitPassword") {
 		next.step = AuthStep::Password;
 		next.passwordHint = Str(s, "password_hint");
@@ -134,6 +136,12 @@ AuthFlow::PhoneRequest(const std::string& phone) const
 json
 AuthFlow::CodeRequest(const std::string& code) const
 {
+	if (fState.codeIsText) {
+		size_t start = code.find_first_not_of(" \t\r\n");
+		size_t end = code.find_last_not_of(" \t\r\n");
+		return Tagged({{"@type", "checkAuthenticationCode"},
+			{"code", start == std::string::npos ? "" : code.substr(start, end - start + 1)}});
+	}
 	std::string digits;
 	for (char c : code)
 		if (std::isdigit(static_cast<unsigned char>(c)))

@@ -30,7 +30,8 @@ struct Profile {
 // Telegram wants a first name, names up to 64 characters, a bio up to 70.
 std::string ProfileProblem(const std::string& first, const std::string& last,
 	const std::string& bio);
-// Characters (not bytes) in UTF-8 text.
+// Characters as Telegram's limits count them: UTF-16 units, so an emoji
+// outside the BMP counts as two.
 size_t CharacterCount(const std::string& text);
 
 struct Session {

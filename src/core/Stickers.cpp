@@ -3,6 +3,8 @@
 
 #include <sstream>
 
+#include "ChatHistory.h"  // AddReply
+
 namespace pp {
 
 static bool
@@ -106,9 +108,7 @@ SendSticker(int64_t chatId, const StickerItem& sticker, int64_t replyTo)
 				{"sticker", {{"@type", "inputFileId"}, {"id", sticker.fileId}}},
 				{"width", sticker.width}, {"height", sticker.height}}},
 			{"emoji", sticker.emoji}}}};
-	if (replyTo != 0)
-		request["reply_to"] = {{"@type", "inputMessageReplyToMessage"},
-			{"message_id", replyTo}};
+	AddReply(request, replyTo);
 	return request;
 }
 

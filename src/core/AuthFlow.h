@@ -44,6 +44,7 @@ struct AuthState {
 	AuthStep step = AuthStep::Starting;
 	std::string codeInfo;      // where the code was sent ("Telegram app", "SMS")
 	int codeLength = 0;
+	bool codeIsText = false;   // SmsWord/SmsPhrase: the code is words, not digits
 	std::string passwordHint;
 	std::string link;          // tg://login?token=… for OtherDevice
 	std::string tdType;        // the TDLib @type, for messages about Unsupported

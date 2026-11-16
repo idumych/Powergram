@@ -11,9 +11,9 @@
 # about 3 GB and can be cached (CI) or kept between releases.
 #
 # Where the pieces come from:
-#  - Haiku's arm64 package repository (master) has haiku and haiku_devel: libroot, libbe,
-#    libtracker, libtranslation, the CRT objects and the headers. Its hrev picks the Haiku
-#    source revision for the toolchain, so both match.
+#  - Haiku's arm64 package repository (master, at a pinned hrev) has haiku and haiku_devel:
+#    libroot, libbe, libtracker, libtranslation, the CRT objects and the headers. Its hrev
+#    picks the Haiku source revision for the toolchain, so both match.
 #  - libbe needs libstdc++, libgcc_s, ICU and zlib. On arm64 they only exist as the
 #    bootstrap packages inside the nightly image of the same hrev; bfs_shell copies them out.
 #  - HaikuPorts has no arm64 repository, so an app that needs HaikuPorts libraries (sqlite,
@@ -27,12 +27,16 @@ REPO=https://eu.hpkg.haiku-os.org/haiku/master/arm64
 NIGHTLY=https://haiku-nightly.cdn.haiku-os.org/arm64
 say() { printf '\n== %s\n' "$*"; }
 
-# 1. Which hrev the arm64 repository is at ("current" redirects to a versioned path)
+# 1. Which Haiku: a pinned repository version (the repository and the nightly images keep
+#    old hrevs), or HAIKU_VERSION=current for whatever the repository is at now
 say "Haiku arm64 repository"
-ROUTE=$(curl -fsSL "$REPO/current/")
-HREV=$(echo "$ROUTE" | grep -oE 'hrev[0-9]+' | head -1)
-VERSION=$(echo "$ROUTE" | grep -oE 'r1~[a-z0-9]+_hrev[0-9]+' | head -1)
-[ -n "$HREV" ] && [ -n "$VERSION" ] || { echo "make-sysroot: can't read $REPO/current/: $ROUTE" >&2; exit 1; }
+VERSION=${HAIKU_VERSION:-r1~beta6_hrev60397}
+if [ "$VERSION" = current ]; then
+	ROUTE=$(curl -fsSL "$REPO/current/")
+	VERSION=$(echo "$ROUTE" | grep -oE 'r1~[a-z0-9]+_hrev[0-9]+' | head -1)
+	[ -n "$VERSION" ] || { echo "make-sysroot: can't read $REPO/current/: $ROUTE" >&2; exit 1; }
+fi
+HREV=${VERSION##*_}
 echo "$VERSION"
 if [ -f "$WORK/sysroot/.version" ] && [ "$(cat "$WORK/sysroot/.version")" = "$VERSION" ]; then
 	echo "sysroot for $VERSION is already there"; exit 0

@@ -136,6 +136,11 @@ public:
 					break;
 				BMessage files(*message);
 				files.what = kMsgDeskbarFiles;
+				// Not running: the files go with the launch, or they'd find no app.
+				if (!be_roster->IsRunning(APP_SIGNATURE)) {
+					be_roster->Launch(APP_SIGNATURE, &files);
+					break;
+				}
 				_OpenApp();
 				BMessenger(APP_SIGNATURE).SendMessage(&files);
 				break;

@@ -4,6 +4,7 @@
 #include <algorithm>
 
 #include "ChatHistory.h"
+#include "Format.h"
 
 namespace pp {
 
@@ -47,10 +48,7 @@ Profile::Apply(const json& object)
 size_t
 CharacterCount(const std::string& text)
 {
-	size_t count = 0;
-	for (unsigned char c : text)
-		count += (c & 0xC0) != 0x80;
-	return count;
+	return Utf8ToUtf16(text, text.size());
 }
 
 

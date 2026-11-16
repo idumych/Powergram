@@ -51,29 +51,33 @@ InsertMention(const std::string& text, size_t at, size_t cursor, const std::stri
 }
 
 
-int32_t
-Utf8ToUtf16(const std::string& text, size_t bytes)
-{
-	int32_t units = 0;
-	for (size_t i = 0; i < bytes && i < text.size(); ) {
-		unsigned char c = (unsigned char)text[i];
-		size_t length = c < 0x80 ? 1 : c < 0xE0 ? 2 : c < 0xF0 ? 3 : 4;
-		units += length == 4 ? 2 : 1;   // outside the BMP: a surrogate pair
-		i += length;
-	}
-	return units;
-}
-
-
 json
 MentionEntities(const std::string& text,
-	const std::vector<std::pair<std::string, int64_t>>& mentions)
+	const std::vector<std::pair<std::string, int64_t>>& mentions,
+	const std::vector<size_t>& inserted)
 {
+	auto wordChar = [](unsigned char c) { return std::isalnum(c) || c == '_' || c >= 0x80; };
 	json entities = json::array();
-	for (const auto& mention : mentions) {
+	for (size_t m = 0; m < mentions.size(); m++) {
+		const auto& mention = mentions[m];
 		if (mention.first.empty())
 			continue;
-		size_t at = text.find(mention.first);
+		const std::string& name = mention.first;
+		size_t want = m < inserted.size() ? inserted[m] : 0;
+		size_t at = std::string::npos;
+		if (m < inserted.size() && want <= text.size() && text.compare(want, name.size(), name) == 0)
+			at = want;   // still where it was put
+		else {
+			// Edits before it moved it: the nearest whole-word match.
+			for (size_t i = text.find(name); i != std::string::npos; i = text.find(name, i + 1)) {
+				size_t end = i + name.size();
+				if ((i > 0 && wordChar(text[i - 1])) || (end < text.size() && wordChar(text[end])))
+					continue;
+				if (at == std::string::npos
+					|| (i > want ? i - want : want - i) < (at > want ? at - want : want - at))
+					at = i;
+			}
+		}
 		if (at == std::string::npos)
 			continue;   // edited out
 		entities.push_back({{"@type", "textEntity"},

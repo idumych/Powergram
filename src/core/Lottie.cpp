@@ -499,12 +499,14 @@ struct ShapeItem {
 };
 
 
+// depth: groups inside groups; a sticker nesting them deeper than any real
+// one would overflow the stack, so those are left out.
 ShapeItem
-ParseShape(const json& shape)
+ParseShape(const json& shape, int depth = 0)
 {
 	ShapeItem item;
 	item.type = Str(shape, "ty");
-	if (Bool(shape, "hd")) {
+	if (Bool(shape, "hd") || depth > 64) {
 		item.type = "hidden";
 		return item;
 	}
@@ -512,7 +514,7 @@ ParseShape(const json& shape)
 		const json& it = Field(shape, "it");
 		if (it.is_array()) {
 			for (const json& child : it)
-				item.items.push_back(ParseShape(child));
+				item.items.push_back(ParseShape(child, depth + 1));
 		}
 	} else if (item.type == "sh")
 		item.props["ks"] = ParseProp(Field(shape, "ks"), true);
@@ -639,6 +641,9 @@ ParseComposition(const json& layers)
 struct LottieAnimation::Data {
 	Composition root;
 	std::map<std::string, Composition> assets;
+	// Precomps drawn this frame: a sticker that has each one use another
+	// several times would otherwise mean billions of them per frame.
+	mutable int compBudget = 0;
 
 	void RenderComp(const Composition& comp, float t, const Matrix& m, float opacity,
 		LottieList& out, int depth) const;
@@ -903,7 +908,7 @@ LottieAnimation::Data::RenderLayer(const Composition& comp, const Layer& layer, 
 		RenderGroup(layer.shapes, t, world, alpha, out);
 	else if (layer.type == 0) {
 		auto asset = assets.find(layer.refId);
-		if (asset != assets.end() && depth < 16)
+		if (asset != assets.end() && depth < 16 && compBudget-- > 0)
 			RenderComp(asset->second, (t - layer.start) / layer.stretch, world, alpha, out,
 				depth + 1);
 	} else if (layer.type == 1 && layer.solidWidth > 0) {
@@ -1000,6 +1005,7 @@ LottieAnimation::Render(float frame, float width, float height) const
 	Matrix scale;
 	scale.a = width / fWidth;
 	scale.d = height / fHeight;
+	fData->compBudget = 1000;
 	fData->RenderComp(fData->root, frame, scale, 1, out, 0);
 	return out;
 }

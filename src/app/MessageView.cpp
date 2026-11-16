@@ -19,6 +19,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <functional>
 
 #include "BitmapUtils.h"
 #include "Messages.h"
@@ -297,7 +298,7 @@ MessageView::_Bitmap(const MessageRow& row, bool* blurred, bool round)
 		if (square == nullptr)
 			return nullptr;
 		std::string key = (!*blurred ? std::string(row.imagePath.String())
-			: "mini:" + std::to_string(row.id)) + "#round";
+			: "mini:" + std::to_string(std::hash<std::string>()(row.minithumbnail))) + "#round";
 		auto it = fBitmaps.find(key);
 		if (it != fBitmaps.end())
 			return it->second;
@@ -316,7 +317,8 @@ MessageView::_Bitmap(const MessageRow& row, bool* blurred, bool round)
 	if (!row.imagePath.IsEmpty())
 		key = row.imagePath.String();
 	else if (!row.minithumbnail.empty()) {
-		key = "mini:" + std::to_string(row.id);
+		// By content: message ids repeat between chats.
+		key = "mini:" + std::to_string(std::hash<std::string>()(row.minithumbnail));
 		*blurred = true;
 	} else
 		return nullptr;
@@ -600,23 +602,6 @@ MessageView::_DrawIcon(const MessageRow& row, BRect box, rgb_color fg)
 }
 
 
-// "340 KB", "1.2 MB": sizes as Tracker shows them.
-static BString
-SizeText(int64 bytes)
-{
-	char text[32];
-	if (bytes < 1024)
-		snprintf(text, sizeof(text), "%d bytes", (int)bytes);
-	else if (bytes < 1024 * 1024)
-		snprintf(text, sizeof(text), "%.0f KB", bytes / 1024.0);
-	else if (bytes < 1024LL * 1024 * 1024)
-		snprintf(text, sizeof(text), "%.1f MB", bytes / (1024.0 * 1024));
-	else
-		snprintf(text, sizeof(text), "%.2f GB", bytes / (1024.0 * 1024 * 1024));
-	return text;
-}
-
-
 // The system's icon for a file type (from the sender's type, else guessed
 // from the name), as Tracker would show the file: the type's own icon, the
 // one its preferred application gives it, its supertype's, or a plain file.
@@ -742,15 +727,7 @@ MessageView::_AvatarBitmap(const MessageRow& row)
 	auto it = fBitmaps.find(key);
 	if (it != fBitmaps.end())
 		return it->second;
-	BBitmap* square;
-	if (!row.avatarPath.IsEmpty())
-		square = BTranslationUtils::GetBitmap(row.avatarPath.String());
-	else {
-		BMemoryIO io(row.avatarPreview.data(), row.avatarPreview.size());
-		square = BTranslationUtils::GetBitmap(&io);
-	}
-	BBitmap* round = RoundBitmap(square);
-	delete square;
+	BBitmap* round = RoundAvatar(row.avatarPath.String(), row.avatarPreview);
 	fBitmaps[key] = round;  // nullptr too: don't decode again
 	fBitmapOrder.push_front(key);
 	return round;
@@ -910,6 +887,9 @@ MessageView::SetMessages(const std::vector<MessageRow>& rows, bool scrollToEnd,
 	Anchor anchor = _SaveAnchor(Bounds().bottom);
 	if (scrollToEnd)
 		anchor.atEnd = true;
+	// No rows: another chat is opening, and message ids repeat between chats.
+	if (rows.empty())
+		fRevealed.clear();
 	fRows = rows;
 	_Relayout();
 	_RestoreAnchor(anchor);

@@ -4,7 +4,7 @@
 # app can be compiled, linked and packaged as a .deb without a VitruvianOS machine.
 #
 #   sh tools/vos-sdk/make-sdk.sh [WORK_DIR]        (default ./.vos-sdk)
-#   . WORK_DIR/sdk/env.sh && make deb
+#   . WORK_DIR/sdk/env.sh && TD_ROOT=<tdlib> sh packaging/build-deb.sh
 #
 # Runs natively on amd64 or arm64 Debian trixie (VitruvianOS's userland, glibc 2.41), with the
 # apt packages listed in .github/workflows/deb.yml. GitHub's ubuntu-24.04 and ubuntu-24.04-arm
@@ -117,4 +117,4 @@ export LDFLAGS="-L$SDK/lib -Wl,-rpath-link=$SDK/lib:$SDK/linkdeps"
 export VOS_VERSION=$VOS_TAG
 EOF
 say "done ($ARCH)"
-echo "Use it with:   . $SDK/env.sh && make deb"
+echo "Use it with:   . $SDK/env.sh && TD_ROOT=<tdlib> sh packaging/build-deb.sh"

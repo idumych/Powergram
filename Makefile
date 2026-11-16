@@ -7,6 +7,8 @@
 NAME := Powergram
 CXX ?= g++
 override CXXFLAGS += -std=c++17 -Wall -Wextra -O2
+# The version Telegram shows in the account's device list (App.cpp).
+APP_VERSION := $(shell sed -n 's/^VERSION="\(.*\)"/\1/p' haiku-app.env)
 
 CORE_SRCS := src/core/AuthFlow.cpp src/core/ChatList.cpp src/core/ChatHistory.cpp \
 	src/core/SendQueue.cpp src/core/Files.cpp src/core/Stickers.cpp \
@@ -244,6 +246,9 @@ all:
 	@echo "'make test' runs the core tests anywhere."
 	@false
 endif
+
+$(BUILD)/src/app/App.o: haiku-app.env
+$(BUILD)/src/app/App.o: override CXXFLAGS += -DAPP_VERSION='"$(APP_VERSION)"'
 
 $(BUILD)/%.o: %.cpp
 	@mkdir -p $(dir $@)

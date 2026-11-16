@@ -4,11 +4,9 @@
 #include <Alert.h>
 #include <Application.h>
 #include <Bitmap.h>
-#include <DataIO.h>
 #include <FilePanel.h>
 #include <FindDirectory.h>
 #include <Path.h>
-#include <TranslationUtils.h>
 #include <Url.h>
 #include <Clipboard.h>
 #include <ControlLook.h>
@@ -788,6 +786,12 @@ MainWindow::_UpdateChats(const BMessage* incoming)
 	list->GetInfo("id", nullptr, &count);
 	while (fList->CountItems() > count)
 		delete fList->RemoveItem(fList->CountItems() - 1);
+	if (count == 0 && !fLastChats.HasInt64("id")) {
+		// No chats at all (logged out): the old account's photos go.
+		for (auto& [key, bitmap] : fAvatars)
+			delete bitmap;
+		fAvatars.clear();
+	}
 	for (int32 i = 0; i < count; i++) {
 		ChatItem* old = static_cast<ChatItem*>(fList->ItemAt(i));
 		if (old != nullptr && old->ItemKey() == ChatItem::Key(list, i))
@@ -843,6 +847,7 @@ MainWindow::_SelectionChanged()
 	fFindText->SetText("");
 	fFindResult->SetText("");
 	fMentioned.clear();
+	fMentionedAt.clear();
 	_CloseMentions();
 	fEntry->SetText("");
 	if (!fPinnedBar->IsHidden())
@@ -965,13 +970,15 @@ MainWindow::_Send(bool silent, int64 sendAt, bool whenOnline)
 		send.AddBool("silent", silent);
 		send.AddInt64("send_at", sendAt);
 		send.AddBool("when_online", whenOnline);
-		for (const auto& mention : fMentioned) {
-			send.AddString("mention_name", mention.first.c_str());
-			send.AddInt64("mention_user", mention.second);
+		for (size_t i = 0; i < fMentioned.size(); i++) {
+			send.AddString("mention_name", fMentioned[i].first.c_str());
+			send.AddInt64("mention_user", fMentioned[i].second);
+			send.AddInt64("mention_at", (int64)fMentionedAt[i]);
 		}
 		be_app->PostMessage(&send);
 	}
 	fMentioned.clear();
+	fMentionedAt.clear();
 	_CloseMentions();
 	_CancelCompose();
 	fEntry->SetText("");
@@ -1045,8 +1052,10 @@ MainWindow::_ChooseMention(int32 index)
 	size_t cursor = 0;
 	std::string text = pp::InsertMention(fEntry->Text(), fMentionAt, (size_t)end, name,
 		item.username.String(), &cursor);
-	if (item.username.IsEmpty())
+	if (item.username.IsEmpty()) {
 		fMentioned.push_back({name, item.userId});
+		fMentionedAt.push_back(fMentionAt);
+	}
 	_CloseMentions();
 	fEntry->SetText(text.c_str());   // posts kMsgEntryModified: no "@" left before the cursor
 	fEntry->TextView()->Select((int32)cursor, (int32)cursor);
@@ -1350,20 +1359,9 @@ MainWindow::_Avatar(const BMessage* list, int32 index)
 	if (it != fAvatars.end())
 		return it->second;
 
-	BBitmap* square = nullptr;
-	if (!path.IsEmpty())
-		square = BTranslationUtils::GetBitmap(path.String());
-	else {
-		std::string preview = FindBytes(list, "photo_mini", index);
-		if (!preview.empty()) {
-			BMemoryIO io(preview.data(), preview.size());
-			square = BTranslationUtils::GetBitmap(&io);
-		}
-	}
-	BBitmap* round = RoundBitmap(square);
-	delete square;
-	if (round != nullptr)
-		fAvatars[key] = round;
+	// A photo that doesn't decode is remembered too, not decoded again.
+	BBitmap* round = RoundAvatar(path.String(), FindBytes(list, "photo_mini", index));
+	fAvatars[key] = round;
 	return round;
 }
 
@@ -1784,8 +1782,27 @@ MainWindow::MessageReceived(BMessage* message)
 				break;
 			}
 			BUrl url(address, true);
-			if (url.IsValid())
-				url.OpenWithPreferredApplication(false);
+			if (!url.IsValid())
+				break;
+			BString scheme = url.Protocol();
+			scheme.ToLower();
+			bool confirmed = message->GetBool("confirmed", false);
+			if (confirmed || scheme == "http" || scheme == "https" || scheme == "mailto") {
+				// The alert's answer: "which" 0 is Open.
+				if (!confirmed || message->GetInt32("which", 1) == 0)
+					url.OpenWithPreferredApplication(false);
+				break;
+			}
+			// Other kinds (file:, ssh:…) can start programs, and a message's
+			// text can hide where its link goes: show it and ask first.
+			BAlert* alert = new BAlert("Open link",
+				(BString("Open this link?\n\n") << address).String(),
+				"Open", "Cancel", nullptr, B_WIDTH_AS_USUAL, B_WARNING_ALERT);
+			alert->SetShortcut(1, B_ESCAPE);
+			BMessage* answer = new BMessage(kMsgOpenUrl);
+			answer->AddString("url", address);
+			answer->AddBool("confirmed", true);
+			alert->Go(new BInvoker(answer, this));
 			break;
 		}
 		case kMsgOpenMedia:
@@ -1985,6 +2002,7 @@ MainWindow::MessageReceived(BMessage* message)
 			if (row == nullptr)
 				break;
 			BMessage save(kMsgSaveFile);
+			save.AddInt64("chat_id", fOpenChat);   // now: another chat may be open by the time it's saved
 			save.AddInt64("message_id", row->id);
 			if (fSavePanel == nullptr) {
 				fSavePanel = new BFilePanel(B_SAVE_PANEL, new BMessenger(this));
@@ -2003,8 +2021,6 @@ MainWindow::MessageReceived(BMessage* message)
 			break;
 		}
 		case kMsgSaveFile:
-			message->RemoveName("chat_id");
-			message->AddInt64("chat_id", fOpenChat);
 			be_app->PostMessage(message);
 			break;
 		case kMsgAttach:

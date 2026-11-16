@@ -34,19 +34,11 @@ Formatted(const std::string& text)
 
 
 json
-ReplyTo(int64_t replyTo)
-{
-	return {{"@type", "inputMessageReplyToMessage"}, {"message_id", replyTo}};
-}
-
-
-json
 Send(int64_t chatId, const json& content, int64_t replyTo, const SendOptions& options)
 {
 	json request = {{"@type", "sendMessage"}, {"chat_id", chatId},
 		{"input_message_content", content}};
-	if (replyTo != 0)
-		request["reply_to"] = ReplyTo(replyTo);
+	request::AddReply(request, replyTo);
 	ApplySendOptions(request, options);
 	return request;
 }

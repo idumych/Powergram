@@ -25,6 +25,7 @@
 #include <string>
 
 #include "../core/Compose.h"
+#include "BitmapUtils.h"
 #include "Messages.h"
 
 namespace {
@@ -44,14 +45,7 @@ public:
 		BEntry entry(&ref, true);
 		off_t size = 0;
 		entry.GetSize(&size);
-		char text[32];
-		if (size < 1024)
-			snprintf(text, sizeof(text), "%lld bytes", (long long)size);
-		else if (size < 1024 * 1024)
-			snprintf(text, sizeof(text), "%.0f KB", size / 1024.0);
-		else
-			snprintf(text, sizeof(text), "%.1f MB", size / 1048576.0);
-		fDetail = text;
+		fDetail = SizeText(size);
 		// Pictures as themselves, scaled down once; anything else by its icon.
 		if (BBitmap* picture = BTranslationUtils::GetBitmap(&ref)) {
 			BRect b = picture->Bounds();

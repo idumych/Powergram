@@ -3,22 +3,9 @@
 
 #include <algorithm>
 
+#include "Mentions.h"  // MemberUserIds
+
 namespace pp {
-
-static std::vector<int64_t>
-MemberIds(const json& members)
-{
-	std::vector<int64_t> ids;
-	if (!members.is_array())
-		return ids;
-	for (const json& member : members) {
-		const json& sender = Field(member, "member_id");
-		if (Type(sender) == "messageSenderUser")
-			ids.push_back(Int(sender, "user_id"));
-	}
-	return ids;
-}
-
 
 bool
 ChatInfo::Apply(const json& object)
@@ -28,13 +15,13 @@ ChatInfo::Apply(const json& object)
 		about = Str(Field(object, "bio"), "text");
 	} else if (type == "basicGroupFullInfo") {
 		about = Str(object, "description");
-		members = MemberIds(Field(object, "members"));
+		members = MemberUserIds(object);
 		memberCount = (int32_t)members.size();
 	} else if (type == "supergroupFullInfo") {
 		about = Str(object, "description");
 		memberCount = (int32_t)Int(object, "member_count");
 	} else if (type == "chatMembers") {
-		members = MemberIds(Field(object, "members"));
+		members = MemberUserIds(object);
 		memberCount = std::max(memberCount, (int32_t)Int(object, "total_count"));
 	} else if (type == "foundChatMessages") {
 		photos.clear();
