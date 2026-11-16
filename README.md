@@ -7,13 +7,13 @@ It talks to Telegram through [TDLib](https://github.com/tdlib/td), Telegram's
 own client library, and keeps Paper Plane's layout: the chat list on the left,
 the open chat on the right.
 
-**Preview.** Version 0.2.10 is a preview for Haiku, Renku OS and Linux.
+**Preview.** Version 0.2.11 is a preview for Haiku, Renku OS and Linux.
 From [Releases](https://github.com/idumych/Powergram/releases):
 
-- Haiku and Renku OS (x86_64): `pkgman install ./powergram-0.2.10-1-x86_64.hpkg`
+- Haiku and Renku OS (x86_64): `pkgman install ./powergram-0.2.11-1-x86_64.hpkg`
   (an arm64 package is there too, for the Haiku arm64 nightlies)
 - Linux (x86_64 or aarch64, glibc 2.39 or newer, X11 or Wayland):
-  `chmod +x Powergram-0.2.10-x86_64.AppImage && ./Powergram-0.2.10-x86_64.AppImage`
+  `chmod +x Powergram-0.2.11-x86_64.AppImage && ./Powergram-0.2.11-x86_64.AppImage`
   (`-aarch64` on ARM)
 
 The app was called Paper Plane for Haiku up to 0.1.0; Powergram replaces
@@ -220,7 +220,9 @@ make COSMOE_ROOT=/usr TD_ROOT=<TDLib prefix>
 TDLib, if not given); release AppImages are built by CI on Ubuntu 24.04.
 
 HaikuPorts' TDLib is static only, so it's linked into the app; the result
-needs only OpenSSL and zlib at run time. Install `noto_emoji` for emoji.
+needs OpenSSL, zlib, Opus, Ogg and `noto_emoji` at run time, which the
+x86_64 package requires (pkgman installs them). The arm64 package links
+everything but Haiku itself in.
 
 `make test` runs the core tests (login flow, chat list, history, throttling,
 files and download progress, stickers, formatting, presence, voice, chat info,
