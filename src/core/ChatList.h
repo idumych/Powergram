@@ -79,7 +79,8 @@ public:
 	bool ShowsPreview(int64_t chatId) const;
 
 	// Whether a new message deserves a desktop notification: incoming, not
-	// muted, not in the chat on screen, recent (TDLib replays missed ones
+	// muted (a mention of the user gets through, as in Telegram's apps), not
+	// in the chat on screen, recent (TDLib replays missed ones
 	// at start-up), and at most one per chat every few seconds.
 	bool ShouldNotify(const json& message, int64_t visibleChat, int64_t now);
 

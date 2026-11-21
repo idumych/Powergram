@@ -14,7 +14,7 @@ class BMenuField;
 struct AppSettings {
 	bool notifications = true;
 	bool previews = true;       // the message text in notifications
-	bool sound = true;          // the "Powergram new message" system sound
+	bool sound = true;          // the "Powergram …" system sounds
 	int32 textSize = 1;         // 0 small, 1 normal, 2 large
 	bool deskbar = true;        // the icon with the unread count in the Deskbar
 	// It stays there after quitting, as a launcher (a click starts the app).

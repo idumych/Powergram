@@ -396,7 +396,9 @@ ChatList::ShouldNotify(const json& message, int64_t visibleChat, int64_t now)
 	int64_t chatId = Int(message, "chat_id");
 	if (Bool(message, "is_outgoing") || chatId == 0 || chatId == visibleChat)
 		return false;
-	if (Find(chatId) == nullptr || IsMuted(chatId))
+	if (Find(chatId) == nullptr)
+		return false;
+	if (IsMuted(chatId) && !Bool(message, "contains_unread_mention"))
 		return false;
 	if (now - Int(message, "date") > 300)
 		return false;

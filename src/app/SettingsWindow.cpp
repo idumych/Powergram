@@ -70,7 +70,7 @@ SettingsWindow::SettingsWindow(BMessenger app, const AppSettings& current)
 		new BMessage(kMsgChanged));
 	fPreviews = new BCheckBox("previews", "Show the message text in notifications",
 		new BMessage(kMsgChanged));
-	fSound = new BCheckBox("sound", "Play a sound for new messages",
+	fSound = new BCheckBox("sound", "Play sounds for new messages and mentions",
 		new BMessage(kMsgChanged));
 	fDeskbar = new BCheckBox("deskbar", "Show Powergram in the Deskbar with the unread count",
 		new BMessage(kMsgChanged));
@@ -92,7 +92,7 @@ SettingsWindow::SettingsWindow(BMessenger app, const AppSettings& current)
 	fDragScroll->SetToolTip("Drag lists and chats with a finger, as on a phone; a tap "
 		"still clicks");
 	BStringView* soundHint = new BStringView("sound hint",
-		"The sound is chosen in the Sounds preferences.");
+		"The sounds are chosen in the Sounds preferences.");
 	soundHint->SetHighUIColor(B_PANEL_TEXT_COLOR, B_DARKEN_2_TINT);
 	fRevertButton = new BButton("revert", "Revert", new BMessage(kMsgRevert));
 	fDefaultsButton = new BButton("defaults", "Defaults", new BMessage(kMsgDefaults));

@@ -58,8 +58,9 @@ made-up data so far.
 - A chat info window: picture, bio or description, members, shared photos
 - Your profile (Powergram > Profile): picture, name and bio, and the devices
   logged in to your account, any of which you can log out
-- Settings: notifications, message text in notifications, a sound (chosen in
-  the Sounds preferences), text size, and where photos and videos open
+- Settings: notifications, message text in notifications, sounds (chosen in
+  the Sounds preferences: "Powergram new message", "Powergram private
+  message" and "Powergram name mentioned"), text size, and where photos and videos open
 - Touch screens: drag the chat list, chats, pickers and other lists with a
   finger, as on a phone: they keep moving after a flick and stretch at the
   ends (Settings > Scroll by dragging also offers it for the mouse); a tap

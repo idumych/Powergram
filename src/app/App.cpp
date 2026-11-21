@@ -285,7 +285,7 @@ App::App()
 {
 	fSettings.Load();
 	fPrefs = AppSettings::FromMessage(&fSettings.preferences);
-	// The new-message sound, chosen by the user in the Sounds preferences.
+	// Sounds the user picks in the Sounds preferences.
 	add_system_beep_event("Powergram new message");
 	const char* env = getenv("POWERGRAM_TEST_DC");
 	fTestDc = env != nullptr && strcmp(env, "1") == 0;
@@ -302,6 +302,8 @@ App::~App()
 	delete fRecordRunner;
 	// The item stays in Deskbar as a launcher (a click starts the app), so
 	// it's left there, without a count that would go stale; or it goes, if
+	add_system_beep_event("Powergram private message");
+	add_system_beep_event("Powergram name mentioned");
 	// the user would rather.
 	if (fPrefs.deskbar && !fPrefs.deskbarStay)
 		BDeskbar().RemoveItem(kDeskbarItemName);
@@ -1625,8 +1627,14 @@ App::_Notify(const json& message)
 
 	if (!fPrefs.notifications)
 		return;
-	if (fPrefs.sound)
-		system_beep("Powergram new message");
+	if (fPrefs.sound) {
+		if (pp::Bool(message, "contains_unread_mention"))
+			system_beep("Powergram name mentioned");
+		else if (chat->kind == pp::Chat::kPrivate)
+			system_beep("Powergram private message");
+		else
+			system_beep("Powergram new message");
+	}
 	BString content;
 	// Secret chats never show what was said outside the app.
 	if (fPrefs.previews && fChats.ShowsPreview(chatId) && !chat->secret) {
