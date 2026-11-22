@@ -11,7 +11,7 @@ the open chat on the right.
 From [Releases](https://github.com/idumych/Powergram/releases):
 
 - Haiku and Renku OS (x86_64): `pkgman install ./powergram-0.2.13-1-x86_64.hpkg`
-  (an arm64 package is there too, for the Haiku arm64 nightlies)
+  (an arm64 package is there too, for Renku OS arm64)
 - Linux (x86_64 or aarch64, glibc 2.39 or newer, X11 or Wayland):
   `chmod +x Powergram-0.2.13-x86_64.AppImage && ./Powergram-0.2.13-x86_64.AppImage`
   (`-aarch64` on ARM)
@@ -185,7 +185,7 @@ The same window on Linux (X11), with the emoji picker in Noto Color Emoji.
 | Platform | State |
 |---|---|
 | Renku OS / Haiku R1/beta6, x86_64 | Builds and runs |
-| Haiku arm64 (nightlies) | Preview: runs on the hrev60397 nightly in QEMU. Haiku arm64 has no Media Kit or image translators yet, so voice messages, the video viewer, video stickers and pictures don't work there |
+| Renku OS arm64 | Preview, not yet tested on Renku arm64: built against Renku's arm64 packages, now with voice messages, videos and pictures (Renku arm64 has the Media Kit; Opus, libogg and the translators come from its repositories). Up to 0.2.12 the arm64 package was built for Haiku's arm64 nightlies, without them |
 | Linux, x86_64 and aarch64 (AppImage, built with Hokku) | Preview: the login, the main window and the pickers run under X11 here, and CI starts both AppImages under X11 and Wayland. Not yet used with a real account. Voice messages and videos open in the desktop's player |
 
 ## Building
@@ -200,8 +200,9 @@ make
 
 `sh packaging/build-hpkg.sh` builds the package.
 
-For Haiku arm64, cross-compiled on Linux (TDLib, OpenSSL and zlib are built
-for arm64 and linked in):
+For Renku OS arm64, cross-compiled on Linux against Renku's arm64 packages
+(TDLib, OpenSSL and zlib are built for arm64 and linked in; Opus, libogg and
+libvpx's headers come from Renku's arm64 ports):
 
 ```sh
 sh tools/haiku-arm64/make-sysroot.sh ~/.cache/haiku-arm64   # once, ~20 min
@@ -224,7 +225,7 @@ TDLib, if not given); release AppImages are built by CI on Ubuntu 24.04.
 HaikuPorts' TDLib is static only, so it's linked into the app; the result
 needs OpenSSL, zlib, Opus, Ogg and `noto_emoji` at run time, which the
 x86_64 package requires (pkgman installs them). The arm64 package links
-everything but Haiku itself in.
+TDLib, OpenSSL and zlib in and requires Opus, libogg and the translators.
 
 `make test` runs the core tests (login flow, chat list, history, throttling,
 files and download progress, stickers, formatting, presence, voice, chat info,

@@ -40,17 +40,14 @@ NET_LIBS := -lnetwork
 MIMESET := mimeset
 MEDIA_LIBS := -lmedia -lopus -logg
 ifneq ($(HAIKU_CROSS),)
-  # Haiku arm64, cross-compiled on Linux (tools/haiku-arm64: . env.sh, then
-  # build-deps.sh for TDLib, OpenSSL and zlib, all static). Haiku arm64 has
-  # no Media Kit yet: stand-ins replace the sound and video parts.
-  # Haiku's host mimeset can't read arm64 binaries; the package sets the type.
-  override CXXFLAGS += $(HAIKU_CROSS_CFLAGS) -I$(HAIKU_ARM64)/deps/include
-  override LDFLAGS += $(HAIKU_CROSS_LDFLAGS) -L$(HAIKU_ARM64)/deps/lib
-  MEDIA_SRCS := src/app/VoicePlayer.cpp src/app/VoiceRecorder.cpp \
-	src/app/MediaProbe.cpp src/app/VideoPlayback.cpp src/app/WebmPlayer.cpp
-  APP_OBJS := $(patsubst %.cpp,$(BUILD)/%.o,$(filter-out $(MEDIA_SRCS),$(APP_SRCS)) \
-	src/app/NoMediaKit.cpp src/app/NoVideoPlayback.cpp)
-  MEDIA_LIBS :=
+  # Renku OS arm64, cross-compiled on Linux (tools/haiku-arm64: . env.sh,
+  # then build-deps.sh: TDLib, OpenSSL and zlib static in deps/; Opus, libogg
+  # and libvpx's headers from Renku's arm64 ports in ports/).
+  # The host mimeset can't read arm64 binaries; the package sets the type.
+  override CXXFLAGS += $(HAIKU_CROSS_CFLAGS) -I$(HAIKU_ARM64)/deps/include \
+	-I$(HAIKU_ARM64)/ports/develop/headers
+  override LDFLAGS += $(HAIKU_CROSS_LDFLAGS) -L$(HAIKU_ARM64)/deps/lib \
+	-L$(HAIKU_ARM64)/ports/develop/lib -Wl,-rpath-link=$(HAIKU_ARM64)/ports/lib
   MIMESET := :
 endif
 

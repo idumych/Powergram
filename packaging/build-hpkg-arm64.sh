@@ -1,6 +1,7 @@
 #!/bin/sh
-# build-hpkg-arm64.sh — builds powergram-<version>-<revision>-arm64.hpkg on
-# Linux, with Haiku's cross toolchain and the libraries tools/haiku-arm64 builds.
+# build-hpkg-arm64.sh — builds powergram-<version>-<revision>-arm64.hpkg for
+# Renku OS arm64 on Linux, with the cross toolchain and the libraries
+# tools/haiku-arm64 builds or fetches from Renku's arm64 ports.
 #
 #   sh tools/haiku-arm64/make-sysroot.sh ~/.cache/haiku-arm64    (once, ~20 min)
 #   . ~/.cache/haiku-arm64/env.sh
@@ -8,9 +9,8 @@
 #   sh packaging/build-hpkg-arm64.sh
 #
 # The same package as build-hpkg.sh, except:
-#  - TDLib, OpenSSL, zlib, Opus and libogg are linked in statically: HaikuPorts
-#    has no arm64 repository, so the package can require only Haiku itself.
-#    Emoji need noto_emoji, which the app asks for when it's missing.
+#  - TDLib, OpenSSL and zlib are linked in statically (Renku's arm64 ports
+#    have no tdlib); Opus and libogg are required from Renku's arm64 ports.
 #  - Haiku's host mimeset can't read arm64 binaries, so the attributes it
 #    would set (type, signature) are written with the host addattr.
 set -eu
@@ -39,10 +39,16 @@ for bin in "$APP_NAME" obj/PowergramDeskbar; do
 	esac
 done
 
-# The package; haiku >= r1~beta6 is satisfied by the arm64 nightlies
-# (r1~beta6_hrevNNNNN). The host mimeset can't read arm64 binaries.
+# The package; haiku >= r1~beta6 is satisfied by Renku arm64
+# (r1~beta6_hrevNNNNN_NNN). Opus and libogg come from Renku's arm64 ports,
+# and pictures need the translators, a package of their own on Renku arm64;
+# emoji need noto_emoji, which the app asks for when it's missing.
+# The host mimeset can't read arm64 binaries.
 PKG="$ROOT/obj/hpkg-$ARCH"
-REQ=""
+REQ="
+	lib:libopus
+	lib:libogg
+	haiku_datatranslators"
 set_attrs() {
 	addattr -t mime BEOS:TYPE application/x-vnd.Be-elfexecutable "$1"
 	addattr -t mime BEOS:APP_SIG "$APP_SIG" "$1"
