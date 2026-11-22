@@ -468,11 +468,11 @@ TestNotifications()
 	CHECK(!list.ShouldNotify(message(1, 1020), 1, 1020));  // on screen
 	CHECK(!list.ShouldNotify(message(1, 100), 0, 1030));   // replayed, old
 	CHECK(!list.ShouldNotify(message(-2, 1040), 0, 1040)); // muted chat
-	CHECK(!list.ShouldNotify(message(55, 1040), 0, 1040)); // unknown chat
-
 	json mention = message(-2, 1041);
 	mention["contains_unread_mention"] = true;
 	CHECK(list.ShouldNotify(mention, 0, 1041));            // ...unless it names us
+	CHECK(!list.ShouldNotify(message(55, 1040), 0, 1040)); // unknown chat
+
 	// Channels muted by their scope, until a chat overrides it.
 	CHECK(list.ShouldNotify(message(-3, 1050), 0, 1050));
 	list.Apply({{"@type", "updateScopeNotificationSettings"},

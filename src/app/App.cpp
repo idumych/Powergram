@@ -287,6 +287,8 @@ App::App()
 	fPrefs = AppSettings::FromMessage(&fSettings.preferences);
 	// Sounds the user picks in the Sounds preferences.
 	add_system_beep_event("Powergram new message");
+	add_system_beep_event("Powergram private message");
+	add_system_beep_event("Powergram name mentioned");
 	const char* env = getenv("POWERGRAM_TEST_DC");
 	fTestDc = env != nullptr && strcmp(env, "1") == 0;
 }
@@ -302,8 +304,6 @@ App::~App()
 	delete fRecordRunner;
 	// The item stays in Deskbar as a launcher (a click starts the app), so
 	// it's left there, without a count that would go stale; or it goes, if
-	add_system_beep_event("Powergram private message");
-	add_system_beep_event("Powergram name mentioned");
 	// the user would rather.
 	if (fPrefs.deskbar && !fPrefs.deskbarStay)
 		BDeskbar().RemoveItem(kDeskbarItemName);
