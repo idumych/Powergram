@@ -1,8 +1,7 @@
 #!/bin/sh
-# build-deps.sh — cross-builds the libraries Powergram links for Haiku arm64,
-# where HaikuPorts has no packages yet: zlib, OpenSSL and TDLib, all static,
-# so the app needs nothing beyond Haiku itself. (Opus and libogg, for voice
-# messages, wait for Haiku arm64's Media Kit.)
+# build-deps.sh — the libraries Powergram links on Renku OS arm64: zlib,
+# OpenSSL and TDLib cross-built statically (Renku's arm64 ports have no
+# tdlib), and Opus, libogg and libvpx's headers from Renku's arm64 ports.
 #
 #   sh tools/haiku-arm64/make-sysroot.sh ~/.cache/haiku-arm64    (once)
 #   . ~/.cache/haiku-arm64/env.sh
@@ -49,6 +48,22 @@ unpack() {  # archive dir [patchset]
 }
 CFLAGS_X="$HAIKU_CROSS_CFLAGS -O2 -fPIC"
 LDFLAGS_X="$HAIKU_CROSS_LDFLAGS"
+
+# Opus and libogg (voice messages) and libvpx's headers (video stickers load
+# libvpx at run time) come from Renku's arm64 ports, which the package then
+# requires: runtime and devel packages extracted together, so the devel
+# packages' develop/lib links (../../lib/…) resolve.
+say "Renku arm64 ports: opus, libogg, libvpx"
+RP=https://renkuos.freemyip.com/repo/renkuosports/arm64/packages
+PORTS=$W/ports; rm -rf "$PORTS"; mkdir -p "$PORTS"
+for p in opus-1.3.1-2:f672b766f5e31781ad35a37337f03f9e28c42c9109fdaf2105bc63162d8cc7b6 \
+	opus_devel-1.3.1-2:6194e136934f3615baaf5f608f4420eac81ce96d6dd977bf93a5ae55947db534 \
+	libogg-1.3.6-3:dbff947d39dcb923bdcd7ddb82fbd01103c0c1aafa906d7c5bce4879bd297c42 \
+	libogg_devel-1.3.6-3:2d6b9c5441ef88a3558cb59260def92942cd28dd66b974c0b660ea5ab906de85 \
+	libvpx_devel-1.13.1-1:7a6c217c8519312748a0a0e807a22fa2bfbd6cda4d6fd43807b9ff2bfdb0a1ea; do
+	fetch "$RP/${p%%:*}-arm64.hpkg" "${p%%:*}-arm64.hpkg" "${p#*:}"
+	package extract -C "$PORTS" "$SRC/${p%%:*}-arm64.hpkg"
+done
 
 say zlib
 unpack zlib.tar.gz zlib
@@ -99,7 +114,7 @@ say "TDLib: generated sources (native)"
 if ! command -v gperf > /dev/null; then
 	if [ ! -x "$HOST/bin/gperf" ]; then
 		unpack gperf.tar.gz gperf
-		( cd "$B/gperf" && ./configure --prefix="$HOST" CXXFLAGS="-O2 -std=c++11" > /dev/null \
+		( cd "$B/gperf" && env -u CC -u CXX ./configure --prefix="$HOST" CXXFLAGS="-O2 -std=c++11" > /dev/null \
 			&& make -j"$JOBS" install > /dev/null )
 	fi
 	export PATH="$HOST/bin:$PATH"
