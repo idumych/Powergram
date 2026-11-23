@@ -1641,6 +1641,10 @@ MessageView::KeyDown(const char* bytes, int32 count)
 {
 	// The view only has the focus to copy a selection: typing goes back
 	// to the entry (the window's filter takes Escape).
+	if (bytes[0] == B_PAGE_UP || bytes[0] == B_PAGE_DOWN) {
+		ScrollPage(bytes[0] == B_PAGE_DOWN ? 1 : -1);
+		return;
+	}
 	if ((unsigned char)bytes[0] >= ' ' && bytes[0] != B_DELETE) {
 		if (BView* entry = Window()->FindView("entry")) {
 			entry->MakeFocus(true);
@@ -1649,6 +1653,18 @@ MessageView::KeyDown(const char* bytes, int32 count)
 		}
 	}
 	BView::KeyDown(bytes, count);
+}
+
+
+void
+MessageView::ScrollPage(int32 direction)
+{
+	BScrollBar* bar = ScrollBar(B_VERTICAL);
+	if (bar == nullptr)
+		return;
+	float small, big;
+	bar->GetSteps(&small, &big);
+	bar->SetValue(bar->Value() + direction * big);
 }
 
 

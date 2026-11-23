@@ -511,8 +511,8 @@ private:
 };
 
 
-// On the entry: Up, Down, Enter and Tab go to the mention suggestions
-// while they show.
+// On the entry: Page Up and Page Down scroll the messages; Up, Down, Enter
+// and Tab go to the mention suggestions while they show.
 class MentionKeyFilter : public BMessageFilter {
 public:
 	explicit MentionKeyFilter(MainWindow* window)
@@ -1022,6 +1022,10 @@ MainWindow::_CloseMentions()
 bool
 MainWindow::MentionKey(const char* bytes)
 {
+	if (bytes[0] == B_PAGE_UP || bytes[0] == B_PAGE_DOWN) {
+		fMessages->ScrollPage(bytes[0] == B_PAGE_DOWN ? 1 : -1);
+		return true;
+	}
 	if (fMentions == nullptr || !fMentions->IsShowing())
 		return false;
 	switch (bytes[0]) {

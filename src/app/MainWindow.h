@@ -88,7 +88,7 @@ private:
 	void _ChooseMention(int32 index);
 	void _CloseMentions();
 public:
-	// The entry's key filter: true if the suggestions took the key.
+	// The entry's key filter: true if it took the key (paging, suggestions).
 	bool MentionKey(const char* bytes);
 private:
 	void _Record(const char* action);

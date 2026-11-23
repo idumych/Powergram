@@ -113,6 +113,8 @@ public:
 	void ClearSelection() { _SetSelection(0, 0, 0); }
 	// Scrolls so that message `id` is at the top (tests, jump to message).
 	void ScrollToMessage(int64 id);
+	// Page Up (-1) or Page Down (1): the scroll bar's large step.
+	void ScrollPage(int32 direction);
 	// The last message visible at the bottom and its distance from the
 	// bottom edge (0 when at the end); for tests.
 	int64 BottomMessage(float* fromBottom, bool* atEnd) const;
