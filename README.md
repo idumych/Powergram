@@ -237,7 +237,9 @@ On Haiku, `make file-saving-test` checks saving received files and
 `make voice-record-test` checks the voice message files it records and
 `make media-probe-test` what files are sent as (photo, video or document) and
 `make video-playback-test` the viewer's video playback (timing, pausing,
-seeking, the end, looping, and sound staying with the picture).
+seeking, the end, looping, and sound staying with the picture), and
+`make entry-keys-test` that the chat entry sends, and the find field searches,
+on Enter only, not when the focus leaves them (it opens a window for a few seconds).
 `make lottie-render` builds a tool that draws frames of an animated sticker
 (`.tgs`, Lottie `.json` or `.webm`) into a PNG.
 

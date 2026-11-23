@@ -530,6 +530,32 @@ private:
 	MainWindow* fWindow;
 };
 
+
+// Enter in a text field posts its message to the window. The field has no
+// invocation message: a BTextControl also invokes when the focus leaves it
+// with changed text (Find…, a click elsewhere), which sent what was typed
+// (issue #1), and on Enter only when the text changed since it got the focus.
+class EnterFilter : public BMessageFilter {
+public:
+	EnterFilter(BTextControl* control, uint32 what)
+		: BMessageFilter(B_ANY_DELIVERY, B_ANY_SOURCE, B_KEY_DOWN),
+		fControl(control), fWhat(what) {}
+
+	filter_result Filter(BMessage* message, BHandler**) override
+	{
+		const char* bytes;
+		if (message->FindString("bytes", &bytes) != B_OK || bytes[0] != B_ENTER)
+			return B_DISPATCH_MESSAGE;
+		if (fControl->IsEnabled())
+			fControl->Window()->PostMessage(fWhat);
+		return B_SKIP_MESSAGE;
+	}
+
+private:
+	BTextControl* fControl;
+	uint32 fWhat;
+};
+
 } // namespace
 
 
@@ -636,7 +662,8 @@ MainWindow::MainWindow(BRect frame, bool testDc,
 	fChatSearch->TextView()->SetExplicitMinSize(BSize(be_plain_font->Size() * 6, B_SIZE_UNSET));
 	fChatSearch->SetToolTip("Search chats");
 
-	fFindText = new BTextControl("find", "Find:", "", new BMessage(kMsgFindGo));
+	fFindText = new BTextControl("find", "Find:", "", nullptr);
+	fFindText->TextView()->AddFilter(new EnterFilter(fFindText, kMsgFindGo));
 	fFindResult = new BStringView("find result", "");
 	fFindBar = new BGroupView(B_HORIZONTAL, B_USE_SMALL_SPACING);
 	BLayoutBuilder::Group<>(static_cast<BGroupView*>(fFindBar))
@@ -664,7 +691,7 @@ MainWindow::MainWindow(BRect frame, bool testDc,
 	BScrollView* messageScroll = new BScrollView("message scroll", fMessages,
 		0, false, true, B_NO_BORDER);
 
-	fEntry = new BTextControl("entry", nullptr, "", new BMessage(kMsgSend));
+	fEntry = new BTextControl("entry", nullptr, "", nullptr);
 	fEntry->SetModificationMessage(new BMessage(kMsgEntryModified));
 	fSendButton = new SendButton();
 	fSendButton->SetToolTip("Right-click to send without sound or later");
@@ -696,6 +723,8 @@ MainWindow::MainWindow(BRect frame, bool testDc,
 	AddCommonFilter(new EscapeFilter());
 	AddTouchScrolling(this);
 	fEntry->TextView()->AddFilter(new MentionKeyFilter(this));
+	// After the mention filter: Enter picks a suggestion while they show.
+	fEntry->TextView()->AddFilter(new EnterFilter(fEntry, kMsgSend));
 	fEntry->TextView()->AddFilter(new PasteFilter(this));
 
 	// Paper Plane: a 365 px sidebar next to the chat, for 14.6 px text.
