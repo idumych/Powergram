@@ -139,6 +139,9 @@ enum {
 	kMsgMentionChosen = 'mnch',
 	// message view → main window → app: go to the oldest unread mention
 	kMsgJumpToMention = 'jmen',
+	// message view → main window → app: the reply's "message_id" (int64)
+	// clicked, in "chat_id" (int64, added by the window)
+	kMsgShowReply = 'shrp',
 	// Deskbar item → app: "item" (BMessenger) to send the count to
 	kMsgDeskbarHello = 'dbhi',
 	// app → Deskbar item: "unread" (int32) chats

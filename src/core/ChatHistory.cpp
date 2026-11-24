@@ -444,7 +444,13 @@ ParseReactions(const json& interactionInfo)
 		const json& type = Field(r, "type");
 		if (Type(type) != "reactionTypeEmoji")
 			continue;
-		out.push_back({Str(type, "emoji"), (int32_t)Int(r, "total_count"), Bool(r, "is_chosen")});
+		Reaction reaction{Str(type, "emoji"), (int32_t)Int(r, "total_count"), Bool(r, "is_chosen"), {}};
+		const json& senders = Field(r, "recent_sender_ids");
+		if (senders.is_array())
+			for (const json& s : senders)
+				reaction.recent.push_back(Type(s) == "messageSenderChat"
+					? Int(s, "chat_id") : Int(s, "user_id"));
+		out.push_back(reaction);
 	}
 	return out;
 }
@@ -566,6 +572,28 @@ Names::Apply(const json& object)
 		return false;
 	}
 	return false;
+}
+
+
+std::string
+Names::Reactors(const Reaction& reaction) const
+{
+	std::string list;
+	int32_t named = 0;
+	for (int64_t id : reaction.recent) {
+		std::string name = id < 0 ? Chat(id) : User(id);
+		if (name.empty())
+			continue;
+		list += (named++ > 0 ? ", " : "") + name;
+	}
+	if (named == 0)
+		return list;
+	int32_t others = reaction.count - named;
+	if (others == 1)
+		list += " and 1 other";
+	else if (others > 1)
+		list += " and " + std::to_string(others) + " others";
+	return list;
 }
 
 

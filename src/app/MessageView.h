@@ -31,6 +31,7 @@ struct MessageRow {
 	BString forward;    // "Forwarded from …", or empty
 	BString replySender;
 	BString replyText;  // empty without a reply
+	int64 replyTo;      // the answered message in this chat; 0 if none or elsewhere
 
 	// pp::Media::Kind: 0 none, 1 photo, 2 sticker, 3 video, 4 GIF,
 	// 5 round video message, 6 voice message, 7 Haiku vector icon (HVIF),
@@ -67,6 +68,7 @@ struct MessageRow {
 		BString emoji;
 		int32 count;
 		bool chosen;
+		BString who;    // "Ann, Bob and 3 others"; empty if not known
 	};
 	std::vector<Reaction> reactions;
 };
@@ -126,6 +128,7 @@ private:
 		float textTop;
 		float forwardTop;   // baseline area of the "Forwarded from" line
 		float replyTop;     // top of the reply block
+		BRect reply;        // the reply block, for clicks (invalid: none)
 		BRect media;        // where the photo or sticker goes
 		std::vector<int32> lineChars;  // first character of each line
 		struct Link {
@@ -232,6 +235,7 @@ private:
 	std::string fPendingLink;   // pressed; opened on release unless dragged
 	BPoint fPressPoint;
 	int fCursor = 0;            // 0 default, 1 text, 2 link
+	BString fTip;               // the tooltip shown: who reacted
 	bool fDropTarget;           // files are being dragged over us
 	bool fMoreBelow = false;
 	int64 fHighlight = 0;

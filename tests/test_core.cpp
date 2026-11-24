@@ -574,6 +574,22 @@ TestMedia()
 	auto reactions = ParseReactions(info);
 	CHECK(reactions.size() == 1 && reactions[0].emoji == "👍" && reactions[0].count == 3 && reactions[0].chosen);
 	CHECK(ParseReactions(json()).empty());
+	json who = {{"reactions", {{"reactions", json::array({
+		{{"type", {{"@type", "reactionTypeEmoji"}, {"emoji", "👍"}}}, {"total_count", 4},
+			{"recent_sender_ids", json::array({
+				{{"@type", "messageSenderUser"}, {"user_id", 7}},
+				{{"@type", "messageSenderChat"}, {"chat_id", -100}},
+				{{"@type", "messageSenderUser"}, {"user_id", 8}}})}}})}}}};
+	Names reactors;
+	reactors.Apply({{"@type", "updateUser"}, {"user", {{"id", 7},
+		{"first_name", "Tyrone"}, {"last_name", "Ford"}}}});
+	reactors.Apply({{"@type", "updateNewChat"}, {"chat", {{"id", -100}, {"title", "News"}}}});
+	Reaction thumbs = ParseReactions(who)[0];
+	CHECK((thumbs.recent == std::vector<int64_t>{7, -100, 8}));
+	CHECK(reactors.Reactors(thumbs) == "Tyrone Ford, News and 2 others");  // 8 has no name
+	thumbs.count = 3;
+	CHECK(reactors.Reactors(thumbs) == "Tyrone Ford, News and 1 other");
+	CHECK(reactors.Reactors(reactions[0]).empty());
 	ChatHistory rh(42);
 	rh.AddHistory({{"messages", json::array({Msg(42, 1, "hi")})}});
 	CHECK(rh.Apply({{"@type", "updateMessageInteractionInfo"}, {"chat_id", 42}, {"message_id", 1},

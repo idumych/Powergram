@@ -891,7 +891,8 @@ App::_SendHistory()
 		BString avatar, initials;
 		std::string avatarMini;
 		std::vector<pp::Span> spans;
-		BString reactions;   // "emoji\tcount\tchosen" per line
+		BString reactions;   // "emoji\tcount\tchosen\twho" per line
+		int64 replyTo = 0;   // the answered message, if it's in this chat
 		std::string waveform;
 		BString fileName, fileTitle, fileType;
 		int64 fileSize = 0, fileDone = -1;
@@ -910,6 +911,7 @@ App::_SendHistory()
 		list.AddString("forward", r.forward);
 		list.AddString("reply_sender", r.replySender);
 		list.AddString("reply_text", r.replyText);
+		list.AddInt64("reply_to", r.replyTo);
 		list.AddInt32("media_kind", r.mediaKind);
 		list.AddString("image", r.image);
 		AddBytes(list, "mini", r.mini);
@@ -994,7 +996,8 @@ App::_SendHistory()
 		r.spans = m.spans;
 		for (const pp::Reaction& reaction : m.reactions)
 			r.reactions << reaction.emoji.c_str() << "\t" << reaction.count << "\t"
-				<< (reaction.chosen ? "1" : "0") << "\n";
+				<< (reaction.chosen ? "1" : "0") << "\t"
+				<< fNames.Reactors(reaction).c_str() << "\n";
 		timeFormat.Format(r.time, (time_t)m.date, B_SHORT_TIME_FORMAT);
 		r.outgoing = m.outgoing;
 		r.read = m.outgoing && m.id <= fHistory->LastReadOutbox();
@@ -1009,6 +1012,8 @@ App::_SendHistory()
 		}
 
 		if (m.replyToId != 0) {
+			if (m.replyChatId == 0 || m.replyChatId == chatId)
+				r.replyTo = m.replyToId;
 			const pp::Message* target = fHistory->ReplyTarget(m);
 			if (target != nullptr) {
 				r.replySender = target->outgoing ? "You" : fNames.Sender(*target).c_str();
@@ -2799,6 +2804,11 @@ App::MessageReceived(BMessage* message)
 			_Send(pp::request::SearchMembers(message->GetInt64("chat_id", 0),
 				message->GetString("query", ""),
 				"mention:" + std::to_string(message->GetInt32("seq", 0))));
+			break;
+
+		case kMsgShowReply:
+			if (fHistory != nullptr && fHistory->ChatId() == message->GetInt64("chat_id", 0))
+				_ShowMessage(message->GetInt64("message_id", 0));
 			break;
 
 		case kMsgJumpToMention:

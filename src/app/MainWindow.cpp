@@ -898,6 +898,7 @@ MainWindow::_UpdateHistory(const BMessage* history)
 		row.forward = history->GetString("forward", i, "");
 		row.replySender = history->GetString("reply_sender", i, "");
 		row.replyText = history->GetString("reply_text", i, "");
+		row.replyTo = history->GetInt64("reply_to", i, 0);
 		row.mediaKind = history->GetInt32("media_kind", i, 0);
 		row.imagePath = history->GetString("image", i, "");
 		row.minithumbnail = FindBytes(history, "mini", i);
@@ -921,7 +922,7 @@ MainWindow::_UpdateHistory(const BMessage* history)
 		row.avatarPreview = FindBytes(history, "avatar_mini", i);
 		row.avatarInitials = history->GetString("initials", i, "");
 		row.spans = pp::DecodeSpans(history->GetString("spans", i, ""));
-		// "emoji\tcount\tchosen" per line
+		// "emoji\tcount\tchosen\twho" per line
 		BString reactions = history->GetString("reactions", i, "");
 		int32 start = 0;
 		while (start < reactions.Length()) {
@@ -931,13 +932,15 @@ MainWindow::_UpdateHistory(const BMessage* history)
 			BString entry;
 			reactions.CopyInto(entry, start, end - start);
 			start = end + 1;
-			int32 t1 = entry.FindFirst('\t'), t2 = entry.FindLast('\t');
-			if (t1 < 0 || t2 <= t1)
+			int32 t1 = entry.FindFirst('\t'), t2 = entry.FindFirst('\t', t1 + 1);
+			int32 t3 = entry.FindFirst('\t', t2 + 1);
+			if (t1 < 0 || t2 < 0 || t3 < 0)
 				continue;
 			MessageRow::Reaction r;
 			entry.CopyInto(r.emoji, 0, t1);
 			r.count = atoi(entry.String() + t1 + 1);
 			r.chosen = entry[t2 + 1] == '1';
+			entry.CopyInto(r.who, t3 + 1, entry.Length() - t3 - 1);
 			row.reactions.push_back(r);
 		}
 		rows.push_back(row);
@@ -1934,6 +1937,13 @@ MainWindow::MessageReceived(BMessage* message)
 		case kMsgMentionChosen:
 			_ChooseMention(message->GetInt32("index", -1));
 			break;
+		case kMsgShowReply:
+		{
+			BMessage show(*message);
+			show.AddInt64("chat_id", fOpenChat);
+			be_app->PostMessage(&show);
+			break;
+		}
 		case kMsgJumpToMention:
 		{
 			BMessage jump(kMsgJumpToMention);

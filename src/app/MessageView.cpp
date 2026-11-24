@@ -105,8 +105,10 @@ MessageView::MouseMoved(BPoint where, uint32 transit, const BMessage* drag)
 			_SetSelection(fSelId, fSelAnchor, _CharAt(i, where));
 		return;
 	}
-	// An I-beam over text, a hand over links.
+	// An I-beam over text, a hand over links and replies; who reacted over
+	// a reaction.
 	int cursor = 0;
+	const char* tip = nullptr;
 	if (drag == nullptr && transit != B_EXITED_VIEW && transit != B_OUTSIDE_VIEW) {
 		for (size_t i = 0; i < fLayout.size() && cursor == 0; i++) {
 			if (!fLayout[i].bubble.Contains(where))
@@ -114,9 +116,21 @@ MessageView::MouseMoved(BPoint where, uint32 transit, const BMessage* drag)
 			for (const Layout::Link& link : fLayout[i].links)
 				if (link.frame.Contains(where))
 					cursor = 2;
+			if (fLayout[i].reply.Contains(where))
+				cursor = 2;
+			for (size_t k = 0; k < fLayout[i].reactions.size()
+					&& k < fRows[i].reactions.size(); k++)
+				if (fLayout[i].reactions[k].Contains(where)
+					&& !fRows[i].reactions[k].who.IsEmpty())
+					tip = fRows[i].reactions[k].who.String();
 			if (cursor == 0 && _TextFrame(i).Contains(where))
 				cursor = 1;
 		}
+	}
+	if (tip == nullptr ? fTip.Length() > 0 : fTip != tip) {
+		fTip = tip;
+		HideToolTip();
+		SetToolTip(tip);
 	}
 	if (cursor != fCursor) {
 		fCursor = cursor;
@@ -1232,6 +1246,8 @@ MessageView::_Relayout()
 		float left = row.service ? (width - bubbleWidth) / 2
 			: row.outgoing ? width - pad * 2 - bubbleWidth : pad * 2 + avatarColumn;
 		l.bubble.Set(left, y, left + bubbleWidth, y + height);
+		if (hasReply && row.replyTo != 0 && !row.service)
+			l.reply.Set(left, l.replyTop, left + bubbleWidth, l.replyTop + line * 2 - 1);
 		if (row.service)
 			l.textTop = y + pad * 0.5f;
 		if (row.mediaKind != 0)
@@ -1433,6 +1449,12 @@ MessageView::MouseDown(BPoint where)
 		for (size_t i = 0; i < fLayout.size(); i++) {
 			if (!fLayout[i].bubble.Contains(where))
 				continue;
+			if (fLayout[i].reply.Contains(where)) {
+				BMessage show(kMsgShowReply);
+				show.AddInt64("message_id", fRows[i].replyTo);
+				Window()->PostMessage(&show);
+				return;
+			}
 			for (size_t k = 0; k < fLayout[i].reactions.size()
 					&& k < fRows[i].reactions.size(); k++) {
 				if (fLayout[i].reactions[k].Contains(where)) {

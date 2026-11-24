@@ -77,6 +77,9 @@ struct Reaction {
 	std::string emoji;
 	int32_t count = 0;
 	bool chosen = false;   // ours
+	// A few who reacted (TDLib's recent_sender_ids, absent in channels):
+	// user ids, and the ids of chats that reacted (always negative).
+	std::vector<int64_t> recent;
 };
 
 // The emoji reactions in an interaction_info (custom and paid ones skipped).
@@ -140,6 +143,8 @@ public:
 	Photo ChatPhoto(int64_t id) const;
 	// "Forwarded from …" name, or "" if unknown.
 	std::string ForwardOrigin(const Message& message) const;
+	// Who reacted, for a tooltip: "Ann, Bob and 3 others"; "" if no names.
+	std::string Reactors(const Reaction& reaction) const;
 
 private:
 	std::map<int64_t, std::string> fUsers;

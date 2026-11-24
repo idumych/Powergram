@@ -95,6 +95,7 @@ struct Row {
 	BString avatar, initials;
 	std::vector<pp::Span> spans;
 	BString reactions;
+	int64 replyTo = 0;
 	std::string waveform;
 	BString fileName, fileTitle, fileType;
 	int64 fileSize = 0, fileDone = -1;
@@ -117,6 +118,7 @@ Add(BMessage& list, const Row& r)
 	list.AddString("forward", r.forward);
 	list.AddString("reply_sender", r.replySender);
 	list.AddString("reply_text", r.replyText);
+	list.AddInt64("reply_to", r.replyTo);
 	list.AddInt32("media_kind", r.mediaKind);
 	list.AddString("image", r.image);
 	AddBytes(list, "mini", r.mini);
@@ -619,6 +621,15 @@ public:
 				fflush(stdout);
 				break;
 			}
+			case kMsgShowReply:
+				// As App does: the history with the answered message on top.
+				printf("show reply %lld in %lld\n", (long long)message->GetInt64("message_id", 0),
+					(long long)message->GetInt64("chat_id", 0));
+				fflush(stdout);
+				fHighlight = message->GetInt64("message_id", 0);
+				_SendHistory(kGroup);
+				fHighlight = 0;
+				break;
 			case kMsgJumpToMention:
 				printf("jump to mention in %lld\n", (long long)message->GetInt64("chat_id", 0));
 				fflush(stdout);
@@ -874,6 +885,7 @@ private:
 			r = _From(kJonas, 105, "Nightly build00079 boots on my ThinkPad too", now - 3000);
 			r.replySender = "Mira Okafor";
 			r.replyText = "Here's the boot screen on the T480";
+			r.replyTo = 103;
 			Add(list, r);
 			r = _From(kJonas, 106, "The WiFi driver picked up my network straight away. "
 				"Suspend still doesn't come back, I'll attach the syslog later.", now - 2900);
@@ -908,7 +920,8 @@ private:
 			}
 			Add(list, r);
 			r = _Mine(109, "Great, thanks everyone! I'll look at suspend next.", now - 600);
-			r.reactions = "\xF0\x9F\x91\x8D\t3\t0\n\xE2\x9D\xA4\t1\t1\n";
+			r.reactions = "\xF0\x9F\x91\x8D\t3\t0\tTeo Marchetti, Priya Raman and 1 other\n"
+				"\xE2\x9D\xA4\t1\t1\t\n";
 			Add(list, r);
 			r = _Mine(110, "Sending the logs in a minute", now - 120, false);
 			Add(list, r);
