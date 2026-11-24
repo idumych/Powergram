@@ -7,13 +7,13 @@ It talks to Telegram through [TDLib](https://github.com/tdlib/td), Telegram's
 own client library, and keeps Paper Plane's layout: the chat list on the left,
 the open chat on the right.
 
-**Preview.** Version 0.2.14 is a preview for Haiku, Renku OS and Linux.
+**Preview.** Version 0.2.15 is a preview for Haiku, Renku OS and Linux.
 From [Releases](https://github.com/idumych/Powergram/releases):
 
-- Haiku and Renku OS (x86_64): `pkgman install ./powergram-0.2.14-1-x86_64.hpkg`
+- Haiku and Renku OS (x86_64): `pkgman install ./powergram-0.2.15-1-x86_64.hpkg`
   (an arm64 package is there too, for Renku OS arm64)
 - Linux (x86_64 or aarch64, glibc 2.39 or newer, X11 or Wayland):
-  `chmod +x Powergram-0.2.14-x86_64.AppImage && ./Powergram-0.2.14-x86_64.AppImage`
+  `chmod +x Powergram-0.2.15-x86_64.AppImage && ./Powergram-0.2.15-x86_64.AppImage`
   (`-aarch64` on ARM)
 
 The app was called Paper Plane for Haiku up to 0.1.0; Powergram replaces
@@ -50,7 +50,9 @@ made-up data so far.
 - Typing, online and "last seen" status and group sizes in the chat header
 - Pinned messages: a bar under the chat's name (click to jump, and again for
   the next one); pin and unpin from the message's menu
-- Reactions (shown and added), forwarding, polls, locations, places and contacts
+- Reactions (shown and added; hover one to see who reacted, or the message's
+  menu for everyone), forwarding, polls, locations, places and contacts
+- Replies: click the quoted message to go to the original
 - Voice messages, played in the app with a waveform, and recorded: click the
   microphone, then Send (or the microphone again); Escape cancels
 - Files and music sent to you, shown with their type's icon, name and size:
