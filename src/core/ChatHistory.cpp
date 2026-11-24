@@ -457,6 +457,28 @@ ParseReactions(const json& interactionInfo)
 
 
 std::vector<std::string>
+ParseAddedReactions(const json& added, const Names& names)
+{
+	std::vector<std::string> out;
+	const json& list = Field(added, "reactions");
+	if (!list.is_array())
+		return out;
+	for (const json& r : list) {
+		const json& type = Field(r, "type");
+		if (Type(type) != "reactionTypeEmoji")
+			continue;
+		const json& sender = Field(r, "sender_id");
+		std::string name = Bool(r, "is_outgoing") ? "You"
+			: Type(sender) == "messageSenderChat" ? names.Chat(Int(sender, "chat_id"))
+			: names.User(Int(sender, "user_id"));
+		if (!name.empty())
+			out.push_back(Str(type, "emoji") + "\t" + name);
+	}
+	return out;
+}
+
+
+std::vector<std::string>
 ParseAvailableReactions(const json& available, size_t limit)
 {
 	std::vector<std::string> emoji;
@@ -1017,6 +1039,15 @@ React(int64_t chatId, int64_t messageId, const std::string& emoji, bool add)
 		request["update_recent_reactions"] = true;
 	}
 	return request;
+}
+
+
+json
+AddedReactions(int64_t chatId, int64_t messageId, int32_t limit, const std::string& extra)
+{
+	return {{"@type", "getMessageAddedReactions"}, {"chat_id", chatId},
+		{"message_id", messageId}, {"reaction_type", nullptr}, {"offset", ""},
+		{"limit", limit}, {"@extra", extra}};
 }
 
 

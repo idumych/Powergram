@@ -85,6 +85,12 @@ struct Reaction {
 // The emoji reactions in an interaction_info (custom and paid ones skipped).
 std::vector<Reaction> ParseReactions(const json& interactionInfo);
 
+class Names;
+
+// Everyone who reacted (getMessageAddedReactions), one "emoji\tname" line
+// each, "You" for us; emoji reactions only, people without a name skipped.
+std::vector<std::string> ParseAddedReactions(const json& added, const Names& names);
+
 // The emoji reactions a message allows (getMessageAvailableReactions):
 // the top ones first, then recent and popular, without premium-only and
 // custom emoji ones, each once, at most `limit`.
@@ -247,6 +253,8 @@ json Forward(int64_t toChatId, int64_t fromChatId, const std::vector<int64_t>& i
 json SearchChat(int64_t chatId, const std::string& query, int limit);
 json React(int64_t chatId, int64_t messageId, const std::string& emoji, bool add);
 json AvailableReactions(int64_t chatId, int64_t messageId, const std::string& extra);
+// Who reacted, all reactions, the first `limit` (TDLib allows 100).
+json AddedReactions(int64_t chatId, int64_t messageId, int32_t limit, const std::string& extra);
 // Sends a local file: a photo (with its size) or any file as a document.
 json SendPhoto(int64_t chatId, const std::string& path, int32_t width, int32_t height,
 	const std::string& caption, int64_t replyTo = 0);

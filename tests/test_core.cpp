@@ -590,6 +590,19 @@ TestMedia()
 	thumbs.count = 3;
 	CHECK(reactors.Reactors(thumbs) == "Tyrone Ford, News and 1 other");
 	CHECK(reactors.Reactors(reactions[0]).empty());
+	auto added = [](const char* emoji, json sender, bool mine = false) {
+		return json{{"type", {{"@type", "reactionTypeEmoji"}, {"emoji", emoji}}},
+			{"sender_id", sender}, {"is_outgoing", mine}};
+	};
+	json addedList = {{"@type", "addedReactions"}, {"total_count", 4}, {"reactions", json::array({
+		added("👍", {{"@type", "messageSenderUser"}, {"user_id", 7}}),
+		added("❤", {{"@type", "messageSenderChat"}, {"chat_id", -100}}),
+		added("👍", {{"@type", "messageSenderUser"}, {"user_id", 99}}, true),
+		added("👍", {{"@type", "messageSenderUser"}, {"user_id", 8}})})}};  // no name: left out
+	CHECK((ParseAddedReactions(addedList, reactors)
+		== std::vector<std::string>{"👍\tTyrone Ford", "❤\tNews", "👍\tYou"}));
+	CHECK(ParseAddedReactions(json(), reactors).empty());
+	CHECK(request::AddedReactions(42, 1, 100, "x")["reaction_type"].is_null());
 	ChatHistory rh(42);
 	rh.AddHistory({{"messages", json::array({Msg(42, 1, "hi")})}});
 	CHECK(rh.Apply({{"@type", "updateMessageInteractionInfo"}, {"chat_id", 42}, {"message_id", 1},

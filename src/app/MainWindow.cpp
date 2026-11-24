@@ -1111,6 +1111,29 @@ MainWindow::_ShowMessageMenu(const BMessage* properties)
 	menu->AddItem(react);
 	if (react->CountItems() == 0)
 		react->Superitem()->SetEnabled(false);   // reactions are off in this chat
+	// Who reacted: everyone, when Telegram lists them (not in channels),
+	// else what the tooltip shows.
+	if (!row->reactions.empty()) {
+		BMenu* who = new BMenu("Reactions");
+		const char* line;
+		for (int32 i = 0; properties->FindString("reactor", i, &line) == B_OK; i++) {
+			BString label(line);
+			label.ReplaceFirst("\t", "  ");
+			who->AddItem(new BMenuItem(label, nullptr));
+		}
+		if (who->CountItems() == 0) {
+			for (const MessageRow::Reaction& r : row->reactions) {
+				BString label(r.emoji);
+				label << "  " << (r.who.IsEmpty() ? BString() << r.count : r.who);
+				who->AddItem(new BMenuItem(label, nullptr));
+			}
+		} else if (int32 more = properties->GetInt32("reactors_more", 0)) {
+			BString label;
+			label << "and " << more << (more == 1 ? " other" : " others");
+			who->AddItem(new BMenuItem(label, nullptr));
+		}
+		menu->AddItem(who);
+	}
 	if (properties->GetBool("can_pin", false)) {
 		bool pinned = properties->GetBool("pinned", false);
 		item(pinned ? "Unpin" : "Pin", kMsgPin, true)->AddBool("pin", !pinned);

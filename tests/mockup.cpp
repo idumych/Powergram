@@ -689,6 +689,14 @@ public:
 				for (const char* emoji : {"\xF0\x9F\x91\x8D", "\xE2\x9D\xA4", "\xF0\x9F\x94\xA5",
 						"\xF0\x9F\x98\x82", "\xF0\x9F\x98\xAE", "\xF0\x9F\x98\xA2"})
 					props.AddString("reaction", emoji);
+				// What App makes of getMessageAddedReactions for message 109.
+				if (message->GetInt64("message_id", 0) == 109) {
+					for (const char* line : {"\xF0\x9F\x91\x8D\tTeo Marchetti",
+							"\xF0\x9F\x91\x8D\tPriya Raman", "\xF0\x9F\x91\x8D\tLena Hoffmann",
+							"\xE2\x9D\xA4\tYou"})
+						props.AddString("reactor", line);
+					props.AddInt32("reactors_more", 0);
+				}
 				fMain->PostMessage(&props);
 				break;
 			}

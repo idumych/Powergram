@@ -649,6 +649,8 @@ App::_HandleObject(const json& object)
 		const pp::Message* shown = fHistory != nullptr && fHistory->ChatId() == chatId
 			? fHistory->Find(messageId) : nullptr;
 		props.AddBool("pinned", shown != nullptr && shown->pinned);
+		props.AddBool("list_reactors", pp::Bool(object, "can_get_added_reactions")
+			&& shown != nullptr && !shown->reactions.empty());
 		// The menu offers only the reactions this message allows (chats can
 		// limit them, or turn them off): ask before showing it.
 		fPendingProps = props;
@@ -665,6 +667,28 @@ App::_HandleObject(const json& object)
 		if (type == "availableReactions") {
 			for (const std::string& emoji : pp::ParseAvailableReactions(object))
 				fPendingProps.AddString("reaction", emoji.c_str());
+		}
+		if (fPendingProps.GetBool("list_reactors", false)) {
+			// Then who reacted, for the menu's list.
+			_Send(pp::request::AddedReactions(fPendingProps.GetInt64("chat_id", 0),
+				fPendingProps.GetInt64("message_id", 0), 100, "added:" + key), true);
+			return;
+		}
+		fMain->PostMessage(&fPendingProps);
+		fPendingProps = BMessage();
+		return;
+	}
+	if (extra.rfind("added:", 0) == 0) {
+		std::string pending = std::to_string(fPendingProps.GetInt64("chat_id", 0)) + ":"
+			+ std::to_string(fPendingProps.GetInt64("message_id", 0));
+		if (extra.substr(6) != pending || fPendingProps.what != kMsgMessageProperties)
+			return;   // another menu since
+		if (type == "addedReactions") {
+			std::vector<std::string> list = pp::ParseAddedReactions(object, fNames);
+			for (const std::string& line : list)
+				fPendingProps.AddString("reactor", line.c_str());
+			fPendingProps.AddInt32("reactors_more",
+				std::max<int32>(0, (int32)pp::Int(object, "total_count") - (int32)list.size()));
 		}
 		fMain->PostMessage(&fPendingProps);
 		fPendingProps = BMessage();
