@@ -1134,6 +1134,28 @@ MainWindow::_ShowMessageMenu(const BMessage* properties)
 		}
 		menu->AddItem(who);
 	}
+	// Someone else's message in a group: ignore them here for a while.
+	if (!row->outgoing && row->senderKey != 0 && !row->sender.IsEmpty()) {
+		BString label("Ignore ");
+		label << row->sender;
+		BMenu* ignore = new BMenu(label);
+		static const struct { const char* label; int32 seconds; } kTimes[] = {
+			{ "For 15 minutes", 15 * 60 },
+			{ "For 1 hour", 60 * 60 },
+			{ "For 24 hours", 24 * 60 * 60 },
+			{ "Permanently", 0 },
+		};
+		for (const auto& t : kTimes) {
+			BMessage* message = new BMessage(kMsgIgnoreSender);
+			message->AddInt64("chat_id", fOpenChat);
+			message->AddInt64("sender_key", row->senderKey);
+			message->AddString("name", row->sender);
+			message->AddInt32("seconds", t.seconds);
+			ignore->AddItem(new BMenuItem(t.label, message));
+		}
+		ignore->SetTargetForItems(be_app);
+		menu->AddItem(ignore);
+	}
 	if (properties->GetBool("can_pin", false)) {
 		bool pinned = properties->GetBool("pinned", false);
 		item(pinned ? "Unpin" : "Pin", kMsgPin, true)->AddBool("pin", !pinned);
@@ -1568,6 +1590,27 @@ MainWindow::_ShowChatMenu(int32 index, BPoint where)
 	add(item->Pinned() ? "Unpin" : "Pin", item->Pinned() ? "unpin" : "pin");
 	add(fShownList == "archive" ? "Unarchive" : "Archive",
 		fShownList == "archive" ? "unarchive" : "archive");
+	auto ignored = fIgnored.find(item->Id());
+	if (ignored != fIgnored.end() && !ignored->second.empty()) {
+		BMenu* stop = new BMenu("Stop ignoring");
+		BTimeFormat timeFormat;
+		for (const Ignored& who : ignored->second) {
+			BString label(who.name);
+			if (who.until == 0)
+				label << " (permanently)";
+			else {
+				BString until;
+				timeFormat.Format(until, (time_t)who.until, B_SHORT_TIME_FORMAT);
+				label << " (until " << until << ")";
+			}
+			BMessage* message = new BMessage(kMsgUnignoreSender);
+			message->AddInt64("chat_id", item->Id());
+			message->AddInt64("sender_key", who.senderKey);
+			stop->AddItem(new BMenuItem(label, message));
+		}
+		stop->SetTargetForItems(be_app);
+		menu->AddItem(stop);
+	}
 	menu->AddSeparatorItem();
 	add(item->Kind() == 0 ? "Delete chat" B_UTF8_ELLIPSIS
 		: item->Kind() == 2 ? "Leave channel" B_UTF8_ELLIPSIS : "Leave group" B_UTF8_ELLIPSIS,
@@ -1815,6 +1858,16 @@ MainWindow::MessageReceived(BMessage* message)
 		case kMsgMessageProperties:
 			_ShowMessageMenu(message);
 			break;
+		case kMsgIgnoredList:
+		{
+			fIgnored.clear();
+			int64 chatId;
+			for (int32 i = 0; message->FindInt64("chat_id", i, &chatId) == B_OK; i++) {
+				fIgnored[chatId].push_back({ message->GetInt64("sender_key", i, 0),
+					message->GetString("name", i, ""), message->GetInt64("until", i, 0) });
+			}
+			break;
+		}
 		case kMsgPinned:
 			if (message->GetInt64("chat_id", 0) != fOpenChat)
 				break;

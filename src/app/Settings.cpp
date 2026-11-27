@@ -107,6 +107,9 @@ Settings::Load()
 		const char* emoji;
 		for (int32 i = 0; archive.FindString("recent_emoji", i, &emoji) == B_OK; i++)
 			recentEmoji.push_back(emoji);
+		const char* ignoredText;
+		if (archive.FindString("ignored", &ignoredText) == B_OK)
+			ignored = ignoredText;
 	}
 	if (_ImportApiKeyFile())
 		return B_OK;
@@ -127,6 +130,8 @@ Settings::Save() const
 	archive.AddMessage("preferences", &preferences);
 	for (const std::string& emoji : recentEmoji)
 		archive.AddString("recent_emoji", emoji.c_str());
+	if (!ignored.empty())
+		archive.AddString("ignored", ignored.c_str());
 
 	// Written beside it, then renamed over it: a crash or a full disk
 	// leaves the old file (and its API key), not half a new one.

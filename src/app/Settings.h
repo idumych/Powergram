@@ -25,6 +25,7 @@ public:
 	BRect mainFrame;   // invalid until the window was placed once
 	std::vector<std::string> recentEmoji;  // most recent first
 	BMessage preferences;   // the Settings window's choices (AppSettings)
+	std::string ignored;    // pp::IgnoreList::Encode()
 
 private:
 	bool _ImportApiKeyFile();

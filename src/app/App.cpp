@@ -48,6 +48,7 @@ extern "C" BView* instantiate_deskbar_item(float maxWidth, float maxHeight);
 #include "../core/ChatHistory.h"
 #include "../core/ChatInfo.h"
 #include "../core/ChatList.h"
+#include "../core/IgnoreList.h"
 #include "../core/Compose.h"
 #include "../core/Contacts.h"
 #include "../core/Files.h"
@@ -115,6 +116,9 @@ private:
 	// sends many updates, and each one is a full re-layout).
 	void _FlushHistory(bool scrollToEnd = false);
 	void _SendHistory();
+	// Ignored people: saved, sent to the window, and timed to run out.
+	void _IgnoredChanged(int64 chatId);
+	void _SendIgnored();
 	void _StartDownloads();
 	const pp::Message* _FindMessage(int64 chatId, int64 messageId) const;
 	void _OpenMedia(int64 chatId, int64 messageId, int32 where = kOpenAsSet);
@@ -186,6 +190,7 @@ private:
 	// unfinished login is dropped and TDLib asks for a number again.
 	std::string fPendingPhone;
 	pp::ChatList fChats;
+	pp::IgnoreList fIgnored;
 	std::string fShownList = "main";   // the chat list on screen
 	std::set<std::string> fLoadedLists;
 	void _SendChatLists();
@@ -220,6 +225,7 @@ private:
 	void _SendRecordState();
 	VoiceRecorder fRecorder;
 	BMessageRunner* fRecordRunner = nullptr;
+	BMessageRunner* fIgnoreRunner = nullptr;
 	int64 fRecordChat = 0;
 	int64 fRecordReply = 0;
 	BString fRecordPath;
@@ -285,6 +291,7 @@ App::App()
 {
 	fSettings.Load();
 	fPrefs = AppSettings::FromMessage(&fSettings.preferences);
+	fIgnored = pp::IgnoreList::Decode(fSettings.ignored);
 	// Sounds the user picks in the Sounds preferences.
 	add_system_beep_event("Powergram new message");
 	add_system_beep_event("Powergram private message");
@@ -302,6 +309,7 @@ App::~App()
 	delete fPresenceRunner;
 	delete fVoiceRunner;
 	delete fRecordRunner;
+	delete fIgnoreRunner;
 	// The item stays in Deskbar as a launcher (a click starts the app), so
 	// it's left there, without a count that would go stale; or it goes, if
 	// the user would rather.
@@ -375,6 +383,7 @@ App::ReadyToRun()
 		fPrefs.ToMessage(&apply);
 		fMain->PostMessage(&apply);
 	}
+	_IgnoredChanged(0);   // drops times that ran out while closed, starts the timer
 	if (!placed)
 		fMain->CenterOnScreen();
 	_UpdateDeskbar();
@@ -735,7 +744,10 @@ App::_HandleObject(const json& object)
 	if (type == "updateNewMessage") {
 		int64 visible = fActive && fHistory != nullptr ? fHistory->ChatId() : 0;
 		const json& message = pp::Field(object, "message");
-		if (fChats.ShouldNotify(message, visible, time(nullptr)))
+		pp::Message parsed = pp::ParseMessage(message);
+		int64 senderKey = parsed.senderIsChat ? -parsed.senderId : parsed.senderId;
+		if (!fIgnored.IsIgnored(pp::Int(message, "chat_id"), senderKey, time(nullptr))
+			&& fChats.ShouldNotify(message, visible, time(nullptr)))
 			_Notify(message);
 	}
 
@@ -879,6 +891,50 @@ Summary(const pp::Message& m)
 }
 
 
+/*!	After the list changed (or to catch times that ran out): saves it,
+	tells the window, shows the open chat again if it changed there (any
+	chat for 0), and wakes up when the next time runs out.
+*/
+void
+App::_IgnoredChanged(int64 chatId)
+{
+	const int64 now = time(nullptr);
+	bool expired = fIgnored.Prune(now);
+	std::string encoded = fIgnored.Encode();
+	if (encoded != fSettings.ignored) {
+		fSettings.ignored = encoded;
+		fSettings.Save();
+	}
+	_SendIgnored();
+	if (fHistory != nullptr && (expired || chatId == 0 || chatId == fHistory->ChatId()))
+		_SendHistory();
+
+	delete fIgnoreRunner;
+	fIgnoreRunner = nullptr;
+	if (int64 next = fIgnored.NextExpiry()) {
+		BMessage expire(kMsgIgnoreExpired);
+		bigtime_t delay = std::max<int64>(next - now, 1) * 1000000LL;
+		fIgnoreRunner = new BMessageRunner(BMessenger(this), &expire, delay, 1);
+	}
+}
+
+
+void
+App::_SendIgnored()
+{
+	if (fMain == nullptr)
+		return;
+	BMessage list(kMsgIgnoredList);
+	for (const pp::IgnoreList::Entry& e : fIgnored.All(time(nullptr))) {
+		list.AddInt64("chat_id", e.chatId);
+		list.AddInt64("sender_key", e.senderKey);
+		list.AddString("name", e.name.c_str());
+		list.AddInt64("until", e.until);
+	}
+	fMain->PostMessage(&list);
+}
+
+
 void
 App::_SendHistory()
 {
@@ -968,10 +1024,15 @@ App::_SendHistory()
 	int64 lastSender = 0;  // name only on the first message of a run
 	bool unreadMarked = false;
 	std::vector<pp::Message> messages = fHistory->Sorted();
+	const int64 now = time(nullptr);
 	fProgressFiles.clear();
 	fHistoryFiles.clear();
 	for (size_t i = 0; i < messages.size(); i++) {
 		const pp::Message& m = messages[i];
+		// Someone ignored in this chat: as if they hadn't written.
+		if (!m.outgoing && !m.service
+			&& fIgnored.IsIgnored(chatId, m.senderIsChat ? -m.senderId : m.senderId, now))
+			continue;
 		// A centred date between days, as Paper Plane shows.
 		time_t when = (time_t)m.date;
 		struct tm local;
@@ -2237,6 +2298,8 @@ App::_HandleAuth()
 			fMain->PostMessage(kMsgLogOutConfirmed);   // its avatars and sticker picker
 			_StopVoice();
 			fHistory.reset();
+			fIgnored = pp::IgnoreList();   // the old account's chats
+			_IgnoredChanged(0);
 			fOnline = -1;
 			_FlushChats();
 			fAuth = std::make_unique<pp::AuthFlow>(_Params());
@@ -2747,6 +2810,28 @@ App::MessageReceived(BMessage* message)
 			}
 			break;
 
+		case kMsgIgnoreSender:
+		{
+			int64 chatId = message->GetInt64("chat_id", 0);
+			int64 sender = message->GetInt64("sender_key", 0);
+			int32 seconds = message->GetInt32("seconds", 0);
+			if (chatId == 0 || sender == 0)
+				break;
+			fIgnored.Ignore(chatId, sender, seconds > 0 ? time(nullptr) + seconds : 0,
+				message->GetString("name", ""));
+			_IgnoredChanged(chatId);
+			break;
+		}
+		case kMsgUnignoreSender:
+		{
+			int64 chatId = message->GetInt64("chat_id", 0);
+			if (fIgnored.Unignore(chatId, message->GetInt64("sender_key", 0)))
+				_IgnoredChanged(chatId);
+			break;
+		}
+		case kMsgIgnoreExpired:
+			_IgnoredChanged(0);
+			break;
 		case kMsgPresenceTick:
 			// Typing expires and "last seen" ages without an update.
 			_SendChatStatus();

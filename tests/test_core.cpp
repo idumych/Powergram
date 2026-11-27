@@ -17,6 +17,7 @@
 #include "../src/core/Files.h"
 #include "../src/core/Kinetic.h"
 #include "../src/core/Format.h"
+#include "../src/core/IgnoreList.h"
 #include "../src/core/Links.h"
 #include "../src/core/Lottie.h"
 #include "../src/core/Pinned.h"
@@ -2317,6 +2318,50 @@ TestKinetic()
 }
 
 
+
+static void
+TestIgnoreList()
+{
+	using pp::IgnoreList;
+	IgnoreList list;
+	const int64_t now = 1000000;
+	CHECK(!list.IsIgnored(-100, 7, now));
+
+	list.Ignore(-100, 7, now + 15 * 60, "Ann");   // 15 minutes
+	list.Ignore(-100, -55, 0, "Spam channel");    // for good
+	list.Ignore(-200, 8, now + 3600, "Bob");      // another chat
+	CHECK(list.IsIgnored(-100, 7, now));
+	CHECK(!list.IsIgnored(-200, 7, now));          // only in that chat
+	CHECK(list.IsIgnored(-100, -55, now + 100 * 365 * 86400LL));
+	CHECK(!list.IsIgnored(-100, 7, now + 15 * 60));  // over when the time comes
+	CHECK(list.In(-100, now).size() == 2 && list.In(-100, now)[0].name == "Ann");
+	CHECK(list.In(-100, now + 15 * 60).size() == 1);
+	CHECK(list.NextExpiry() == now + 15 * 60);
+	CHECK(list.All(now).size() == 3 && list.All(now)[2].name == "Bob");
+
+	// a new time replaces the old one, and keeps the place in the list
+	list.Ignore(-100, 7, now + 86400, "Ann");
+	CHECK(list.IsIgnored(-100, 7, now + 3600));
+	CHECK(list.In(-100, now)[0].senderKey == 7);
+	CHECK(list.NextExpiry() == now + 3600);
+
+	// saved and read back, names with tabs or newlines included
+	list.Ignore(-300, 9, 0, "Odd\tname\n");
+	IgnoreList back = IgnoreList::Decode(list.Encode() + "junk line\n1\tx\t0\tbad\n");
+	CHECK(back.Encode() == list.Encode());
+	CHECK(back.In(-300, now)[0].name == "Odd name ");
+	CHECK(back.IsIgnored(-200, 8, now) && !back.IsIgnored(-200, 8, now + 3600));
+
+	// times that ran out are forgotten
+	CHECK(!list.Prune(now));
+	CHECK(list.Prune(now + 3600));
+	CHECK(!list.IsIgnored(-200, 8, now) && list.IsIgnored(-100, 7, now));
+	CHECK(list.NextExpiry() == now + 86400);
+	CHECK(list.Unignore(-100, 7) && !list.Unignore(-100, 7));
+	CHECK(list.NextExpiry() == 0);
+	CHECK(list.IsIgnored(-100, -55, now) && !list.Empty());
+}
+
 int
 main()
 {
@@ -2355,6 +2400,7 @@ main()
 	TestLottie();
 	TestWebm();
 	TestKinetic();
+	TestIgnoreList();
 	if (sFailures) {
 		std::fprintf(stderr, "%d check(s) failed\n", sFailures);
 		return EXIT_FAILURE;

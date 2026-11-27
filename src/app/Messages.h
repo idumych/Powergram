@@ -315,6 +315,13 @@ enum {
 	// light theme chosen while the app runs)
 	kMsgColorsChanged = 'clch',
 
+	// Ignoring someone in a chat: the message menu asks the app, which
+	// sends the window the list (chat_id, sender_key, name, until arrays)
+	kMsgIgnoreSender = 'igns',     // chat_id, sender_key, name, seconds (0: for good)
+	kMsgUnignoreSender = 'igun',   // chat_id, sender_key
+	kMsgIgnoredList = 'igls',
+	kMsgIgnoreExpired = 'igex',
+
 	kMsgLogOut = 'lout',
 	kMsgLogOutConfirmed = 'loco',
 	kMsgForceQuit = 'fqut'

@@ -126,4 +126,11 @@ private:
 	int64 fReplyTo;
 	int64 fEditing;
 	BPoint fMenuWhere;
+	// People ignored in each chat (from the app's kMsgIgnoredList).
+	struct Ignored {
+		int64 senderKey;
+		BString name;
+		int64 until;   // Unix time; 0 for good
+	};
+	std::map<int64, std::vector<Ignored>> fIgnored;
 };

@@ -31,6 +31,7 @@
 #include "../src/app/Messages.h"
 #include "../src/core/ChatHistory.h"
 #include "../src/core/Format.h"
+#include "../src/core/IgnoreList.h"
 
 namespace {
 
@@ -102,9 +103,17 @@ struct Row {
 };
 
 
+// People ignored through the message menu, as the app keeps them.
+static pp::IgnoreList sIgnored;
+static int64 sHistoryChat = 0;
+
+
 void
 Add(BMessage& list, const Row& r)
 {
+	if (!r.outgoing && !r.service
+		&& sIgnored.IsIgnored(sHistoryChat, r.senderKey, time(nullptr)))
+		return;
 	list.AddInt64("id", r.id);
 	list.AddString("sender", r.sender);
 	list.AddString("text", r.text);
@@ -576,6 +585,33 @@ public:
 					message->GetString("emoji", ""), (long long)message->GetInt64("message_id", 0));
 				fflush(stdout);
 				break;
+			case kMsgIgnoreSender:
+			case kMsgUnignoreSender:
+			{
+				int64 chat = message->GetInt64("chat_id", 0);
+				int64 sender = message->GetInt64("sender_key", 0);
+				if (message->what == kMsgIgnoreSender) {
+					int32 seconds = message->GetInt32("seconds", 0);
+					sIgnored.Ignore(chat, sender, seconds > 0 ? time(nullptr) + seconds : 0,
+						message->GetString("name", ""));
+					printf("ignore %s in %lld for %d s\n", message->GetString("name", ""),
+						(long long)chat, (int)seconds);
+				} else {
+					sIgnored.Unignore(chat, sender);
+					printf("stop ignoring %lld in %lld\n", (long long)sender, (long long)chat);
+				}
+				fflush(stdout);
+				BMessage list(kMsgIgnoredList);
+				for (const pp::IgnoreList::Entry& e : sIgnored.All(time(nullptr))) {
+					list.AddInt64("chat_id", e.chatId);
+					list.AddInt64("sender_key", e.senderKey);
+					list.AddString("name", e.name.c_str());
+					list.AddInt64("until", e.until);
+				}
+				fMain->PostMessage(&list);
+				_SendHistory(chat);
+				break;
+			}
 			case kMsgPin:
 				printf("%s message %lld\n", message->GetBool("pin", true) ? "pin" : "unpin",
 					(long long)message->GetInt64("message_id", 0));
@@ -862,6 +898,7 @@ private:
 	void _SendHistory(int64 chatId)
 	{
 		time_t now = time(nullptr);
+		sHistoryChat = chatId;
 		BMessage list(kMsgHistory);
 		list.AddInt64("chat_id", chatId);
 		list.AddBool("scroll_end", fHighlight == 0);

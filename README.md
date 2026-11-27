@@ -53,6 +53,10 @@ made-up data so far.
 - Reactions (shown and added; hover one to see who reacted, or the message's
   menu for everyone), forwarding, polls, locations, places and contacts
 - Replies: click the quoted message to go to the original
+- Ignoring someone in a group, from their message's menu: for 15 minutes, an
+  hour, 24 hours or permanently. Their messages there are hidden and don't
+  notify; only on this computer, and they aren't told. The chat's menu in the
+  list stops it early
 - Voice messages, played in the app with a waveform, and recorded: click the
   microphone, then Send (or the microphone again); Escape cancels
 - Files and music sent to you, shown with their type's icon, name and size:
