@@ -3,6 +3,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <string>
 #include <vector>
@@ -26,6 +27,7 @@ struct Chat {
 	int64_t lastReadOutbox = 0; // our messages up to this id were read
 	std::string draft;          // unsent text kept for this chat
 	int64_t lastMessageId = 0;  // the chat's newest message
+	int64_t lastSenderKey = 0;  // its sender: a user's id, or minus a chat's
 	int64_t lastReadInbox = 0;  // incoming messages up to this id were read
 	int32_t photoFileId = 0;    // small (160 px) chat photo, 0: none
 	std::string photoPreview;   // its tiny inline JPEG
@@ -76,6 +78,15 @@ public:
 	// Chats in the main list with something unread that aren't muted (a
 	// mention counts even when muted), as Telegram's badges count them.
 	int32_t UnreadChats() const;
+
+	// People the user ignores in a chat (IgnoreList): their unread messages
+	// don't count and their last message isn't previewed. Only messages
+	// that arrived while the app ran are known by sender.
+	typedef std::function<bool(int64_t chatId, int64_t senderKey)> Hidden;
+	int32_t VisibleUnread(const Chat& chat, const Hidden& hidden) const;
+	int32_t VisibleMentions(const Chat& chat, const Hidden& hidden) const;
+	bool LastHidden(const Chat& chat, const Hidden& hidden) const;
+	int32_t UnreadChats(const Hidden& hidden) const;
 	bool ShowsPreview(int64_t chatId) const;
 
 	// Whether a new message deserves a desktop notification: incoming, not
@@ -118,6 +129,14 @@ private:
 	struct Scope { int32_t muteFor = 0; bool showPreview = true; };
 	Scope fScopes[3];
 	std::map<int64_t, int64_t> fLastNotified;
+	// Unread incoming messages by chat and id: who sent each, and whether
+	// it mentions the user.
+	struct Unseen {
+		int64_t senderKey;
+		bool mention;
+	};
+	std::map<int64_t, std::map<int64_t, Unseen>> fUnseen;
+	void _ForgetRead(const Chat& chat);
 };
 
 // One line of text for a message's content ("Photo", "Sticker 😀", the text).

@@ -2362,6 +2362,54 @@ TestIgnoreList()
 	CHECK(list.IsIgnored(-100, -55, now) && !list.Empty());
 }
 
+
+static void
+TestIgnoredInChatList()
+{
+	// A group (-100) where Bob (8) is ignored and Ann (7) isn't.
+	ChatList list;
+	list.Apply(NewChat(-100, "Group", "500"));
+	auto message = [](int64_t id, int64_t sender, bool mention) {
+		return json{{"@type", "updateNewMessage"}, {"message", {{"id", id},
+			{"chat_id", -100}, {"is_outgoing", false}, {"contains_unread_mention", mention},
+			{"sender_id", {{"@type", "messageSenderUser"}, {"user_id", sender}}},
+			{"content", {{"@type", "messageText"}, {"text", {{"text", "hi"}}}}}}}};
+	};
+	list.Apply(message(11, 7, false));
+	list.Apply(message(12, 8, true));
+	list.Apply(message(13, 8, false));
+	list.Apply({{"@type", "updateChatReadInbox"}, {"chat_id", -100}, {"unread_count", 3},
+		{"last_read_inbox_message_id", 10}});
+	list.Apply({{"@type", "updateChatUnreadMentionCount"}, {"chat_id", -100},
+		{"unread_mention_count", 1}});
+	list.Apply({{"@type", "updateChatLastMessage"}, {"chat_id", -100},
+		{"last_message", Field(message(13, 8, false), "message")}, {"positions", json::array()}});
+
+	ChatList::Hidden bob = [](int64_t chat, int64_t sender) { return chat == -100 && sender == 8; };
+	ChatList::Hidden ann = [](int64_t chat, int64_t sender) { return chat == -100 && sender == 7; };
+	const pp::Chat& chat = *list.Find(-100);
+	CHECK(chat.lastSenderKey == 8);
+	CHECK(list.VisibleUnread(chat, nullptr) == 3);
+	CHECK(list.VisibleUnread(chat, bob) == 1);   // only Ann's
+	CHECK(list.VisibleMentions(chat, bob) == 0);
+	CHECK(list.LastHidden(chat, bob) && !list.LastHidden(chat, ann));
+	CHECK(list.UnreadChats(bob) == 1 && list.UnreadChats() == 1);
+
+	// read up to Ann's message: nothing visible left, Bob's don't count
+	list.Apply({{"@type", "updateChatReadInbox"}, {"chat_id", -100}, {"unread_count", 2},
+		{"last_read_inbox_message_id", 11}});
+	CHECK(list.VisibleUnread(*list.Find(-100), bob) == 0);
+	CHECK(list.UnreadChats(bob) == 0 && list.UnreadChats() == 1);
+
+	// a chat sending as itself: minus its id
+	list.Apply({{"@type", "updateChatLastMessage"}, {"chat_id", -100},
+		{"last_message", {{"id", 14}, {"is_outgoing", false},
+			{"sender_id", {{"@type", "messageSenderChat"}, {"chat_id", -555}}},
+			{"content", {{"@type", "messageText"}, {"text", {{"text", "x"}}}}}}},
+		{"positions", json::array()}});
+	CHECK(list.Find(-100)->lastSenderKey == 555);
+}
+
 int
 main()
 {
@@ -2401,6 +2449,7 @@ main()
 	TestWebm();
 	TestKinetic();
 	TestIgnoreList();
+	TestIgnoredInChatList();
 	if (sFailures) {
 		std::fprintf(stderr, "%d check(s) failed\n", sFailures);
 		return EXIT_FAILURE;

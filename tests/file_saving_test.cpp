@@ -6,6 +6,7 @@
 #include <File.h>
 
 #include <cstdio>
+#include <unistd.h>
 #include <cstring>
 #include <string>
 
@@ -77,6 +78,9 @@ main()
 	CHECK(TypeOf(text.c_str()) == "text/plain");
 
 	CHECK(SaveCopy(std::string(dir) + "/missing", dst, "", true) != B_OK);
+	// a failed save leaves the file it would have replaced, and no .part
+	CHECK(Read(dst.c_str()) == big);
+	CHECK(access((dst + ".part").c_str(), F_OK) != 0);
 
 	printf(sFailures == 0 ? "file saving tests passed\n" : "%d failures\n", sFailures);
 	return sFailures == 0 ? 0 : 1;

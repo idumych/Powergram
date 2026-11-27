@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // TDLib's JSON client on a thread of its own. Every object TDLib sends is
-// posted to the target as a kMsgTdObject message with the JSON in "json".
+// posted to the target as a kMsgTdObject message with a new pp::json in
+// "object" (a pointer the receiver deletes).
 //
 // HaikuPorts' TDLib has no eventfd, so it runs its single-threaded client:
 // td_send() and td_receive() must come from the same thread, or TDLib

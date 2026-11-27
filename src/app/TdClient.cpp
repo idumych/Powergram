@@ -108,12 +108,17 @@ TdClient::_Run()
 			std::lock_guard<std::mutex> lock(fLock);
 			fQueue.OnObject(object, system_time() / 1e6);
 		}
+		// Parsed once: the app takes the object (and deletes it).
+		pp::json* parsed = new pp::json(std::move(object));
 		BMessage message(kMsgTdObject);
-		message.AddString("json", text);
+		message.AddPointer("object", parsed);
 		// Waits for room in the app's port, but not past quitting: a quitting
 		// app stops reading it, and the destructor waits for this thread.
-		while (!fQuit && fTarget.SendMessage(&message, (BHandler*)nullptr, 100000)
-				== B_TIMED_OUT) {
+		status_t status = B_TIMED_OUT;
+		while (!fQuit && (status = fTarget.SendMessage(&message, (BHandler*)nullptr,
+				100000)) == B_TIMED_OUT) {
 		}
+		if (status != B_OK)
+			delete parsed;
 	}
 }

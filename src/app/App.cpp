@@ -118,6 +118,7 @@ private:
 	void _SendHistory();
 	// Ignored people: saved, sent to the window, and timed to run out.
 	void _IgnoredChanged(int64 chatId);
+	pp::ChatList::Hidden _Hidden() const;
 	void _SendIgnored();
 	void _StartDownloads();
 	const pp::Message* _FindMessage(int64 chatId, int64 messageId) const;
@@ -906,6 +907,8 @@ App::_IgnoredChanged(int64 chatId)
 		fSettings.Save();
 	}
 	_SendIgnored();
+	_ScheduleChatFlush();   // previews and counts without them
+	_SendUnread();
 	if (fHistory != nullptr && (expired || chatId == 0 || chatId == fHistory->ChatId()))
 		_SendHistory();
 
@@ -916,6 +919,16 @@ App::_IgnoredChanged(int64 chatId)
 		bigtime_t delay = std::max<int64>(next - now, 1) * 1000000LL;
 		fIgnoreRunner = new BMessageRunner(BMessenger(this), &expire, delay, 1);
 	}
+}
+
+
+pp::ChatList::Hidden
+App::_Hidden() const
+{
+	const int64 now = time(nullptr);
+	return [this, now](int64_t chatId, int64_t senderKey) {
+		return fIgnored.IsIgnored(chatId, senderKey, now);
+	};
 }
 
 
@@ -2384,14 +2397,16 @@ App::_FlushChats()
 		&& std::none_of(chats.begin(), chats.end(),
 			[&](const pp::Chat& c) { return c.id == fExtraChat; }))
 		chats.insert(chats.begin(), *fChats.Find(fExtraChat));
+	const pp::ChatList::Hidden hidden = _Hidden();
 	for (const pp::Chat& c : chats) {
 		list.AddInt64("id", c.id);
 		list.AddString("title", c.title.c_str());
-		list.AddString("text", c.lastText.c_str());
+		list.AddString("text", fChats.LastHidden(c, hidden) ? "Ignored message"
+			: c.lastText.c_str());
 		list.AddString("sender", c.lastSender.c_str());
 		list.AddInt64("date", c.lastDate);
-		list.AddInt32("unread", c.unread);
-		list.AddInt32("mentions", c.unreadMentions);
+		list.AddInt32("unread", fChats.VisibleUnread(c, hidden));
+		list.AddInt32("mentions", fChats.VisibleMentions(c, hidden));
 		list.AddBool("pinned", c.pinned);
 		list.AddBool("read", c.outgoingRead);
 		list.AddString("typing", _TypingText(c.id).c_str());
@@ -2423,9 +2438,11 @@ App::MessageReceived(BMessage* message)
 	switch (message->what) {
 		case kMsgTdObject:
 		{
-			json object = json::parse(message->GetString("json", "{}"), nullptr, false);
-			if (!object.is_discarded())
-				_HandleObject(object);
+			json* object = nullptr;
+			if (message->FindPointer("object", (void**)&object) == B_OK && object != nullptr) {
+				std::unique_ptr<json> owned(object);
+				_HandleObject(*owned);
+			}
 			break;
 		}
 
@@ -3248,7 +3265,7 @@ App::_SendUnread()
 {
 	if (!fDeskbarItem.IsValid())
 		return;
-	int32 unread = fChats.UnreadChats();
+	int32 unread = fChats.UnreadChats(_Hidden());
 	if (unread == fUnreadSent)
 		return;
 	fUnreadSent = unread;

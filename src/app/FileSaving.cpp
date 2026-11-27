@@ -7,7 +7,10 @@
 #include <NodeInfo.h>
 #include <String.h>
 
+#include <cerrno>
+#include <cstdio>
 #include <cstring>
+#include <unistd.h>
 #include <thread>
 #include <vector>
 
@@ -26,11 +29,14 @@ GiveFileType(const char* path, const std::string& mimeType)
 }
 
 
+// Written beside the destination, then renamed over it: a full disk or
+// quitting mid-copy leaves a file the user chose to replace as it was.
 static status_t
 Copy(const std::string& from, const std::string& to, const std::string& mimeType)
 {
+	const std::string part = to + ".part";
 	BFile in(from.c_str(), B_READ_ONLY);
-	BFile out(to.c_str(), B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
+	BFile out(part.c_str(), B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
 	status_t status = in.InitCheck() != B_OK ? in.InitCheck() : out.InitCheck();
 	std::vector<char> buffer(256 * 1024);
 	while (status == B_OK) {
@@ -43,10 +49,17 @@ Copy(const std::string& from, const std::string& to, const std::string& mimeType
 		if (put != got)
 			status = put < 0 ? (status_t)put : B_IO_ERROR;
 	}
-	out.Unset();
 	if (status == B_OK)
-		GiveFileType(to.c_str(), mimeType);
-	return status;
+		status = out.Sync();
+	out.Unset();
+	if (status == B_OK && rename(part.c_str(), to.c_str()) != 0)
+		status = errno;
+	if (status != B_OK) {
+		unlink(part.c_str());
+		return status;
+	}
+	GiveFileType(to.c_str(), mimeType);
+	return B_OK;
 }
 
 

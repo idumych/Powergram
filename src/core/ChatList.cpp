@@ -203,12 +203,23 @@ KindOf(const json& type)
 }
 
 
+// The same key as the app's: a user's id, or minus a chat's id.
+static int64_t
+SenderKey(const json& sender)
+{
+	if (Type(sender) == "messageSenderChat")
+		return -Int(sender, "chat_id");
+	return Int(sender, "user_id");
+}
+
+
 void
 ChatList::ApplyLastMessage(Chat& chat, const json& message)
 {
 	if (!message.is_object()) {
 		chat.lastText.clear();
 		chat.lastSender.clear();
+		chat.lastSenderKey = 0;
 		chat.lastDate = 0;
 		chat.outgoing = false;
 		chat.outgoingRead = false;
@@ -219,6 +230,7 @@ ChatList::ApplyLastMessage(Chat& chat, const json& message)
 	chat.lastDate = Int(message, "date");
 	chat.outgoing = Bool(message, "is_outgoing");
 	chat.lastSender = chat.outgoing ? "You" : "";
+	chat.lastSenderKey = SenderKey(Field(message, "sender_id"));
 	chat.outgoingRead = chat.outgoing && chat.lastMessageId <= chat.lastReadOutbox;
 }
 
@@ -279,6 +291,19 @@ ChatList::Apply(const json& object)
 		return true;
 	}
 
+	if (type == "updateNewMessage") {
+		// Who sent each unread message, for the counts without ignored people
+		const json& message = Field(object, "message");
+		if (!Bool(message, "is_outgoing")) {
+			std::map<int64_t, Unseen>& unseen = fUnseen[Int(message, "chat_id")];
+			unseen[Int(message, "id")] = {SenderKey(Field(message, "sender_id")),
+				Bool(message, "contains_unread_mention")};
+			if (unseen.size() > 2000)
+				unseen.erase(unseen.begin());
+		}
+		return false;
+	}
+
 	auto it = fChats.find(Int(object, "chat_id"));
 	if (it == fChats.end())
 		return false;
@@ -305,6 +330,7 @@ ChatList::Apply(const json& object)
 	} else if (type == "updateChatReadInbox") {
 		chat.unread = Int(object, "unread_count");
 		chat.lastReadInbox = Int(object, "last_read_inbox_message_id");
+		_ForgetRead(chat);
 	} else if (type == "updateChatReadOutbox") {
 		chat.lastReadOutbox = Int(object, "last_read_outbox_message_id");
 		chat.outgoingRead = chat.outgoing && chat.lastMessageId <= chat.lastReadOutbox;
@@ -326,6 +352,12 @@ ChatList::Apply(const json& object)
 		// The second comes when a message mentioning us was read, with
 		// the count left.
 		chat.unreadMentions = Int(object, "unread_mention_count");
+		auto unseen = fUnseen.find(chat.id);
+		if (type == "updateMessageMentionRead" && unseen != fUnseen.end()) {
+			auto m = unseen->second.find(Int(object, "message_id"));
+			if (m != unseen->second.end())
+				m->second.mention = false;
+		}
 	} else
 		return false;
 
@@ -356,13 +388,70 @@ ChatList::Sorted(const std::string& list) const
 }
 
 
+void
+ChatList::_ForgetRead(const Chat& chat)
+{
+	auto unseen = fUnseen.find(chat.id);
+	if (unseen == fUnseen.end())
+		return;
+	auto& messages = unseen->second;
+	messages.erase(messages.begin(), messages.upper_bound(chat.lastReadInbox));
+}
+
+
+int32_t
+ChatList::VisibleUnread(const Chat& chat, const Hidden& hidden) const
+{
+	auto unseen = fUnseen.find(chat.id);
+	if (!hidden || unseen == fUnseen.end())
+		return chat.unread;
+	int32_t count = chat.unread;
+	for (auto m = unseen->second.upper_bound(chat.lastReadInbox);
+			m != unseen->second.end(); ++m) {
+		if (hidden(chat.id, m->second.senderKey))
+			count--;
+	}
+	return std::max<int32_t>(count, 0);
+}
+
+
+int32_t
+ChatList::VisibleMentions(const Chat& chat, const Hidden& hidden) const
+{
+	auto unseen = fUnseen.find(chat.id);
+	if (!hidden || unseen == fUnseen.end())
+		return chat.unreadMentions;
+	int32_t count = chat.unreadMentions;
+	for (const auto& [id, m] : unseen->second) {
+		if (m.mention && hidden(chat.id, m.senderKey))
+			count--;
+	}
+	return std::max<int32_t>(count, 0);
+}
+
+
+bool
+ChatList::LastHidden(const Chat& chat, const Hidden& hidden) const
+{
+	return hidden && !chat.outgoing && chat.lastSenderKey != 0
+		&& hidden(chat.id, chat.lastSenderKey);
+}
+
+
 int32_t
 ChatList::UnreadChats() const
 {
+	return UnreadChats(nullptr);
+}
+
+
+int32_t
+ChatList::UnreadChats(const Hidden& hidden) const
+{
 	int32_t count = 0;
 	for (const Chat& c : Sorted("main")) {
-		bool unread = c.unread > 0 || c.markedUnread;
-		if ((unread && !IsMuted(c.id)) || c.unreadMentions > 0)
+		bool unread = VisibleUnread(c, hidden) > 0 || c.markedUnread;
+		if ((unread && !IsMuted(c.id)) || VisibleMentions(c, hidden) > 0)
 			count++;
 	}
 	return count;
